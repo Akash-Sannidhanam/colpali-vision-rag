@@ -4,7 +4,7 @@ from pathlib import Path
 from qdrant_client import QdrantClient 
 from qdrant_client import models as qm 
 
-from src.config import COLLECTION_NAME, QDRANT_PATH, TOP_K, VECTOR_DIM
+from src.config import COLLECTION_NAME, QDRANT_PATH, RETRIEVE_K, VECTOR_DIM
 
 _client: QdrantClient | None = None
 
@@ -51,7 +51,7 @@ def upsert_page(point_id, multivector, pdf_name, page_number, image_path) -> Non
         )]
     )
 
-def search(query_multivector: list[list[float]], top_k: int = TOP_K) -> list[dict]:
+def search(query_multivector: list[list[float]], top_k: int = RETRIEVE_K) -> list[dict]:
     """Return the top_k pages for a query multivector, best score first."""
     client = get_client()
     response = client.query_points(

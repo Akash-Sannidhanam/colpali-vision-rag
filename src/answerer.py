@@ -36,7 +36,7 @@ _PROMPT = (
 
     Question: {question}""")
 
-def _image_part(image_path: Path) -> types.Part:
+def image_part(image_path: Path) -> types.Part:
     """Load a saved PNG as an inline image part for the model."""
     data = Path(image_path).read_bytes()
     return types.Part.from_bytes(data=data, mime_type = "image/png")
@@ -51,7 +51,7 @@ def answer(question: str, pages: list[dict]) -> dict:
     contents: list = []
     for i, page in enumerate(pages, start=1):
         contents.append(f"PAGE {i} ({page['pdf']} p.{page['page_number']}):")
-        contents.append(_image_part(Path(page["image_path"])))
+        contents.append(image_part(Path(page["image_path"])))
     contents.append(_PROMPT.format(question = question))
     response = client.models.generate_content(
         model=GEMINI_MODEL,

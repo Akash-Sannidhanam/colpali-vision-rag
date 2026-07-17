@@ -26,6 +26,8 @@ RENDER_DPI = 150
 
 COLLECTION_NAME = "pdf_pages"
 VECTOR_DIM = 128 # ColQwen emits one 128-d vector per patch
-TOP_K = 3
+RETRIEVE_K = 10          # candidate pages pulled from Qdrant per query
+RERANK_K = 2             # pages kept after the Gemini rerank pass
+RERANK_THUMBNAIL_EDGE = 768  # long-edge px for rerank thumbnails; None = full-res
 GEMINI_MODEL = "gemini-3.5-flash"
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")

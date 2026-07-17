@@ -1,4 +1,4 @@
-"""Langraph flow: question -> retrieve -> answer -> highlight."""
+"""Langraph flow: question -> retrieve -> rerank -> answer -> highlight."""
 
 from typing import TypedDict
 from langgraph.graph import END, START, StateGraph
@@ -6,6 +6,7 @@ from langgraph.graph import END, START, StateGraph
 from src.answerer import answer as gemini_answer
 from src.embedder import embed_query
 from src.highlight import annotate_page, crop_region
+from src.reranker import rerank
 from src.vector_store import search
 
 class RAGState(TypedDict):
@@ -20,6 +21,14 @@ def retrieve_node(state: RAGState) -> dict:
     """Embed the quesiton visually and pull the top matching pages."""
     query_vec = embed_query(state["question"])
     return {"retrieved": search(query_vec)}
+
+def rerank_node(state: RAGState) -> dict:
+    """Ask Gemini which retrieved pages are actually relevant; keep only those.
+
+    Overwrites `retrieved` so the 1-based source_page from the answer step stays
+    aligned for highlight/printing.
+    """
+    return {"retrieved": rerank(state["question"], state["retrieved"])}
 
 def answer_node(state: RAGState) -> dict:
     """Send the retrieved page images to Gemini and capture the answer + citation."""
@@ -45,13 +54,15 @@ def highlight_node(state: RAGState) -> dict:
     }
 
 def build_graph():
-    """Compile the retrieve -> answer -> highlight graph."""
+    """Compile the retrieve -> rerank -> answer -> highlight graph."""
     builder = StateGraph(RAGState)
     builder.add_node("retrieve", retrieve_node)
+    builder.add_node("rerank", rerank_node)
     builder.add_node("answer", answer_node)
     builder.add_node("highlight", highlight_node)
     builder.add_edge(START, "retrieve")
-    builder.add_edge("retrieve", "answer")
+    builder.add_edge("retrieve", "rerank")
+    builder.add_edge("rerank", "answer")
     builder.add_edge("answer", "highlight")
     builder.add_edge("highlight", END)
     return builder.compile()
