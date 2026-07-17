@@ -30,9 +30,6 @@ the reader) is complete, tested, and shipped. Captured here so they are not lost
   degrades gracefully. `src/reranker.py` already wraps its Gemini call in a
   broad `try/except` that falls back to the Qdrant top-k — `answerer.py` should
   adopt the same pattern.
-- **Confirm the Gemini model id.** `GEMINI_MODEL = "gemini-3.5-flash"` in
-  `src/config.py` works in testing but is an unusual string. Pin or verify the
-  intended model. Both `src/answerer.py` and `src/reranker.py` now use it.
 
 ## Scope
 
