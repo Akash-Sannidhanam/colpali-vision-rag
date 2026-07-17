@@ -53,7 +53,10 @@ PYTHONPATH=. uv run python src/ingest.py            # indexes everything in pdfs
 PYTHONPATH=. uv run python src/main.py "What was the Q4 revenue in the chart?"
 ```
 
-Drop your own PDFs into `pdfs/` and re-run step 2 to index them.
+The repo ships a small starter corpus in `pdfs/` — the generated sales report plus
+two arXiv papers (*Attention Is All You Need* and *ColPali*, ~43 pages total) — so
+the rerank step has a real 10-candidate pool to narrow out of the box. Drop your own
+PDFs into `pdfs/` and re-run step 2 to index them too.
 
 ### Example output
 
@@ -83,7 +86,7 @@ The `crop` is a tight slice around the answer; the `annotated` page is the full 
 
 Try `"Which region had the highest growth?"` to hit the table page instead.
 
-`RETRIEVED PAGES` lists the pages kept *after* reranking. With a corpus larger than the two sample pages, retrieval pulls 10 candidates and the rerank step narrows them to the 2 shown here before the answer step runs.
+`RETRIEVED PAGES` lists the pages kept *after* reranking. Retrieval pulls `RETRIEVE_K` (10) candidates from Qdrant and the rerank step narrows them to `RERANK_K` (2) before the answer step runs; on a corpus of ≤2 pages there is nothing to trim, so rerank passes straight through. The shipped ~43-page corpus exercises the full 10→2 path — e.g. `"What was the Q4 revenue in the chart?"` still lands on `sales_report.pdf` even though it is now 2 pages among ~43.
 
 ## How it works
 
