@@ -122,6 +122,14 @@ Knobs live in `src/config.py`:
 | `TOP_K` | `3` | pages sent to Gemini |
 | `GEMINI_MODEL` | `gemini-3.5-flash` | any vision-capable Gemini model |
 
+## Development
+
+Run the geometry tests (pure Pillow, no models or API key required):
+
+```bash
+uv run pytest
+```
+
 ## Notes
 
 - Qdrant here is **embedded/on-disk** (`qdrant_data/`), not a server, so there are no extra services to run.
