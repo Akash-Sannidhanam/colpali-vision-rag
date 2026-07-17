@@ -1,0 +1,21 @@
+# Qdrant vector database for the vision RAG index.
+#
+# Only Qdrant is containerized. The Python app runs on the host (`uv run ...`)
+# so ColQwen2 keeps its Apple MPS / CUDA GPU access.
+#
+#   docker compose up -d          # start Qdrant (dashboard: http://localhost:6333/dashboard)
+#   docker compose down           # stop it (data persists in the qdrant_storage volume)
+#
+# Point the app at it by setting QDRANT_URL=http://localhost:6333 in .env.
+services:
+  qdrant:
+    image: qdrant/qdrant:v1.18.3   # pinned; wire-compatible with qdrant-client 1.18.x
+    ports:
+      - "6333:6333"                # REST + dashboard
+      - "6334:6334"                # gRPC
+    volumes:
+      - qdrant_storage:/qdrant/storage
+    restart: unless-stopped
+
+volumes:
+  qdrant_storage:
