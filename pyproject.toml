@@ -1,0 +1,33 @@
+[project]
+name = "colpali-vision-rag"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "accelerate>=1.14.0",
+    "colpali-engine>=0.3.15,<0.4",
+    "google-genai>=2.10.0",
+    "langgraph>=1.2.6",
+    "numpy>=2.5.0",
+    "pdf2image>=1.17.0",
+    "pillow>=12.2.0",
+    "pydantic>=2.0",
+    "python-dotenv>=1.2.2",
+    "qdrant-client>=1.12",
+    "torch>=2.11.0",
+    "torchvision>=0.26.0",
+    "transformers>=5.3.0,<5.4.0",
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+# Use the CUDA 12.8 wheels only on Linux/Windows (NVIDIA GPUs).
+# On macOS (Apple Silicon) uv falls back to the default PyPI wheels,
+# which include Metal/MPS GPU support.
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu128", marker = "sys_platform == 'linux' or sys_platform == 'win32'" }]
+torchvision = [{ index = "pytorch-cu128", marker = "sys_platform == 'linux' or sys_platform == 'win32'" }]
