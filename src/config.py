@@ -11,7 +11,13 @@ PAGE_IMAGES_DIR = ROOT_DIR / "page_images"
 # Cropped/annotated chart slices produced at answer time. Under page_images/ but
 # never re-ingested (ingest only globs pdfs/).
 CROPS_DIR = PAGE_IMAGES_DIR / "crops"
-QDRANT_PATH = ROOT_DIR / "qdrant_data"
+# Qdrant server URL (e.g. http://localhost:6333). When unset, fall back to the
+# embedded on-disk store at QDRANT_PATH - convenient for quick prototyping/tests
+# with no container running. Point the app at the Dockerized server by setting
+# QDRANT_URL in .env (see docker-compose.yml).
+QDRANT_URL = os.getenv("QDRANT_URL")
+QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")  # None for the local unauthenticated container
+QDRANT_PATH = ROOT_DIR / "qdrant_data"        # embedded on-disk fallback store
 
 # Directory containing poppler's CLI tools (pdftoppm/pdftocairo), used by pdf2image.
 # Override via POPPLER_PATH; otherwise derive it from pdftoppm on PATH.
@@ -28,6 +34,7 @@ COLLECTION_NAME = "pdf_pages"
 VECTOR_DIM = 128 # ColQwen emits one 128-d vector per patch
 RETRIEVE_K = 10          # candidate pages pulled from Qdrant per query
 RERANK_K = 2             # pages kept after the Gemini rerank pass
+UPSERT_BATCH_SIZE = 32   # pages per Qdrant upsert flush during ingest
 RERANK_THUMBNAIL_EDGE = 768  # long-edge px for rerank thumbnails; None = full-res
 GEMINI_MODEL = "gemini-3.5-flash"
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")

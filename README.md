@@ -19,6 +19,7 @@ Vision RAG can *read* a chart, but a plain text answer ("180") gives the reader 
 ## Requirements
 
 - **Python ≥ 3.13** and [**uv**](https://docs.astral.sh/uv/)
+- **Docker** (runs the Qdrant vector database via `docker compose`)
 - **Poppler** (for `pdf2image` page rendering)
   - macOS: `brew install poppler`
   - Debian/Ubuntu: `sudo apt-get install poppler-utils`
@@ -33,11 +34,16 @@ git clone https://github.com/Akash-Sannidhanam/colpali-vision-rag.git
 cd colpali-vision-rag
 uv sync
 
-# add your key
-echo 'GEMINI_API_KEY=your_key_here' > .env
+# add your key + point the app at the Qdrant server
+cp .env.example .env      # then edit GEMINI_API_KEY
+
+# start Qdrant (dashboard at http://localhost:6333/dashboard)
+docker compose up -d
 ```
 
-`.env` is gitignored, so your key stays local.
+`.env` is gitignored, so your key stays local. It holds `GEMINI_API_KEY` and
+`QDRANT_URL=http://localhost:6333`. Leave `QDRANT_URL` unset to skip Docker and use
+the embedded on-disk store instead — handy for quick local runs.
 
 ## Usage
 
@@ -45,7 +51,7 @@ echo 'GEMINI_API_KEY=your_key_here' > .env
 # 1. Generate the sample PDF (a bar chart + a sales table, pure pixels, no text layer)
 uv run python scripts/make_sample_pdf.py
 
-# 2. Ingest: render pages → embed with ColQwen2 → store in local Qdrant
+# 2. Ingest: render pages → embed with ColQwen2 → store in Qdrant
 PYTHONPATH=. uv run python src/ingest.py            # indexes everything in pdfs/
 #   or point at specific files:  ... src/ingest.py path/to/doc.pdf
 
@@ -90,7 +96,7 @@ Try `"Which region had the highest growth?"` to hit the table page instead.
 
 ## How it works
 
-1. **Retrieve** (`src/embedder.py`, `src/vector_store.py`): the query is embedded into ColQwen2's token-level multivectors and matched against per-page multivectors in a local, on-disk Qdrant collection ranked by **MaxSim**. The top `RETRIEVE_K` (default 10) candidate pages are returned.
+1. **Retrieve** (`src/embedder.py`, `src/vector_store.py`): the query is embedded into ColQwen2's token-level multivectors and matched against per-page multivectors in a Qdrant server collection ranked by **MaxSim**. The vectors are **binary-quantized** (128-d → 128 bits, 32× smaller) and kept in RAM for a fast first pass; the top hits are then **rescored** against the full-precision vectors on disk to protect recall. The top `RETRIEVE_K` (default 10) candidate pages are returned.
 2. **Rerank** (`src/reranker.py`): the candidates are sent to Gemini as **downscaled thumbnails** (a cheap triage pass), and it returns the `RERANK_K` (default 2) pages that actually help answer the question. This keeps the answer step focused and sharpens the citation, without paying full-resolution image cost just to sort candidates. If the call fails or returns junk, it falls back to the top pages by MaxSim score.
 3. **Answer** (`src/answerer.py`): the reranked **page images** are sent to Gemini at full resolution, which returns structured JSON: the `answer`, which `source_page` it came from, and a `box` in Gemini's native `[ymin, xmin, ymax, xmax]` convention normalized to a 0–1000 scale.
 4. **Highlight** (`src/highlight.py`): the box is converted to pixels against the real page PNG (with a little padding), then **cropped** and **annotated**, saved under `page_images/crops/`.
@@ -104,8 +110,8 @@ src/
   config.py        # paths, model names, Qdrant + DPI + retrieve/rerank settings
   pdf_render.py    # PDF → page PNGs (pdf2image / Poppler)
   embedder.py      # ColQwen2 image + query embeddings
-  vector_store.py  # local Qdrant multivector store (create / upsert / search)
-  ingest.py        # ingest CLI: render → embed → upsert
+  vector_store.py  # Qdrant multivector store (create / upsert / search, binary quantized)
+  ingest.py        # ingest CLI: render → embed → batched upsert
   reranker.py      # Gemini thumbnail rerank: candidates → the pages that matter
   answerer.py      # Gemini structured answer + bounding box
   highlight.py     # crop + annotate the cited region
@@ -113,9 +119,10 @@ src/
   main.py          # query CLI
 scripts/
   make_sample_pdf.py   # generates the text-layer-free sample PDF
+docker-compose.yml    # Qdrant vector database service
 pdfs/                  # source PDFs to index
 page_images/          # rendered pages + crops/ (generated, gitignored)
-qdrant_data/          # local Qdrant store (generated, gitignored)
+qdrant_data/          # embedded on-disk fallback store (generated, gitignored)
 ```
 
 ## Configuration
@@ -124,6 +131,7 @@ Knobs live in `src/config.py`:
 
 | Setting | Default | Notes |
 |---|---|---|
+| `QDRANT_URL` | _(unset)_ | Qdrant server URL, e.g. `http://localhost:6333`; unset falls back to the embedded on-disk store. Set in `.env` |
 | `COLPALI_MODEL` | `vidore/colqwen2-v1.0` | swap to `vidore/colqwen2.5-v0.2` for higher chart/table accuracy on a bigger GPU |
 | `RENDER_DPI` | `150` | page render resolution |
 | `RETRIEVE_K` | `10` | candidate pages pulled from Qdrant per query |
@@ -141,6 +149,6 @@ uv run pytest
 
 ## Notes
 
-- Qdrant here is **embedded/on-disk** (`qdrant_data/`), not a server, so there are no extra services to run.
+- Qdrant runs as a **Dockerized server** (`docker compose up -d`) with **binary quantization** on the multivectors — 128-d → 128 bits in RAM, full-precision vectors on disk for rescoring — so the index scales to hundreds of pages. Leave `QDRANT_URL` unset to fall back to the **embedded on-disk** store (`qdrant_data/`) for quick prototyping with no container.
 - The sample PDF is deliberately **pixel-only** (no selectable text) to prove the vision path does the work.
-- Generated data (`qdrant_data/`, `page_images/`) is gitignored and rebuilt by ingest.
+- Generated data (`qdrant_data/`, `page_images/`) is gitignored and rebuilt by ingest; the server's index lives in the `qdrant_storage` Docker volume.
