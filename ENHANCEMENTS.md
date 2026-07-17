@@ -27,10 +27,12 @@ the reader) is complete, tested, and shipped. Captured here so they are not lost
 - **Harden structured-output parsing.** `src/answerer.py` falls back to
   `json.loads(response.text)` when `response.parsed` is None; a malformed
   response would raise. Catch that and return a not-found result so the CLI
-  degrades gracefully.
+  degrades gracefully. `src/reranker.py` already wraps its Gemini call in a
+  broad `try/except` that falls back to the Qdrant top-k — `answerer.py` should
+  adopt the same pattern.
 - **Confirm the Gemini model id.** `GEMINI_MODEL = "gemini-3.5-flash"` in
   `src/config.py` works in testing but is an unusual string. Pin or verify the
-  intended model.
+  intended model. Both `src/answerer.py` and `src/reranker.py` now use it.
 
 ## Scope
 
@@ -38,5 +40,21 @@ the reader) is complete, tested, and shipped. Captured here so they are not lost
   choice). If an answer ever spans two pages or two areas, extend the `Citation`
   schema in `src/answerer.py` to a list of boxes and crop each.
 - **Integration test with a mocked Gemini.** Current tests cover the pure
-  geometry in `src/highlight.py`. A test that stubs the Gemini call would cover
-  the `answer_node` to `highlight_node` wiring without needing an API key.
+  geometry in `src/highlight.py` and the pure rank-cleaning logic
+  (`_valid_order`) in `src/reranker.py`. A test that stubs the Gemini calls
+  would additionally cover the `rerank_node → answer_node → highlight_node`
+  wiring without needing an API key.
+
+## Retrieval / rerank
+
+- **Cheaper/faster rerank model.** `src/reranker.py` reuses `GEMINI_MODEL` for
+  the triage pass. A lighter model (e.g. a Flash-Lite tier) would cut the rerank
+  call's cost and latency further, since picking page indices is a coarser task
+  than reading the answer — add a separate `RERANK_MODEL` knob.
+- **Adaptive rerank count.** `RERANK_K` is a fixed 2, and `_valid_order` tops up
+  to exactly `k`. Letting the reranker keep a variable number of pages (1 when a
+  single page clearly answers, more when the answer spans pages) would trade a
+  little predictability for precision.
+- **Surface the dropped candidates.** `rerank_node` overwrites `retrieved`, so
+  `main.py` prints only the kept pages. Adding a `candidates` key to `RAGState`
+  would let the CLI show "retrieved 10, used 2" for transparency.
