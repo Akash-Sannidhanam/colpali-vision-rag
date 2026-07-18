@@ -2,11 +2,14 @@
 
 import json
 from pathlib import Path
-from google import genai
 from google.genai import types
 from pydantic import BaseModel
 
-from src.config import GEMINI_API_KEY, GEMINI_MODEL
+from src.config import GEMINI_MODEL
+from src.gemini_client import generate
+from src.logging_setup import get_logger
+
+log = get_logger("answerer")
 
 
 class Citation(BaseModel):
@@ -41,27 +44,44 @@ def image_part(image_path: Path) -> types.Part:
     data = Path(image_path).read_bytes()
     return types.Part.from_bytes(data=data, mime_type = "image/png")
 
+# Returned when the answer step fails or the model response can't be read as a
+# Citation. highlight_node's guards (graph.py) skip a not-found citation cleanly.
+_NOT_FOUND = {
+    "answer": "Couldn't read the retrieved pages.",
+    "found": False,
+    "source_page": 0,
+    "box": [],
+}
+
+
 def answer(question: str, pages: list[dict]) -> dict:
     """Ask Gemini the question against the retrieved page images.
 
     Returns a dict with keys answer, found, source_page (1-based index into
-    `pages`), and box ([ymin, xmin, ymax, xmax] on a 0-1000 scale).
+    `pages`), and box ([ymin, xmin, ymax, xmax] on a 0-1000 scale). On any failure
+    - a transient API error that outlived the client's retries, or a malformed /
+    wrong-shape response - degrades to a well-formed not-found citation so the
+    graph's highlight step skips cleanly instead of crashing.
     """
-    client = genai.Client(api_key = GEMINI_API_KEY)
     contents: list = []
     for i, page in enumerate(pages, start=1):
         contents.append(f"PAGE {i} ({page['pdf']} p.{page['page_number']}):")
         contents.append(image_part(Path(page["image_path"])))
     contents.append(_PROMPT.format(question = question))
-    response = client.models.generate_content(
-        model=GEMINI_MODEL,
-        contents=contents,
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
+    try:
+        response = generate(
+            model=GEMINI_MODEL,
+            contents=contents,
             response_schema=Citation,
-        ),
-    )
-    parsed = response.parsed
-    if parsed is not None:
-        return parsed.model_dump()
-    return json.loads(response.text)
+            purpose="answer",
+        )
+        parsed = response.parsed
+        if parsed is not None:
+            return parsed.model_dump()
+        # No SDK-parsed object: validate the raw JSON text through the schema, so a
+        # valid-JSON-but-wrong-shape response also degrades to not-found instead of
+        # KeyError-ing downstream where answer_node reads result["answer"].
+        return Citation(**json.loads(response.text)).model_dump()
+    except Exception:
+        log.warning("answer step failed; returning not-found citation", exc_info=True)
+        return dict(_NOT_FOUND)

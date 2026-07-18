@@ -19,7 +19,7 @@ Work happens on branch **`production-hardening-pass`**.
 | Phase | Area | Status |
 |-------|------|--------|
 | 0 | Shared foundation (config, Gemini client, logging, `run_query` seam) | ✅ **Done** (`e1401af`) |
-| 1 | Reliability (route calls through client, graceful answerer, atomic ingest) | ⬜ Pending |
+| 1 | Reliability (route calls through client, graceful answerer, atomic ingest) | ✅ **Done** |
 | 2 | Observability (request IDs, node timing, token/cost, tracing) | ⬜ Pending |
 | 3 | Warm serving + UI (FastAPI + Streamlit) | ⬜ Pending |
 | 4 | Evaluation (retrieval + answer-quality suite) | ⬜ Pending |
@@ -61,7 +61,18 @@ the node logging. Verified via unit tests on the pure logic.
 
 ---
 
-## Phase 1 — Reliability ⬜
+## Phase 1 — Reliability ✅ DONE
+
+**Shipped:** all four items landed and were verified with unit tests (`tests/test_answerer.py`,
+`tests/test_vector_store.py`, extended `tests/test_reranker.py`; suite green at 47) plus a
+live end-to-end pass against the Dockerized Qdrant server — baseline ingest, a query answering
+through the alias with token/cost logs, an atomic re-ingest swap (`pdf_pages_1→2→3`, old
+collections deleted), a hard-kill (`SIGKILL`) mid-build that left the previous index fully intact
+and still answering, and a recovery ingest that swept the orphaned partial. One pre-existing bug
+surfaced and was fixed as part of making server ingest reliable: multi-page ColQwen2 multivector
+batches (~1.4 MB/page) exceeded Qdrant's default 32 MB REST payload limit, so
+`UPSERT_BATCH_SIZE` was lowered to 8 **and** `QDRANT__SERVICE__MAX_REQUEST_SIZE_MB=256` added to
+`docker-compose.yml`.
 
 - **Route `answerer.answer` and `reranker.rerank` through `gemini_client.generate`**
   — timeouts + retries for free; drops the per-call `genai.Client()` construction.
