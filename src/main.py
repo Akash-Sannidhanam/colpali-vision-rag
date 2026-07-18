@@ -4,6 +4,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from src.config import validate
 from src.graph import build_graph
 from src.vector_store import close_client
 
@@ -16,12 +17,22 @@ def _open_file(path: str) -> None:
     except OSError:
         pass
 
-def run(question: str) -> None:
-    """Run one question through the retrieve -> answer -> highlight graph and print it."""
-    graph = build_graph()
+def run_query(question: str) -> dict:
+    """Run one question through the graph and return the structured result dict.
 
+    Pure: no printing, no file-opening, no client teardown - the reusable seam
+    shared by the CLI, a service, and the eval harness. The caller owns the
+    Qdrant client lifecycle (the CLI closes it; a warm server keeps it open).
+    """
+    graph = build_graph()
+    return graph.invoke({"question": question})
+
+
+def run(question: str) -> None:
+    """CLI: run one question, print the result, and open the crop (macOS)."""
+    validate()
     try:
-        result = graph.invoke({"question": question})
+        result = run_query(question)
     finally:
         close_client()
 

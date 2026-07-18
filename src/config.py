@@ -38,3 +38,28 @@ UPSERT_BATCH_SIZE = 32   # pages per Qdrant upsert flush during ingest
 RERANK_THUMBNAIL_EDGE = 768  # long-edge px for rerank thumbnails; None = full-res
 GEMINI_MODEL = "gemini-3.5-flash"
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+# Rerank is a coarser triage than answering, so it can point at a cheaper/faster
+# model. Defaults to GEMINI_MODEL; override with RERANK_MODEL in .env.
+RERANK_MODEL = os.getenv("RERANK_MODEL") or GEMINI_MODEL
+
+# Reliability knobs for outbound Gemini calls (see src/gemini_client.py).
+GEMINI_TIMEOUT_S = float(os.getenv("GEMINI_TIMEOUT_S", "60"))   # per-request timeout
+GEMINI_MAX_RETRIES = int(os.getenv("GEMINI_MAX_RETRIES", "3"))  # attempts on transient errors
+
+# Logging (see src/logging_setup.py). LOG_JSON emits one JSON object per line.
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+LOG_JSON = os.getenv("LOG_JSON", "false").strip().lower() in ("1", "true", "yes")
+
+
+def validate() -> None:
+    """Fail fast on missing required configuration.
+
+    Called by the CLIs / server at startup so a misconfiguration surfaces
+    immediately with a clear message, instead of an opaque auth error at the
+    first Gemini call (GEMINI_API_KEY otherwise defaults to "").
+    """
+    if not GEMINI_API_KEY:
+        raise RuntimeError(
+            "GEMINI_API_KEY is not set. Copy .env.example to .env and add your "
+            "key (see README) before running the pipeline."
+        )
