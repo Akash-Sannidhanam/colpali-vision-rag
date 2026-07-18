@@ -11,18 +11,17 @@ import io
 import json
 from pathlib import Path
 
-from google import genai
 from google.genai import types
 from PIL import Image
 from pydantic import BaseModel
 
 from src.answerer import image_part
 from src.config import (
-    GEMINI_API_KEY,
-    GEMINI_MODEL,
     RERANK_K,
+    RERANK_MODEL,
     RERANK_THUMBNAIL_EDGE,
 )
+from src.gemini_client import generate
 
 
 class Rerank(BaseModel):
@@ -98,19 +97,16 @@ def rerank(question: str, pages: list[dict], k: int = RERANK_K) -> list[dict]:
         return pages
 
     try:
-        client = genai.Client(api_key=GEMINI_API_KEY)
         contents: list = []
         for i, page in enumerate(pages, start=1):
             contents.append(f"PAGE {i} ({page['pdf']} p.{page['page_number']}):")
             contents.append(_candidate_part(Path(page["image_path"])))
         contents.append(_PROMPT.format(n=n, k=k, question=question))
-        response = client.models.generate_content(
-            model=GEMINI_MODEL,
+        response = generate(
+            model=RERANK_MODEL,
             contents=contents,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=Rerank,
-            ),
+            response_schema=Rerank,
+            purpose="rerank",
         )
         parsed = response.parsed
         raw = (parsed.page_indices if parsed is not None

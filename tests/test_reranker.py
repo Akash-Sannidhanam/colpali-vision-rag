@@ -1,9 +1,13 @@
 """Tests for the rerank step's pure ranking logic (src.reranker).
 
 These exercise `_valid_order` and `rerank`'s early pass-through, so they need no
-models, API key, or network - the Gemini call is never reached.
+models, API key, or network - the Gemini call is never reached. One test stubs
+the shared `gemini_client.generate` to assert the call is routed with RERANK_MODEL.
 """
 
+from types import SimpleNamespace
+
+from src import reranker
 from src.reranker import _valid_order, rerank
 
 
@@ -52,3 +56,25 @@ def test_rerank_passthrough_when_k_ge_pages():
 
 def test_rerank_passthrough_on_empty_retrieval():
     assert rerank("q", [], k=2) == []
+
+
+def test_rerank_routes_through_shared_client_with_rerank_model(monkeypatch):
+    # With more pages than k, the Gemini call is reached: assert it goes through
+    # gemini_client.generate tagged as a rerank call using RERANK_MODEL, and that
+    # the model's page order is honored.
+    calls: list = []
+
+    def fake_generate(**kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(parsed=SimpleNamespace(page_indices=[2, 1]), text="")
+
+    monkeypatch.setattr(reranker, "_candidate_part", lambda p: None)  # no PNGs read
+    monkeypatch.setattr(reranker, "generate", fake_generate)
+
+    pages = [_page(1), _page(2), _page(3)]
+    out = rerank("q", pages, k=2)
+
+    assert out == [pages[1], pages[0]]                       # model order [2, 1]
+    assert calls and calls[0]["model"] == reranker.RERANK_MODEL
+    assert calls[0]["purpose"] == "rerank"
+    assert calls[0]["response_schema"] is reranker.Rerank

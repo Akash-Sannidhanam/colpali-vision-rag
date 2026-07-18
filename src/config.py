@@ -34,7 +34,9 @@ COLLECTION_NAME = "pdf_pages"
 VECTOR_DIM = 128 # ColQwen emits one 128-d vector per patch
 RETRIEVE_K = 10          # candidate pages pulled from Qdrant per query
 RERANK_K = 2             # pages kept after the Gemini rerank pass
-UPSERT_BATCH_SIZE = 32   # pages per Qdrant upsert flush during ingest
+UPSERT_BATCH_SIZE = 8    # pages per Qdrant upsert flush; small enough that a batch's
+                         # multivector payload (~1.4 MB/page) stays well under Qdrant's
+                         # REST size limit, even on the default 32 MB server config
 RERANK_THUMBNAIL_EDGE = 768  # long-edge px for rerank thumbnails; None = full-res
 GEMINI_MODEL = "gemini-3.5-flash"
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")

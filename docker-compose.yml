@@ -13,6 +13,11 @@ services:
     ports:
       - "6333:6333"                # REST + dashboard
       - "6334:6334"                # gRPC
+    environment:
+      # ColQwen2 multivectors are large (~1.4 MB/page), so a multi-page upsert
+      # batch can exceed Qdrant's default 32 MB REST payload cap. Raise it well
+      # above any realistic batch. (UPSERT_BATCH_SIZE keeps batches modest too.)
+      - QDRANT__SERVICE__MAX_REQUEST_SIZE_MB=256
     volumes:
       - qdrant_storage:/qdrant/storage
     restart: unless-stopped
