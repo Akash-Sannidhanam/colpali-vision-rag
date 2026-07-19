@@ -139,6 +139,28 @@ Knobs live in `src/config.py`:
 | `RERANK_THUMBNAIL_EDGE` | `768` | long-edge px for rerank thumbnails; set `None` to rerank on full-res pages |
 | `GEMINI_MODEL` | `gemini-3.5-flash` | any vision-capable Gemini model (used for both rerank and answer) |
 
+## Observability
+
+Every query is traceable end to end. Set `LOG_JSON=true` for one JSON object per log
+line (ready for a log aggregator); each line carries a per-query `request_id`, so the
+`retrieve → rerank → answer → highlight` node timings (`latency_ms`), the per-call
+Gemini token/cost lines, and a final `query complete` summary (total latency +
+aggregated tokens/cost) all correlate. Human-readable lines are the default. A rerank
+or answer step that fails degrades gracefully **and** logs a `degraded` warning, so a
+silently-degraded query is still visible in the logs.
+
+**LangSmith tracing (optional).** Off by default and needs no code change. Set both
+`LANGSMITH_TRACING=true` and `LANGSMITH_API_KEY` (optionally `LANGSMITH_PROJECT`) and
+LangGraph emits traces natively. Each trace is tagged with the same `request_id` as
+the logs, so a slow query in LangSmith maps straight back to its log lines.
+
+| Setting | Default | Notes |
+|---|---|---|
+| `LOG_LEVEL` | `INFO` | stdlib log level |
+| `LOG_JSON` | `false` | `true` emits one JSON object per line with `request_id` + `latency_ms` + token totals |
+| `LANGSMITH_TRACING` | _(unset)_ | set `true` (with a key) to turn on LangSmith tracing |
+| `LANGSMITH_API_KEY` | _(unset)_ | LangSmith API key; required for tracing |
+
 ## Development
 
 Run the geometry tests (pure Pillow, no models or API key required):

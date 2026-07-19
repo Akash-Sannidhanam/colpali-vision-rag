@@ -22,6 +22,9 @@ from src.config import (
     RERANK_THUMBNAIL_EDGE,
 )
 from src.gemini_client import generate
+from src.logging_setup import get_logger
+
+log = get_logger("reranker")
 
 
 class Rerank(BaseModel):
@@ -112,6 +115,11 @@ def rerank(question: str, pages: list[dict], k: int = RERANK_K) -> list[dict]:
         raw = (parsed.page_indices if parsed is not None
                else json.loads(response.text).get("page_indices", []))
     except Exception:  # network / quota / parse -> Qdrant top-k
+        log.warning(
+            "rerank failed; falling back to Qdrant top-k",
+            exc_info=True,
+            extra={"degraded": True, "stage": "rerank"},
+        )
         raw = []
 
     order = _valid_order(raw, n, k)

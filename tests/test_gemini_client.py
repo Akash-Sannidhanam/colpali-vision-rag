@@ -52,12 +52,13 @@ def _capture(logger_name: str):
     return records, lambda: (logger.removeHandler(handler), logger.setLevel(prev))
 
 
-def test_log_usage_reports_tokens_and_estimated_cost():
+def test_log_usage_reports_tokens_latency_and_estimated_cost():
     resp = SimpleNamespace(usage_metadata=SimpleNamespace(
         prompt_token_count=1000, candidates_token_count=500, total_token_count=1500))
     records, detach = _capture("gemini")
     try:
-        _log_usage(resp, model="gemini-3.5-flash", purpose="answer")
+        _log_usage(resp, model="gemini-3.5-flash", purpose="answer",
+                   latency_ms=123.4, attempts=1)
     finally:
         detach()
 
@@ -67,14 +68,42 @@ def test_log_usage_reports_tokens_and_estimated_cost():
     assert rec.prompt_tokens == 1000
     assert rec.output_tokens == 500
     assert rec.total_tokens == 1500
+    assert rec.latency_ms == 123.4
+    assert rec.attempts == 1
     # 1000/1e6 * 0.30 + 500/1e6 * 2.50 = 0.0003 + 0.00125
     assert rec.est_cost_usd == round(0.0003 + 0.00125, 6)
 
 
-def test_log_usage_no_metadata_is_silent():
+def test_log_usage_without_metadata_still_logs_latency_and_attempts():
+    # No usage_metadata -> still one line (latency/attempts observable), but no tokens.
     records, detach = _capture("gemini")
     try:
-        _log_usage(SimpleNamespace(usage_metadata=None), model="x", purpose="answer")
+        _log_usage(SimpleNamespace(usage_metadata=None), model="x", purpose="answer",
+                   latency_ms=50.0, attempts=2)
     finally:
         detach()
-    assert records == []
+    assert len(records) == 1
+    rec = records[0]
+    assert rec.latency_ms == 50.0
+    assert rec.attempts == 2
+    assert not hasattr(rec, "total_tokens")
+    assert not hasattr(rec, "est_cost_usd")
+
+
+def test_log_usage_accumulates_into_request_totals():
+    from src import request_context
+
+    resp = SimpleNamespace(usage_metadata=SimpleNamespace(
+        prompt_token_count=100, candidates_token_count=40, total_token_count=140))
+    scope = request_context.begin_request()
+    try:
+        _log_usage(resp, model="gemini-3.5-flash", purpose="rerank",
+                   latency_ms=10.0, attempts=1)
+        _log_usage(resp, model="gemini-3.5-flash", purpose="answer",
+                   latency_ms=20.0, attempts=1)
+        totals = request_context.usage_totals()
+    finally:
+        request_context.end_request(scope)
+
+    assert totals["total_tokens"] == 280
+    assert totals["gemini_calls"] == 2

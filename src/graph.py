@@ -1,13 +1,17 @@
 """Langraph flow: question -> retrieve -> rerank -> answer -> highlight."""
 
+import time
 from typing import TypedDict
 from langgraph.graph import END, START, StateGraph
 
 from src.answerer import answer as gemini_answer
 from src.embedder import embed_query
 from src.highlight import annotate_page, crop_region
+from src.logging_setup import get_logger
 from src.reranker import rerank
 from src.vector_store import search
+
+log = get_logger("graph")
 
 class RAGState(TypedDict):
     question: str
@@ -53,13 +57,38 @@ def highlight_node(state: RAGState) -> dict:
         "annotated_path": str(annotate_page(image_path, box)),
     }
 
+def _timed(name: str, fn):
+    """Wrap a graph node to log its start/end + latency_ms, leaving the node fn pure.
+
+    Applied at registration (not as a decorator) so the raw node functions can still
+    be called directly in tests without emitting timing logs. Every line carries the
+    query's `request_id` via the root handler's filter.
+    """
+
+    def wrapped(state: RAGState) -> dict:
+        log.info("node start", extra={"node": name})
+        start = time.perf_counter()
+        try:
+            return fn(state)
+        finally:
+            log.info(
+                "node end",
+                extra={
+                    "node": name,
+                    "latency_ms": round((time.perf_counter() - start) * 1000, 1),
+                },
+            )
+
+    return wrapped
+
+
 def build_graph():
     """Compile the retrieve -> rerank -> answer -> highlight graph."""
     builder = StateGraph(RAGState)
-    builder.add_node("retrieve", retrieve_node)
-    builder.add_node("rerank", rerank_node)
-    builder.add_node("answer", answer_node)
-    builder.add_node("highlight", highlight_node)
+    builder.add_node("retrieve", _timed("retrieve", retrieve_node))
+    builder.add_node("rerank", _timed("rerank", rerank_node))
+    builder.add_node("answer", _timed("answer", answer_node))
+    builder.add_node("highlight", _timed("highlight", highlight_node))
     builder.add_edge(START, "retrieve")
     builder.add_edge("retrieve", "rerank")
     builder.add_edge("rerank", "answer")

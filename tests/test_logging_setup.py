@@ -6,7 +6,8 @@ Pure formatting logic - no I/O, no config side effects beyond building records.
 import json
 import logging
 
-from src.logging_setup import _Formatter
+from src import request_context
+from src.logging_setup import _Formatter, _RequestIdFilter
 
 
 def _record(**extra) -> logging.LogRecord:
@@ -37,3 +38,26 @@ def test_reserved_record_fields_are_not_leaked_as_extras():
     payload = json.loads(_Formatter(json_mode=True).format(_record()))
     for reserved in ("args", "levelno", "pathname", "msecs", "processName"):
         assert reserved not in payload
+
+
+def test_request_id_filter_stamps_the_bound_id():
+    record = _record()
+    scope = request_context.begin_request()
+    try:
+        assert _RequestIdFilter().filter(record) is True
+        assert record.request_id == request_context.current_request_id()
+        assert record.request_id != "-"
+    finally:
+        request_context.end_request(scope)
+
+
+def test_request_id_filter_defaults_outside_a_request():
+    record = _record()
+    _RequestIdFilter().filter(record)
+    assert record.request_id == "-"
+
+
+def test_request_id_renders_as_a_field():
+    # request_id isn't reserved, so the formatter emits it like any other extra.
+    payload = json.loads(_Formatter(json_mode=True).format(_record(request_id="abc123")))
+    assert payload["request_id"] == "abc123"

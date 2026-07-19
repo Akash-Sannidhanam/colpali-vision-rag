@@ -2,11 +2,16 @@
 
 import subprocess
 import sys
+import time
 from pathlib import Path
 
+from src import request_context
 from src.config import validate
 from src.graph import build_graph
+from src.logging_setup import get_logger
 from src.vector_store import close_client
+
+log = get_logger("query")
 
 def _open_file(path: str) -> None:
     """Best-effort open a saved image in the OS viewer (macOS only, non-fatal)."""
@@ -23,9 +28,32 @@ def run_query(question: str) -> dict:
     Pure: no printing, no file-opening, no client teardown - the reusable seam
     shared by the CLI, a service, and the eval harness. The caller owns the
     Qdrant client lifecycle (the CLI closes it; a warm server keeps it open).
+
+    Binds a per-query `request_id` (stamped onto every log line) and emits a single
+    `"query complete"` summary line with total latency and aggregated token/cost. The
+    id is also passed to LangGraph's invoke config so opt-in LangSmith traces are
+    searchable by it.
     """
-    graph = build_graph()
-    return graph.invoke({"question": question})
+    scope = request_context.begin_request()
+    start = time.perf_counter()
+    try:
+        graph = build_graph()
+        return graph.invoke(
+            {"question": question},
+            config={
+                "run_name": "rag_query",
+                "metadata": {"request_id": request_context.current_request_id()},
+            },
+        )
+    finally:
+        log.info(
+            "query complete",
+            extra={
+                "latency_ms": round((time.perf_counter() - start) * 1000, 1),
+                **request_context.usage_totals(),
+            },
+        )
+        request_context.end_request(scope)
 
 
 def run(question: str) -> None:
