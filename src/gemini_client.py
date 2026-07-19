@@ -11,18 +11,22 @@ in one place:
 `.text` (and their own graceful-fallback handling) exactly as before.
 """
 
+import logging
+import time
 from typing import Any
 
 from google import genai
 from google.genai import errors as genai_errors
 from google.genai import types
 from tenacity import (
+    before_sleep_log,
     retry,
     retry_if_exception,
     stop_after_attempt,
     wait_exponential,
 )
 
+from src import request_context
 from src.config import GEMINI_API_KEY, GEMINI_MAX_RETRIES, GEMINI_TIMEOUT_S
 from src.logging_setup import get_logger
 
@@ -64,27 +68,39 @@ def _is_retryable(exc: BaseException) -> bool:
     return "timeout" in name or "connection" in name
 
 
-def _log_usage(response: Any, *, model: str, purpose: str) -> None:
-    """Log token counts and an estimated cost for one call."""
+def _log_usage(
+    response: Any, *, model: str, purpose: str, latency_ms: float, attempts: int
+) -> None:
+    """Log one call's latency + attempt count, plus token usage when present.
+
+    Always emits a `"gemini call"` line so latency/attempts stay observable even when
+    the SDK returns no `usage_metadata` (`attempts > 1` is the retry signal). When
+    usage is present, its token counts and estimated cost are added to the line and
+    folded into the per-request totals via `record_usage`.
+    """
+    fields: dict[str, Any] = {
+        "purpose": purpose,
+        "model": model,
+        "latency_ms": latency_ms,
+        "attempts": attempts,
+    }
     usage = getattr(response, "usage_metadata", None)
-    if usage is None:
-        return
-    prompt = getattr(usage, "prompt_token_count", 0) or 0
-    output = getattr(usage, "candidates_token_count", 0) or 0
-    total = getattr(usage, "total_token_count", 0) or 0
-    in_rate, out_rate = _RATES.get(model, (0.0, 0.0))
-    cost = prompt / 1e6 * in_rate + output / 1e6 * out_rate
-    log.info(
-        "gemini call",
-        extra={
-            "purpose": purpose,
-            "model": model,
-            "prompt_tokens": prompt,
-            "output_tokens": output,
-            "total_tokens": total,
-            "est_cost_usd": round(cost, 6),
-        },
-    )
+    if usage is not None:
+        prompt = getattr(usage, "prompt_token_count", 0) or 0
+        output = getattr(usage, "candidates_token_count", 0) or 0
+        total = getattr(usage, "total_token_count", 0) or 0
+        in_rate, out_rate = _RATES.get(model, (0.0, 0.0))
+        cost = prompt / 1e6 * in_rate + output / 1e6 * out_rate
+        fields.update(
+            prompt_tokens=prompt,
+            output_tokens=output,
+            total_tokens=total,
+            est_cost_usd=round(cost, 6),
+        )
+        request_context.record_usage(
+            prompt=prompt, output=output, total=total, cost=cost
+        )
+    log.info("gemini call", extra=fields)
 
 
 def generate(*, model: str, contents: list, response_schema: Any, purpose: str) -> Any:
@@ -99,6 +115,7 @@ def generate(*, model: str, contents: list, response_schema: Any, purpose: str) 
         stop=stop_after_attempt(max(1, GEMINI_MAX_RETRIES)),
         wait=wait_exponential(multiplier=1, min=1, max=20),
         retry=retry_if_exception(_is_retryable),
+        before_sleep=before_sleep_log(log, logging.WARNING),
     )
     def _call() -> Any:
         return get_client().models.generate_content(
@@ -110,6 +127,11 @@ def generate(*, model: str, contents: list, response_schema: Any, purpose: str) 
             ),
         )
 
+    start = time.perf_counter()
     response = _call()
-    _log_usage(response, model=model, purpose=purpose)
+    latency_ms = round((time.perf_counter() - start) * 1000, 1)
+    attempts = _call.statistics.get("attempt_number", 1)
+    _log_usage(
+        response, model=model, purpose=purpose, latency_ms=latency_ms, attempts=attempts
+    )
     return response

@@ -83,5 +83,9 @@ def answer(question: str, pages: list[dict]) -> dict:
         # KeyError-ing downstream where answer_node reads result["answer"].
         return Citation(**json.loads(response.text)).model_dump()
     except Exception:
-        log.warning("answer step failed; returning not-found citation", exc_info=True)
+        log.warning(
+            "answer step failed; returning not-found citation",
+            exc_info=True,
+            extra={"degraded": True, "stage": "answer"},
+        )
         return dict(_NOT_FOUND)

@@ -20,7 +20,7 @@ Work happens on branch **`production-hardening-pass`**.
 |-------|------|--------|
 | 0 | Shared foundation (config, Gemini client, logging, `run_query` seam) | ✅ **Done** (`e1401af`) |
 | 1 | Reliability (route calls through client, graceful answerer, atomic ingest) | ✅ **Done** |
-| 2 | Observability (request IDs, node timing, token/cost, tracing) | ⬜ Pending |
+| 2 | Observability (request IDs, node timing, token/cost, tracing) | ✅ **Done** |
 | 3 | Warm serving + UI (FastAPI + Streamlit) | ⬜ Pending |
 | 4 | Evaluation (retrieval + answer-quality suite) | ⬜ Pending |
 
@@ -101,22 +101,44 @@ still answers.
 
 ---
 
-## Phase 2 — Observability ⬜
+## Phase 2 — Observability ✅ DONE
 
-- **Structured logs across the pipeline** — a per-query `request_id` (uuid4) bound
-  via a `contextvar`; wrap each `graph.py` node to log start/end + `latency_ms`.
-  Keep the user-facing CLI `print()`s; logs are the machine-readable layer.
-- **Gemini token/cost accounting** — already emitted per call by
-  `gemini_client._log_usage` (tagged by `purpose`); surface per-query totals once
-  the calls are routed through it (Phase 1).
-- **LangSmith tracing (opt-in, env only)** — document `LANGSMITH_TRACING` /
-  `LANGSMITH_API_KEY` in `.env.example` + README; LangGraph emits traces natively,
-  no code change.
+**Shipped:** one query is now legible end to end. A per-query `request_id`
+(`contextvar`, bound in `run_query`) is stamped onto **every** log line by a
+`logging_setup._RequestIdFilter` on the root handler — so the gemini calls, node
+timings, degradation warnings, and the final summary all correlate — essentially for
+free, because `request_id` isn't in `_RESERVED` and the existing formatter renders
+it. Verified with unit tests on the pure logic (`tests/test_request_context.py`,
+`tests/test_graph.py`, `tests/test_main.py`, extended `tests/test_logging_setup.py` /
+`tests/test_gemini_client.py`; suite green at 58) plus a live JSON-log query showing a
+shared `request_id`, per-node `latency_ms`, and per-call token counts for both
+`rerank` and `answer`. Scope grew slightly beyond the original three items to fold in
+the cheap adjacent wins the code audit surfaced.
 
-**Files:** `src/graph.py`, `src/main.py` (bind `request_id` in `run_query`),
-`.env.example`, `README.md`.
-**Verify:** one query → JSON logs carry a shared `request_id`, per-node `latency_ms`,
-and per-call token counts for both `rerank` and `answer`.
+- **Structured logs across the pipeline** — `src/request_context.py` *(new)* holds the
+  `request_id` + a token/cost accumulator in `contextvar`s (per-thread/task isolation,
+  ready for the Phase 3 server). `graph.py`'s `_timed(name, fn)` wraps each node at
+  registration (nodes stay pure, so the direct-call tests are unaffected) to log
+  `node start` / `node end` + `latency_ms`. CLI `print()`s untouched.
+- **Gemini token/cost accounting** — `gemini_client._log_usage` folds each call's
+  tokens/cost into the request accumulator via `record_usage`; `run_query` logs a
+  `query complete` summary with total `latency_ms` and aggregated
+  tokens / cost / `gemini_calls`.
+- **Easy wins (beyond original scope)** — per-call Gemini `latency_ms` + retry
+  `attempts` on the `gemini call` line (plus a `before_sleep` WARNING per retry); total
+  query latency; and a fix for the previously-silent `reranker.py` fallback — both
+  degradation paths now log a `degraded` / `stage`-tagged WARNING carrying the
+  `request_id`.
+- **LangSmith tracing (opt-in, env only)** — `LANGSMITH_TRACING` / `LANGSMITH_API_KEY`
+  documented in `.env.example` + README (`langsmith` is already installed transitively
+  via `langgraph`, so no dependency change). `run_query` passes the `request_id` in the
+  `graph.invoke` config `metadata`, so traces cross-link to the logs.
+
+**Files:** `src/request_context.py` *(new)*, `src/logging_setup.py`, `src/gemini_client.py`,
+`src/graph.py`, `src/main.py`, `src/reranker.py`, `src/answerer.py`, `.env.example`, `README.md`.
+**Verify:** `LOG_JSON=true PYTHONPATH=. uv run python src/main.py "…" 2>logs.json` → a
+shared `request_id` on every line, per-node `latency_ms`, per-call token counts for
+both `rerank` and `answer`, and a `query complete` line with summed totals.
 
 ---
 

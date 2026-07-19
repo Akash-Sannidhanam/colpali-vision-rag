@@ -11,6 +11,7 @@ import json
 import logging
 import sys
 
+from src import request_context
 from src.config import LOG_JSON, LOG_LEVEL
 
 # LogRecord attributes that are part of the record itself, not caller-supplied
@@ -23,6 +24,19 @@ _RESERVED = {
 }
 
 _configured = False
+
+
+class _RequestIdFilter(logging.Filter):
+    """Stamp the current `request_id` onto every record so a query's lines correlate.
+
+    Attached to the single root handler, so gemini calls, node timings, and the
+    degradation warnings all carry the same id. `request_id` isn't in `_RESERVED`, so
+    `_Formatter` renders it automatically in both human and JSON modes.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.request_id = request_context.current_request_id()
+        return True
 
 
 class _Formatter(logging.Formatter):
@@ -62,6 +76,7 @@ def configure() -> None:
         return
     handler = logging.StreamHandler(sys.stderr)
     handler.setFormatter(_Formatter(LOG_JSON))
+    handler.addFilter(_RequestIdFilter())
     root = logging.getLogger()
     root.handlers.clear()
     root.addHandler(handler)
