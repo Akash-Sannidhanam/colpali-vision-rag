@@ -7,6 +7,7 @@ requires-python = ">=3.13"
 dependencies = [
     "accelerate>=1.14.0",
     "colpali-engine>=0.3.15,<0.4",
+    "fastapi>=0.139.2",
     "google-genai>=2.10.0",
     "langgraph>=1.2.6",
     "numpy>=2.5.0",
@@ -14,11 +15,13 @@ dependencies = [
     "pillow>=12.2.0",
     "pydantic>=2.0",
     "python-dotenv>=1.2.2",
+    "python-multipart>=0.0.32",
     "qdrant-client>=1.12",
     "tenacity>=9.1.4",
     "torch>=2.11.0",
     "torchvision>=0.26.0",
     "transformers>=5.3.0,<5.4.0",
+    "uvicorn[standard]>=0.51.0",
 ]
 
 [[tool.uv.index]]

@@ -52,6 +52,22 @@ GEMINI_MAX_RETRIES = int(os.getenv("GEMINI_MAX_RETRIES", "3"))  # attempts on tr
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 LOG_JSON = os.getenv("LOG_JSON", "false").strip().lower() in ("1", "true", "yes")
 
+# HTTP serving (see src/server.py). All default to sane local values, so the server
+# runs with no .env edit; override any of them in .env for a real deployment.
+SERVER_HOST = os.getenv("SERVER_HOST", "127.0.0.1")
+SERVER_PORT = int(os.getenv("SERVER_PORT", "8000"))
+# Comma-separated CORS origins allowed to call the API from a browser. Defaults to the
+# Vite dev server (the ui/ app); set "*" to allow any origin.
+CORS_ALLOW_ORIGINS = [
+    o.strip()
+    for o in os.getenv(
+        "CORS_ALLOW_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"
+    ).split(",")
+    if o.strip()
+]
+# Reject PDF uploads to POST /ingest larger than this (megabytes).
+MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "50"))
+
 
 def validate() -> None:
     """Fail fast on missing required configuration.

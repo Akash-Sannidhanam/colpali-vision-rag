@@ -7,7 +7,7 @@ from pathlib import Path
 
 from src import request_context
 from src.config import validate
-from src.graph import build_graph
+from src.graph import get_graph
 from src.logging_setup import get_logger
 from src.vector_store import close_client
 
@@ -29,31 +29,34 @@ def run_query(question: str) -> dict:
     shared by the CLI, a service, and the eval harness. The caller owns the
     Qdrant client lifecycle (the CLI closes it; a warm server keeps it open).
 
-    Binds a per-query `request_id` (stamped onto every log line) and emits a single
-    `"query complete"` summary line with total latency and aggregated token/cost. The
-    id is also passed to LangGraph's invoke config so opt-in LangSmith traces are
-    searchable by it.
+    Binds a per-query `request_id` (stamped onto every log line), emits a single
+    `"query complete"` summary line, and folds a `meta` block - `request_id`, total
+    `latency_ms`, aggregated token/cost totals, and the per-stage breakdown - into the
+    returned dict, so any caller (HTTP response, eval report) gets the observability
+    surface without re-reading the torn-down request scope. The id is also passed to
+    LangGraph's invoke config so opt-in LangSmith traces are searchable by it.
     """
     scope = request_context.begin_request()
+    request_id = request_context.current_request_id()
     start = time.perf_counter()
     try:
-        graph = build_graph()
-        return graph.invoke(
+        result = get_graph().invoke(
             {"question": question},
-            config={
-                "run_name": "rag_query",
-                "metadata": {"request_id": request_context.current_request_id()},
-            },
+            config={"run_name": "rag_query", "metadata": {"request_id": request_id}},
         )
     finally:
-        log.info(
-            "query complete",
-            extra={
-                "latency_ms": round((time.perf_counter() - start) * 1000, 1),
-                **request_context.usage_totals(),
-            },
-        )
+        latency_ms = round((time.perf_counter() - start) * 1000, 1)
+        usage = request_context.usage_totals()
+        stages = request_context.stage_breakdown()
+        log.info("query complete", extra={"latency_ms": latency_ms, **usage})
         request_context.end_request(scope)
+    result["meta"] = {
+        "request_id": request_id,
+        "latency_ms": latency_ms,
+        **usage,
+        "stages": stages,
+    }
+    return result
 
 
 def run(question: str) -> None:

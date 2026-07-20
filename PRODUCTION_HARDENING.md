@@ -21,7 +21,7 @@ Work happens on branch **`production-hardening-pass`**.
 | 0 | Shared foundation (config, Gemini client, logging, `run_query` seam) | ✅ **Done** (`e1401af`) |
 | 1 | Reliability (route calls through client, graceful answerer, atomic ingest) | ✅ **Done** |
 | 2 | Observability (request IDs, node timing, token/cost, tracing) | ✅ **Done** |
-| 3 | Warm serving + UI (FastAPI + Streamlit) | ⬜ Pending |
+| 3 | Warm serving (FastAPI) + Vision RAG UI (React/Vite) | ✅ **Done** |
 | 4 | Evaluation (retrieval + answer-quality suite) | ⬜ Pending |
 
 **Guiding principle:** one top lever per area, scoped tight. Reuse existing
@@ -142,26 +142,47 @@ both `rerank` and `answer`, and a `query complete` line with summed totals.
 
 ---
 
-## Phase 3 — Warm serving + UI ⬜ (the biggest lever)
+## Phase 3 — Warm serving (FastAPI) + Vision RAG UI ✅ DONE
 
-- **`src/server.py`** *(new)* — FastAPI app. **Lifespan warmup** loads ColQwen2 once
-  (a tiny dummy `embed_query` populates `embedder._model`/`_processor`) and opens the
-  Qdrant client, so the ~2B cold start is paid once at boot, not per query.
-  Endpoints: `POST /query {question}` → `run_query()` result + crop/annotated images
-  (static route under `page_images/` or base64); `GET /health` → model-loaded +
-  Qdrant `ping()`; optional `POST /ingest` (upload a PDF). Single worker (one
-  GPU-resident model) with async handlers for concurrency — document this.
-- **`ui/app.py`** *(new, the `ENHANCEMENTS.md` "highest-value next step")* — a thin
-  Streamlit page: question box → calls `/query` → renders the **answer, the annotated
-  page, and the cropped slice inline** in the browser. Replaces the macOS-only
-  `_open_file`.
-- **Deps** — add `fastapi`, `uvicorn[standard]`, `python-multipart`; `streamlit`
-  (+ `requests`/`httpx` for the UI→server call) in a `ui` dependency-group.
+**Shipped:** a warm single-worker FastAPI service plus a React + Vite UI (the user's own
+Claude Design "2a" three-column workspace — **Streamlit was dropped**). Verified end to
+end: `uvicorn` warms the ~2B model once at boot (`server warm` logged once), two `/query`
+calls show no reload; a live query answered "180" for the Q4-revenue chart with a
+per-stage token/cost breakdown; static crop/page images serve; CORS allows the Vite
+origin; and the browser UI rendered the answer, the CSS bounding-box overlay on the
+cited page, the crop slice, the reranked-candidate rail, and the trace disclosure. Full
+suite green (74 backend tests + UI typecheck/units).
 
-**Files:** `src/server.py`, `ui/app.py`, `pyproject.toml`, `README.md`.
-**Verify:** `uvicorn src.server:app`; first `/query` is warm (no model reload in
-logs); hit it twice → model loads once. Load the Streamlit UI, ask a
-`sales_report.pdf` question, see the annotated page + crop inline.
+- **`src/server.py`** *(new)* — FastAPI app. **Lifespan warmup** (`validate` →
+  `load_model` → `ping` → `get_graph`) pays the cold start once at boot; shutdown closes
+  the Qdrant client. Endpoints: `POST /query` (→ answer + enriched citation + used pages +
+  crop/annotated + `meta`, with `?inline=true` for base64 images), `GET /health`
+  (model-loaded + `ping`, 503 when down), `GET /corpus` (indexed docs for the rail),
+  `POST /ingest` (multipart PDF). One `asyncio.Lock` serializes the GPU model;
+  `asyncio.to_thread` keeps the loop free; StaticFiles mounts `page_images/`; CORS to the
+  Vite dev origin. Single worker (documented — never `--workers >1`).
+- **Per-stage observability** — `request_context` grew a per-stage accumulator, wired via
+  `graph._timed`'s `enter_stage`/`exit_stage`; `run_query` folds a `meta` block
+  (request_id / latency / usage / `stages[]`) into its return so the HTTP response and the
+  future eval harness get it for free. New `get_graph()` compiles the graph once;
+  `embedder.is_loaded()`, `vector_store.list_documents()`, and an `ingest.run_ingest()`
+  teardown-free seam back the endpoints (the server must **not** reuse `main()`/`run()`,
+  which close the shared client).
+- **`ui/`** *(new)* — React + Vite + TS. The `2a` workspace: corpus rail (`/corpus` +
+  `/health`), conversation with the answer bubble / citation chip / trace disclosure, and
+  a document viewer that draws the bounding box as a CSS overlay from `citation.box` over
+  the cited page image, with the crop and candidate rail. States: empty / loading /
+  results / **not-found** (new — the API produces `found:false`) / error, plus an ingest
+  modal. Design tokens ported from the mockup as CSS variables.
+- **Deps** — added `fastapi`, `uvicorn[standard]`, `python-multipart`. (No Streamlit.)
+
+**Files:** `src/server.py` *(new)*, `src/main.py`, `src/graph.py`, `src/embedder.py`,
+`src/vector_store.py`, `src/ingest.py`, `src/request_context.py`, `src/config.py`,
+`pyproject.toml`, `tests/test_server.py` *(new)* + extended context/graph tests, `ui/**`,
+`README.md`.
+**Deferred** (design outran the backend): multi-region citations, the MaxSim patch
+heatmap, normalized confidence %, live-streaming ingest (SSE), and the `4a` animated
+walkthrough — layered onto v1 later.
 
 ---
 
