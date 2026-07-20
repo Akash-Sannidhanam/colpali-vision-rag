@@ -6,7 +6,7 @@ lines. No graph compile, no langgraph invoke, no models or network.
 
 import logging
 
-from src import graph
+from src import graph, request_context
 
 
 def _capture(logger_name: str):
@@ -53,3 +53,15 @@ def test_timed_logs_end_even_when_node_raises():
     assert raised                                    # the exception still propagates
     assert [r.getMessage() for r in records] == ["node start", "node end"]
     assert records[1].node == "answer" and records[1].latency_ms >= 0
+
+
+def test_timed_records_a_stage_when_inside_a_request():
+    scope = request_context.begin_request()
+    try:
+        graph._timed("rerank", lambda state: {"ok": True})({"question": "q"})
+        stages = request_context.stage_breakdown()
+    finally:
+        request_context.end_request(scope)
+
+    assert [s["node"] for s in stages] == ["rerank"]
+    assert stages[0]["latency_ms"] >= 0

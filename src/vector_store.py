@@ -249,3 +249,29 @@ def search(query_multivector: list[list[float]], top_k: int = RETRIEVE_K) -> lis
         ),
     )
     return [{**p.payload, "score": round(p.score, 4)} for p in response.points]
+
+def list_documents() -> list[dict]:
+    """List the indexed PDFs and their page counts (powers GET /corpus).
+
+    Scrolls the live collection (one point per page) and aggregates the payloads into
+    {pdf, page_count}, sorted by name. Scrolls in pages - and pulls only the `pdf`
+    payload field, no vectors - so it holds up beyond the 43-page sample corpus.
+    """
+    client = get_client()
+    counts: dict[str, int] = {}
+    offset = None
+    while True:
+        points, offset = client.scroll(
+            collection_name=COLLECTION_NAME,
+            with_payload=["pdf"],
+            with_vectors=False,
+            limit=256,
+            offset=offset,
+        )
+        for p in points:
+            pdf = (p.payload or {}).get("pdf")
+            if pdf:
+                counts[pdf] = counts.get(pdf, 0) + 1
+        if offset is None:
+            break
+    return [{"pdf": pdf, "page_count": n} for pdf, n in sorted(counts.items())]

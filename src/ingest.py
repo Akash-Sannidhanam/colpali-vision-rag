@@ -45,22 +45,19 @@ def ingest_pdf(pdf_path: Path, start_id: int, collection_name: str) -> int:
     return start_id + len(pages)
 
 
-def main(pdf_args: list[str]) -> None:
-    """Resolve PDFs, then build the Qdrant index atomically.
+def run_ingest(pdfs: list[Path]) -> int:
+    """Build the Qdrant index from `pdfs` atomically and return the page count.
 
-    Server mode builds a fresh versioned collection and alias-swaps it live only on
-    success; an interrupted or failed build drops the partial and leaves the
-    previous index serving. Embedded mode wipes and rebuilds in place.
+    The client-teardown-free core seam (mirrors `main.run_query` vs `run`): a warm
+    server calls this and keeps the shared Qdrant client open, while the CLI `main()`
+    wrapper owns closing it. Server mode builds a fresh versioned collection and
+    alias-swaps it live only on success; an interrupted or failed build drops the
+    partial and leaves the previous index serving. Embedded mode wipes and rebuilds
+    in place.
     """
-    pdfs = [Path(p) for p in pdf_args] if pdf_args else sorted(PDFS_DIR.glob("*.pdf"))
-    if not pdfs:
-        print(f"No PDFS found. Put PDF in {PDFS_DIR} or pass a path.")
-        sys.exit(1)
-
     ping()  # fail fast with a clear message before the expensive render/embed loop
     target = begin_ingest()
     next_id = 0
-
     try:
         for pdf in pdfs:
             if pdf.exists():
@@ -69,6 +66,18 @@ def main(pdf_args: list[str]) -> None:
     except BaseException:  # incl. KeyboardInterrupt: drop the partial, keep old index
         abort_ingest(target)
         raise
+    return next_id
+
+
+def main(pdf_args: list[str]) -> None:
+    """Resolve PDFs and build the index (CLI wrapper; owns Qdrant client teardown)."""
+    pdfs = [Path(p) for p in pdf_args] if pdf_args else sorted(PDFS_DIR.glob("*.pdf"))
+    if not pdfs:
+        print(f"No PDFS found. Put PDF in {PDFS_DIR} or pass a path.")
+        sys.exit(1)
+
+    try:
+        next_id = run_ingest(pdfs)
     finally:
         close_client()
 

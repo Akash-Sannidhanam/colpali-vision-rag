@@ -49,3 +49,8 @@ def embed_query(text: str) -> list[list[float]]:
     with torch.no_grad():
         out = model(**inputs) # shape: (1, n_tokens, 128)
         return _to_multivector(out[0])
+
+def is_loaded() -> bool:
+    """True once the model + processor are cached. A public probe for the server's
+    /health and lifespan, so callers never touch the private globals directly."""
+    return _model is not None and _processor is not None

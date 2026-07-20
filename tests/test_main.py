@@ -1,6 +1,6 @@
 """Tests for run_query's observability wiring (src.main).
 
-Stubs build_graph so no torch/qdrant/network is touched: a fake graph whose invoke
+Stubs get_graph so no torch/qdrant/network is touched: a fake graph whose invoke
 runs inside the bound request, simulates the two Gemini calls via record_usage, and
 returns a canned state. Asserts the request_id is bound during invoke (and threaded
 into the invoke config for LangSmith) and that the 'query complete' summary carries
@@ -41,7 +41,7 @@ class _FakeGraph:
 
 def test_run_query_binds_request_id_and_logs_totals(monkeypatch):
     seen: dict = {}
-    monkeypatch.setattr(main, "build_graph", lambda: _FakeGraph(seen))
+    monkeypatch.setattr(main, "get_graph", lambda: _FakeGraph(seen))
 
     records, detach = _capture("query")
     try:

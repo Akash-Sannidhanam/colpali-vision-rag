@@ -4,6 +4,7 @@ import time
 from typing import TypedDict
 from langgraph.graph import END, START, StateGraph
 
+from src import request_context
 from src.answerer import answer as gemini_answer
 from src.embedder import embed_query
 from src.highlight import annotate_page, crop_region
@@ -66,18 +67,15 @@ def _timed(name: str, fn):
     """
 
     def wrapped(state: RAGState) -> dict:
+        request_context.enter_stage(name)
         log.info("node start", extra={"node": name})
         start = time.perf_counter()
         try:
             return fn(state)
         finally:
-            log.info(
-                "node end",
-                extra={
-                    "node": name,
-                    "latency_ms": round((time.perf_counter() - start) * 1000, 1),
-                },
-            )
+            latency_ms = round((time.perf_counter() - start) * 1000, 1)
+            request_context.exit_stage(name, latency_ms)
+            log.info("node end", extra={"node": name, "latency_ms": latency_ms})
 
     return wrapped
 
@@ -95,3 +93,16 @@ def build_graph():
     builder.add_edge("answer", "highlight")
     builder.add_edge("highlight", END)
     return builder.compile()
+
+
+_graph = None
+
+
+def get_graph():
+    """Compile the graph once and reuse it - a warm server pays compilation at boot,
+    not per query. `build_graph` stays public so tests can call the raw nodes directly.
+    """
+    global _graph
+    if _graph is None:
+        _graph = build_graph()
+    return _graph

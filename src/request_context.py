@@ -19,14 +19,22 @@ from dataclasses import dataclass
 _request_id: ContextVar[str] = ContextVar("request_id", default="-")
 # None outside a request; a fresh accumulator dict while one is active.
 _usage: ContextVar[dict | None] = ContextVar("usage", default=None)
+# Per-stage (graph node) accounting. `_stages` is the ordered list of stage buckets
+# for the active request; `_current_stage` is the bucket Gemini usage is folded into
+# right now - set by `enter_stage`, cleared by `exit_stage`. Both are None outside a
+# request, so stage tracking is a no-op for direct/CLI calls that never begin one.
+_stages: ContextVar[list | None] = ContextVar("stages", default=None)
+_current_stage: ContextVar[dict | None] = ContextVar("current_stage", default=None)
 
 
 @dataclass
 class _Scope:
-    """Opaque handle from `begin_request`; carries the reset tokens for both vars."""
+    """Opaque handle from `begin_request`; carries the reset tokens for every var."""
 
     request_token: Token
     usage_token: Token
+    stages_token: Token
+    current_stage_token: Token
 
 
 def _fresh_usage() -> dict:
@@ -37,6 +45,12 @@ def _fresh_usage() -> dict:
         "est_cost_usd": 0.0,
         "gemini_calls": 0,
     }
+
+
+def _fresh_stage(name: str) -> dict:
+    """A per-stage bucket: the node's name + latency, plus the same usage keys as the
+    request accumulator so totals and stages share one shape."""
+    return {"node": name, "latency_ms": 0.0, **_fresh_usage()}
 
 
 def current_request_id() -> str:
@@ -51,32 +65,67 @@ def begin_request() -> _Scope:
     """
     request_token = _request_id.set(uuid.uuid4().hex)
     usage_token = _usage.set(_fresh_usage())
-    return _Scope(request_token, usage_token)
+    stages_token = _stages.set([])
+    current_stage_token = _current_stage.set(None)
+    return _Scope(request_token, usage_token, stages_token, current_stage_token)
 
 
 def end_request(scope: _Scope) -> None:
-    """Reset both contextvars to what they were before `begin_request`."""
+    """Reset every contextvar to what it was before `begin_request`."""
     _request_id.reset(scope.request_token)
     _usage.reset(scope.usage_token)
+    _stages.reset(scope.stages_token)
+    _current_stage.reset(scope.current_stage_token)
 
 
 def record_usage(*, prompt: int, output: int, total: int, cost: float) -> None:
-    """Fold one Gemini call's tokens/cost into the active request's accumulator.
+    """Fold one Gemini call's tokens/cost into the request accumulator and, when a
+    graph stage is executing, that stage's bucket too.
 
     A no-op when no request is active (a stray call outside `run_query`), so it never
-    raises.
+    raises. Both accumulators share the `_fresh_usage` key shape, so one loop folds
+    into whichever are live.
     """
-    acc = _usage.get()
-    if acc is None:
-        return
-    acc["prompt_tokens"] += prompt
-    acc["output_tokens"] += output
-    acc["total_tokens"] += total
-    acc["est_cost_usd"] = round(acc["est_cost_usd"] + cost, 6)
-    acc["gemini_calls"] += 1
+    for acc in (_usage.get(), _current_stage.get()):
+        if acc is None:
+            continue
+        acc["prompt_tokens"] += prompt
+        acc["output_tokens"] += output
+        acc["total_tokens"] += total
+        acc["est_cost_usd"] = round(acc["est_cost_usd"] + cost, 6)
+        acc["gemini_calls"] += 1
 
 
 def usage_totals() -> dict:
     """A copy of the active request's accumulated totals (empty dict if none)."""
     acc = _usage.get()
     return dict(acc) if acc is not None else {}
+
+
+def enter_stage(name: str) -> None:
+    """Open a stage bucket for graph node `name` and make it the usage target.
+
+    Called by `graph._timed` on node entry; `record_usage` then attributes each Gemini
+    call to this stage until `exit_stage`. A no-op outside a request (`_stages` is None),
+    so directly-called nodes in tests never accumulate stages.
+    """
+    stages = _stages.get()
+    if stages is None:
+        return
+    bucket = _fresh_stage(name)
+    stages.append(bucket)
+    _current_stage.set(bucket)
+
+
+def exit_stage(name: str, latency_ms: float) -> None:
+    """Close the current stage, stamping its wall-clock latency. No-op outside a request."""
+    stage = _current_stage.get()
+    if stage is not None and stage["node"] == name:
+        stage["latency_ms"] = latency_ms
+    _current_stage.set(None)
+
+
+def stage_breakdown() -> list[dict]:
+    """A copy of the active request's ordered per-stage buckets (empty list if none)."""
+    stages = _stages.get()
+    return [dict(s) for s in stages] if stages is not None else []
