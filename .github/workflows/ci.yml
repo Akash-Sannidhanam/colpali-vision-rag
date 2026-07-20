@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
 
+# Least-privilege GITHUB_TOKEN: the jobs only read the repo (checkout + install + checks).
+permissions:
+  contents: read
+
 # Cancel superseded runs on the same ref (e.g. a force-push to a PR branch).
 concurrency:
   group: ci-${{ github.ref }}

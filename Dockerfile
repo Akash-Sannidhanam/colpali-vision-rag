@@ -48,10 +48,13 @@ ENV PATH="/app/.venv/bin:$PATH" \
     HF_HOME=/home/appuser/.cache/huggingface
 
 WORKDIR /app
-COPY --from=builder /app/.venv /app/.venv
-COPY src/ ./src/
+# --chown sets ownership as the layers are written; a later `chown -R /app` would
+# instead re-copy the multi-GB venv into a new layer, doubling the image size.
+COPY --chown=appuser:appuser --from=builder /app/.venv /app/.venv
+COPY --chown=appuser:appuser src/ ./src/
 # StaticFiles mounts page_images/ at startup, so the dir must exist even before ingest.
-RUN mkdir -p /app/page_images/crops /app/pdfs && chown -R appuser:appuser /app
+RUN mkdir -p /app/page_images/crops /app/pdfs \
+    && chown appuser:appuser /app /app/page_images /app/page_images/crops /app/pdfs
 
 USER appuser
 EXPOSE 8000
