@@ -9,6 +9,8 @@ not support aliases. `search()`/`upsert_pages()` reference the alias, which Qdra
 resolves to the live physical collection transparently.
 """
 
+from pathlib import Path
+
 from qdrant_client import QdrantClient
 from qdrant_client import models as qm
 
@@ -235,7 +237,14 @@ def upsert_pages(points: list[qm.PointStruct], collection_name: str = COLLECTION
     client.upsert(collection_name=collection_name, points=points)
 
 def search(query_multivector: list[list[float]], top_k: int = RETRIEVE_K) -> list[dict]:
-    """Return the top_k pages for a query multivector, best score first."""
+    """Return the top_k pages for a query multivector, best score first.
+
+    Drops points whose payload is missing a required field (`pdf`, `page_number`,
+    `image_path`) or whose page image is no longer on disk - which happens when the
+    persisted index outlives a wiped `page_images/`. Each drop is logged at WARNING so
+    a stale index stays visible rather than silently answering off a shrunken set;
+    downstream (rerank/answer/highlight) can then assume every hit resolves to a page.
+    """
     client = get_client()
     response = client.query_points(
         collection_name = COLLECTION_NAME,
@@ -248,7 +257,19 @@ def search(query_multivector: list[list[float]], top_k: int = RETRIEVE_K) -> lis
             quantization = qm.QuantizationSearchParams(rescore=True, oversampling=2.0),
         ),
     )
-    return [{**(p.payload or {}), "score": round(p.score, 4)} for p in response.points]
+
+    hits = []
+    for p in response.points:
+        payload = p.payload or {}
+        if not all(field in payload for field in ("pdf", "page_number", "image_path")):
+            log.warning("dropped hit with incomplete payload", extra={"point_id": p.id})
+            continue
+        if not Path(payload["image_path"]).exists():
+            log.warning("dropped hit with missing image file",
+                        extra={"point_id": p.id, "image_path": payload["image_path"]})
+            continue
+        hits.append({**payload, "score": round(p.score, 4)})
+    return hits
 
 def list_documents() -> list[dict]:
     """List the indexed PDFs and their page counts (powers GET /corpus).

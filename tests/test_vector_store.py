@@ -215,3 +215,48 @@ def test_ping_ok_when_reachable(monkeypatch):
     fake = FakeClient(collections=["pdf_pages"])
     monkeypatch.setattr(vector_store, "get_client", lambda: fake)
     assert vector_store.ping() is None
+
+
+# --- search hit filtering ---
+
+def _search_client(points):
+    """A stand-in client whose query_points returns the given fake points."""
+    return SimpleNamespace(query_points=lambda **kw: SimpleNamespace(points=points))
+
+
+def test_search_keeps_valid_hits_and_drops_invalid(monkeypatch, tmp_path):
+    img = tmp_path / "page1.png"
+    img.write_bytes(b"x")  # a page image that exists on disk
+    points = [
+        SimpleNamespace(id=1, score=0.9912,
+                        payload={"pdf": "a.pdf", "page_number": 1, "image_path": str(img)}),
+        SimpleNamespace(id=2, score=0.98,  # image file no longer on disk (stale index)
+                        payload={"pdf": "a.pdf", "page_number": 2,
+                                 "image_path": str(tmp_path / "gone.png")}),
+        SimpleNamespace(id=3, score=0.97,  # missing image_path field
+                        payload={"pdf": "a.pdf", "page_number": 3}),
+        SimpleNamespace(id=4, score=0.96, payload=None),  # no payload at all
+    ]
+    monkeypatch.setattr(vector_store, "get_client", lambda: _search_client(points))
+
+    hits = vector_store.search([[0.0] * 128])
+
+    assert len(hits) == 1  # only the fully-valid, on-disk hit survives
+    assert hits[0] == {"pdf": "a.pdf", "page_number": 1,
+                       "image_path": str(img), "score": 0.9912}
+
+
+def test_search_returns_all_when_every_hit_is_valid(monkeypatch, tmp_path):
+    imgs = [tmp_path / f"p{n}.png" for n in (1, 2)]
+    for p in imgs:
+        p.write_bytes(b"x")
+    points = [
+        SimpleNamespace(id=n, score=1.0 - n / 100,
+                        payload={"pdf": "a.pdf", "page_number": n, "image_path": str(imgs[n - 1])})
+        for n in (1, 2)
+    ]
+    monkeypatch.setattr(vector_store, "get_client", lambda: _search_client(points))
+
+    hits = vector_store.search([[0.0] * 128])
+
+    assert [h["page_number"] for h in hits] == [1, 2]
