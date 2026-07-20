@@ -7,6 +7,7 @@ drawn on it.
 """
 
 from pathlib import Path
+
 from PIL import Image, ImageDraw
 
 from src.config import CROPS_DIR
@@ -48,8 +49,8 @@ def crop_region(image_path: Path, box: list[int]) -> Path:
     """Crop the answer region out of a page PNG and save it. Returns the path."""
     CROPS_DIR.mkdir(parents=True, exist_ok=True)
     image_path = Path(image_path)
-    with Image.open(image_path) as page:
-        page = page.convert("RGB")
+    with Image.open(image_path) as page_file:
+        page = page_file.convert("RGB")
         pixel_box = _to_pixel_box(box, page.width, page.height)
         crop = page.crop(pixel_box)
         out_path = CROPS_DIR / f"{image_path.stem}_crop.png"
@@ -61,8 +62,8 @@ def annotate_page(image_path: Path, box: list[int]) -> Path:
     """Save a copy of the page with the answer region outlined. Returns the path."""
     CROPS_DIR.mkdir(parents=True, exist_ok=True)
     image_path = Path(image_path)
-    with Image.open(image_path) as page:
-        page = page.convert("RGB")
+    with Image.open(image_path) as page_file:
+        page = page_file.convert("RGB")
         pixel_box = _to_pixel_box(box, page.width, page.height)
         draw = ImageDraw.Draw(page)
         draw.rectangle(pixel_box, outline="red", width=max(3, page.width // 200))

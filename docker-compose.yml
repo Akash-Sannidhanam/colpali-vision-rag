@@ -1,12 +1,12 @@
-# Qdrant vector database for the vision RAG index.
+# Qdrant + the Vision RAG API for the vision RAG index.
 #
-# Only Qdrant is containerized. The Python app runs on the host (`uv run ...`)
-# so ColQwen2 keeps its Apple MPS / CUDA GPU access.
+#   docker compose up -d qdrant   # Qdrant only; run the app on the host (keeps MPS/CUDA)
+#   GEMINI_API_KEY=... docker compose up   # full stack: Qdrant + the containerized API
+#   docker compose down           # stop; data persists in the qdrant_storage volume
 #
-#   docker compose up -d          # start Qdrant (dashboard: http://localhost:6333/dashboard)
-#   docker compose down           # stop it (data persists in the qdrant_storage volume)
-#
-# Point the app at it by setting QDRANT_URL=http://localhost:6333 in .env.
+# Running just Qdrant and the app on the host is the dev default (ColQwen2 keeps its
+# Apple MPS / NVIDIA GPU). The `app` service is for a container deployment; on a GPU
+# host, uncomment its `deploy.resources` block and install the NVIDIA container toolkit.
 services:
   qdrant:
     image: qdrant/qdrant:v1.18.3   # pinned; wire-compatible with qdrant-client 1.18.x
@@ -22,5 +22,31 @@ services:
       - qdrant_storage:/qdrant/storage
     restart: unless-stopped
 
+  app:
+    build: .
+    depends_on:
+      - qdrant
+    ports:
+      - "8000:8000"
+    environment:
+      # Reach Qdrant over the compose network (service name), not localhost.
+      - QDRANT_URL=http://qdrant:6333
+      # Passed through from your shell / .env - never hard-code the key here.
+      - GEMINI_API_KEY=${GEMINI_API_KEY:?set GEMINI_API_KEY in your env or .env}
+      # Let a browser UI on the host call the containerized API.
+      - CORS_ALLOW_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
+    volumes:
+      - hf_cache:/home/appuser/.cache/huggingface   # persist the ~2B model download
+    restart: unless-stopped
+    # GPU passthrough: uncomment on a host with the NVIDIA container toolkit installed.
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
 volumes:
   qdrant_storage:
+  hf_cache:

@@ -248,7 +248,7 @@ def search(query_multivector: list[list[float]], top_k: int = RETRIEVE_K) -> lis
             quantization = qm.QuantizationSearchParams(rescore=True, oversampling=2.0),
         ),
     )
-    return [{**p.payload, "score": round(p.score, 4)} for p in response.points]
+    return [{**(p.payload or {}), "score": round(p.score, 4)} for p in response.points]
 
 def list_documents() -> list[dict]:
     """List the indexed PDFs and their page counts (powers GET /corpus).
