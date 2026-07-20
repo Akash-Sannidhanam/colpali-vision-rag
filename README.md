@@ -178,6 +178,10 @@ src/
   server.py        # warm FastAPI service: /query /health /corpus /ingest + static images
 scripts/
   make_sample_pdf.py   # generates the text-layer-free sample PDF
+eval/
+  dataset.jsonl        # labeled questions: gold {pdf, page} + expected substrings
+  scoring.py           # pure scoring logic (recall@k, citation, substring, aggregate)
+  run_eval.py          # eval CLI: retrieval-only / full / judge, JSON report + table
 ui/                   # React + Vite UI: three-column workspace with visual citations
 docker-compose.yml    # Qdrant vector database service
 pdfs/                  # source PDFs to index
@@ -198,6 +202,8 @@ Knobs live in `src/config.py`:
 | `RERANK_K` | `2` | pages kept after the Gemini rerank, then sent to the answer step |
 | `RERANK_THUMBNAIL_EDGE` | `768` | long-edge px for rerank thumbnails; set `None` to rerank on full-res pages |
 | `GEMINI_MODEL` | `gemini-3.5-flash` | any vision-capable Gemini model (used for both rerank and answer) |
+| `RERANK_MODEL` | _(= `GEMINI_MODEL`)_ | override to point the coarser rerank triage at a cheaper/faster model |
+| `EVAL_JUDGE_MODEL` | _(= `GEMINI_MODEL`)_ | model the eval `--judge` flag grades answers with |
 
 ## Observability
 
@@ -235,6 +241,36 @@ FastAPI serving layer (via `TestClient` with the pipeline seam stubbed):
 uv run pytest                     # backend
 cd ui && npm run typecheck && npm run test   # UI: types + pure-logic units
 ```
+
+## Evaluation
+
+A small labeled set (`eval/dataset.jsonl`, ~22 questions over the sample corpus with
+gold `{pdf, page}` labels and expected-answer substrings) plus a scoring harness make
+regressions visible: re-run after changing `RENDER_DPI`, `RERANK_K`, or a model and
+diff the JSON reports to *prove* nothing regressed. Each report carries a `config`
+snapshot so the two runs are comparable at a glance.
+
+```bash
+# Retrieval only — recall@k against the index, no Gemini calls (runs without a key)
+GEMINI_API_KEY= PYTHONPATH=. uv run python eval/run_eval.py --retrieval-only
+
+# Full pipeline — recall@k + rerank recall + citation correctness + substring match
+PYTHONPATH=. uv run python eval/run_eval.py
+
+# …plus LLM-as-judge scoring of each answer against the reference (EVAL_JUDGE_MODEL)
+PYTHONPATH=. uv run python eval/run_eval.py --judge
+
+# CI gate: exit 1 if retrieval recall@RETRIEVE_K drops below a threshold
+PYTHONPATH=. uv run python eval/run_eval.py --retrieval-only --fail-under-recall 0.9
+```
+
+Reports land in `eval/reports/` (gitignored). Metrics: **recall@k** (is the gold page
+in Qdrant's top-`RETRIEVE_K`, and within the reranked top-`RERANK_K`?), **citation
+correctness** (did the answer's `source_page` resolve to the gold page?), **answer
+quality** (substring match, plus the optional judge), each also sliced by tag
+(`chart` / `table` / `figure` / `formula` / `text`). The scoring logic
+(`eval/scoring.py`) is pure and unit-tested; the full run reuses `main.run_query`, so
+it also reports per-question latency/token/cost for free.
 
 ## Notes
 

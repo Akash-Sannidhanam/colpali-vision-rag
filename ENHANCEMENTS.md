@@ -40,11 +40,12 @@ the reader) is complete, tested, and shipped. Captured here so they are not lost
 - **Multiple regions.** The pipeline cites a single primary region (a deliberate
   choice). If an answer ever spans two pages or two areas, extend the `Citation`
   schema in `src/answerer.py` to a list of boxes and crop each.
-- **Integration test with a mocked Gemini.** _(✅ partly done in Hardening Phase 1
-  verify; broader suite still Phase 4.)_ `tests/test_answerer.py` now stubs
-  `gemini_client.generate` to cover the success / malformed / exception paths and
-  the `answer_node → highlight_node` wiring without an API key. A fuller
-  rerank→answer→highlight integration suite remains for Phase 4.
+- **Integration test with a mocked Gemini.** _(✅ done in Hardening Phase 4.)_
+  `tests/test_answerer.py` covers the answer/highlight wiring, and
+  `tests/test_pipeline_integration.py` now exercises the whole compiled graph
+  (retrieve→rerank→answer→highlight) with every boundary stubbed: rerank-order
+  alignment into the highlight, Qdrant-top-k fallback, garbage-index cleanup, answer
+  degradation, malformed JSON, and empty retrieval — no API key or PNGs.
 
 ## Retrieval / rerank
 
@@ -57,6 +58,8 @@ the reader) is complete, tested, and shipped. Captured here so they are not lost
   to exactly `k`. Letting the reranker keep a variable number of pages (1 when a
   single page clearly answers, more when the answer spans pages) would trade a
   little predictability for precision.
-- **Surface the dropped candidates.** `rerank_node` overwrites `retrieved`, so
-  `main.py` prints only the kept pages. Adding a `candidates` key to `RAGState`
-  would let the CLI show "retrieved 10, used 2" for transparency.
+- **Surface the dropped candidates.** _(◐ half-done in Hardening Phase 4.)_
+  `retrieve_node` now writes the untrimmed top-k to a `candidates` `RAGState` key
+  (added so the eval harness can score recall@k), so the data is already threaded
+  through `run_query`'s result and the `/query` response. What's left is purely
+  presentational: have the CLI / UI show "retrieved 10, used 2" from it.

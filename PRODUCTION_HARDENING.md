@@ -22,7 +22,7 @@ Work happens on branch **`production-hardening-pass`**.
 | 1 | Reliability (route calls through client, graceful answerer, atomic ingest) | ✅ **Done** |
 | 2 | Observability (request IDs, node timing, token/cost, tracing) | ✅ **Done** |
 | 3 | Warm serving (FastAPI) + Vision RAG UI (React/Vite) | ✅ **Done** |
-| 4 | Evaluation (retrieval + answer-quality suite) | ⬜ Pending |
+| 4 | Evaluation (retrieval + answer-quality suite) | ✅ **Done** |
 
 **Guiding principle:** one top lever per area, scoped tight. Reuse existing
 patterns — the `reranker.py` `try/except → Qdrant top-k` fallback, `_valid_order`,
@@ -186,25 +186,50 @@ walkthrough — layered onto v1 later.
 
 ---
 
-## Phase 4 — Evaluation ⬜ (the regression guard)
+## Phase 4 — Evaluation ✅ DONE (the regression guard)
 
-- **`eval/dataset.jsonl`** *(new)* — a small labeled set over the already-shipped
-  43-page corpus (`attention.pdf`, `colpali.pdf`, `sales_report.pdf`): each row a
-  question + gold `{pdf, page}` and an optional expected-answer substring.
-  Formalizes the "validated on 43 pages" result.
-- **`eval/run_eval.py`** *(new)* — runs each question and scores:
-  - **Retrieval recall@k** — is the gold page in the Qdrant top-`RETRIEVE_K`? in the
-    reranked top-`RERANK_K`? (retrieval-only metrics need no Gemini call, so they run
-    cheaply/offline against the embedded `qdrant_data/` store).
-  - **Citation correctness** — did `answerer`'s `source_page` map to the gold page?
-  - **Answer quality** — substring match, plus optional **LLM-as-judge** (Gemini
-    scores the answer against the reference).
-  - Emits a scored JSON report + a printed table. Re-run after changing DPI,
-    `RERANK_K`, or the model to *prove* no regression.
+**Shipped:** a labeled dataset + scoring harness that turns "validated on 43 pages"
+into a repeatable measurement. A live full+judge run over the 22-question set scored
+recall@10 = 1.0, rerank recall = 1.0, citation accuracy = 1.0, substring = 1.0, and
+judge = 1.0 (avg 5/5), with recall@1 = 0.77 leaving the reranker real work to do.
+Building it also surfaced three under-labeled gold rows (a fact restated on a page the
+dataset hadn't listed) — caught by the new per-row `cited` field and fixed by widening
+the gold lists, which is exactly the kind of drift the harness exists to catch. Full
+suite green (81 backend + the two new eval test files).
 
-**Files:** `eval/dataset.jsonl`, `eval/run_eval.py`.
-**Verify:** `uv run python eval/run_eval.py` prints recall@k + citation + answer
-scores; retrieval-only mode runs with no `GEMINI_API_KEY`.
+- **`eval/dataset.jsonl`** *(new)* — 22 questions over the shipped corpus
+  (`attention.pdf`, `colpali.pdf`, `sales_report.pdf`): each row an `id` + question +
+  a **list** of gold `{pdf, page}` (a fact can legitimately live on more than one
+  page), optional `answer_contains` substrings, and `tags`
+  (`chart`/`table`/`figure`/`formula`/`text`) for per-modality slices.
+- **`eval/scoring.py`** *(new)* — pure, unit-tested scoring: `load_dataset`
+  (jsonl validation naming the bad line), `gold_rank`, `citation_correct` (resolves
+  `source_page` against the **reranked** list), `substring_match` (case-insensitive
+  any-of, `None` = N/A), `aggregate` (rates over applicable rows only + per-tag), and
+  `format_table`. No `src.` imports, no I/O.
+- **`eval/run_eval.py`** *(new)* — the CLI. `--retrieval-only` embeds + searches per
+  question (no Gemini, runs with no `GEMINI_API_KEY`); full mode reuses the
+  `main.run_query` seam, scoring recall@k over the new pre-rerank `candidates`, rerank
+  recall, citation correctness, and substring match, with per-row latency/token/cost
+  for free from `meta`. `--judge` adds flag-gated LLM-as-judge scoring routed through
+  `gemini_client.generate` (new `EVAL_JUDGE_MODEL` knob, `RERANK_MODEL` pattern; a
+  judge outage degrades to N/A, never fails the run). A corpus preflight fails fast
+  (exit 2) if a gold pdf/page isn't indexed; `--fail-under-recall` is a CI gate
+  (exit 1). Writes a JSON report with a `config` snapshot so before/after runs diff
+  cleanly.
+- **Pipeline seam** — `retrieve_node` now also writes the untrimmed top-k to a new
+  `candidates` `RAGState` key (rerank overwrites `retrieved`), so recall@k reflects the
+  retrieval the pipeline actually used. A new `tests/test_pipeline_integration.py`
+  locks the full compiled-graph flow (rerank-order alignment, fallback, degradation).
+
+**Files:** `eval/dataset.jsonl` *(new)*, `eval/scoring.py` *(new)*, `eval/run_eval.py`
+*(new)*, `eval/__init__.py` *(new)*, `src/graph.py`, `src/config.py`,
+`tests/test_pipeline_integration.py` *(new)*, `tests/test_eval_scoring.py` *(new)*,
+`tests/test_run_eval.py` *(new)*, `README.md`, `.gitignore`.
+**Verify:** `GEMINI_API_KEY= PYTHONPATH=. uv run python eval/run_eval.py
+--retrieval-only` → recall@k table + report, no key needed; `--judge` → all four
+metric families + `purpose=judge` token-logged calls; a mislabeled gold → exit 2;
+`--fail-under-recall` breach → exit 1.
 
 ---
 
