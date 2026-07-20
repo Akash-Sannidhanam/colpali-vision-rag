@@ -12,6 +12,12 @@ wheels/
 # Secrets / environment
 .env
 
+# Local agent instructions — kept out of the public repo
+CLAUDE.md
+
 # Generated artifacts (regenerate via ingest / answer time)
 qdrant_data/
 page_images/
+
+# Eval reports (regenerate via eval/run_eval.py; the dataset is tracked)
+eval/reports/
