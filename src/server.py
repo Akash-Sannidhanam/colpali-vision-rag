@@ -176,23 +176,23 @@ def _to_url(request: Request, fs_path: str) -> str:
     return urljoin(str(request.base_url), f"images/{rel.as_posix()}")
 
 
-def _encode_data_uri(fs_path: str) -> str:
+async def _encode_data_uri(fs_path: str) -> str:
     """Read a PNG off disk and encode it as a base64 data-URI."""
-    data = Path(fs_path).read_bytes()
+    data = await asyncio.to_thread(Path(fs_path).read_bytes)
     return "data:image/png;base64," + base64.b64encode(data).decode("ascii")
 
 
-def _image_ref(request: Request, fs_path: str | None, inline: bool) -> ImageRef | None:
+async def _image_ref(request: Request, fs_path: str | None, inline: bool) -> ImageRef | None:
     """An ImageRef for a stored image, or None when the path is missing/empty."""
     if not fs_path:
         return None
     return ImageRef(
         url=_to_url(request, fs_path),
-        data_uri=_encode_data_uri(fs_path) if inline else None,
+        data_uri=await _encode_data_uri(fs_path) if inline else None,
     )
 
 
-def _build_query_response(request: Request, result: dict, inline: bool) -> QueryResponse:
+async def _build_query_response(request: Request, result: dict, inline: bool) -> QueryResponse:
     """Shape a raw `run_query` result dict into the HTTP contract.
 
     Translates filesystem image paths to URLs/data-URIs and enriches the citation with
@@ -200,13 +200,17 @@ def _build_query_response(request: Request, result: dict, inline: bool) -> Query
     the UI never re-implements the indexing that bit the CLI).
     """
     retrieved = result.get("retrieved", [])
+    page_images = await asyncio.gather(*[
+        _image_ref(request, hit.get("image_path"), inline)
+        for hit in retrieved
+    ])
     pages = [
         PageHit(
             index=i,
             pdf=hit["pdf"],
             page_number=hit["page_number"],
             score=hit["score"],
-            image=_image_ref(request, hit.get("image_path"), inline),
+            image=page_images[i - 1],
         )
         for i, hit in enumerate(retrieved, start=1)
     ]
@@ -222,13 +226,18 @@ def _build_query_response(request: Request, result: dict, inline: bool) -> Query
         page_number=cited["page_number"] if cited else None,
     )
 
+    crop, annotated = await asyncio.gather(
+        _image_ref(request, result.get("crop_path"), inline),
+        _image_ref(request, result.get("annotated_path"), inline),
+    )
+
     return QueryResponse(
         question=result.get("question", ""),
         answer=result.get("answer", ""),
         citation=citation_out,
         pages=pages,
-        crop=_image_ref(request, result.get("crop_path"), inline),
-        annotated=_image_ref(request, result.get("annotated_path"), inline),
+        crop=crop,
+        annotated=annotated,
         meta=QueryMeta(**{**result.get("meta", {}), "retrieve_k": RETRIEVE_K}),
     )
 
@@ -272,7 +281,7 @@ async def query(req: QueryRequest, request: Request, inline: bool = Query(defaul
     """Answer one question. Serializes on the model lock; base64 reads happen outside it."""
     async with _gpu_lock:
         result = await asyncio.to_thread(run_query, req.question)
-    return _build_query_response(request, result, inline)
+    return await _build_query_response(request, result, inline)
 
 
 @app.post("/ingest", response_model=IngestResponse)
@@ -293,9 +302,10 @@ async def ingest(file: UploadFile = File(...)):
 
     PDFS_DIR.mkdir(parents=True, exist_ok=True)
     dest = PDFS_DIR / name
-    dest.write_bytes(data)
+    await asyncio.to_thread(dest.write_bytes, data)
+    all_pdfs = sorted(PDFS_DIR.glob("*.pdf"))
     async with _gpu_lock:
-        indexed = await asyncio.to_thread(run_ingest, [dest])
+        indexed = await asyncio.to_thread(run_ingest, all_pdfs)
     return IngestResponse(pdf=name, indexed_pages=indexed)
 
 
