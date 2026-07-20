@@ -43,6 +43,9 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 # Rerank is a coarser triage than answering, so it can point at a cheaper/faster
 # model. Defaults to GEMINI_MODEL; override with RERANK_MODEL in .env.
 RERANK_MODEL = os.getenv("RERANK_MODEL") or GEMINI_MODEL
+# LLM-as-judge for the eval harness (eval/run_eval.py --judge). Kept separate from
+# GEMINI_MODEL so the judge can differ from the system under test.
+EVAL_JUDGE_MODEL = os.getenv("EVAL_JUDGE_MODEL") or GEMINI_MODEL
 
 # Reliability knobs for outbound Gemini calls (see src/gemini_client.py).
 GEMINI_TIMEOUT_S = float(os.getenv("GEMINI_TIMEOUT_S", "60"))   # per-request timeout
