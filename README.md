@@ -152,6 +152,38 @@ Point it at a non-default API with `VITE_API_BASE` (e.g.
 origin via CORS. `npm run typecheck` and `npm run test` cover the UI's pure logic (the
 `citation.box → overlay` math and 1-based page resolution).
 
+### Deployment (Docker)
+
+The `Dockerfile` packages the **backend API** (the UI is served separately). It's a
+multi-stage `uv` build on a slim base; on Linux it pulls the CUDA 12.8 torch wheels, so
+the image is GPU-capable with `--gpus all` and **auto-falls back to CPU** when no GPU is
+present. Poppler is included; it runs as a non-root user and serves on `0.0.0.0:8000`.
+
+```bash
+docker build -t vision-rag .
+docker run --rm -p 8000:8000 \
+  -e GEMINI_API_KEY=$GEMINI_API_KEY \
+  -e QDRANT_URL=http://host.docker.internal:6333 \
+  -v vision-rag-hf:/home/appuser/.cache/huggingface \   # persist the model download
+  vision-rag                                            # add --gpus all on a GPU host
+```
+
+First boot downloads the ~2B ColQwen2 model into the mounted HF cache (subsequent boots
+are warm); `/health` returns `503` until the model is loaded and Qdrant is reachable.
+Qdrant must be reachable at `QDRANT_URL` — the model isn't baked in, and Qdrant runs
+separately (see the compose file).
+
+Or bring up the whole stack with Compose — the `app` service is wired to the `qdrant`
+service and passes `GEMINI_API_KEY` through from your environment:
+
+```bash
+GEMINI_API_KEY=... docker compose up          # Qdrant + the containerized API
+docker compose up -d qdrant                    # Qdrant only (run the app on the host)
+```
+
+On a GPU host, uncomment the `deploy.resources` block in the `app` service (needs the
+NVIDIA container toolkit).
+
 ## How it works
 
 1. **Retrieve** (`src/embedder.py`, `src/vector_store.py`): the query is embedded into ColQwen2's token-level multivectors and matched against per-page multivectors in a Qdrant server collection ranked by **MaxSim**. The vectors are **binary-quantized** (128-d → 128 bits, 32× smaller) and kept in RAM for a fast first pass; the top hits are then **rescored** against the full-precision vectors on disk to protect recall. The top `RETRIEVE_K` (default 10) candidate pages are returned.
@@ -241,6 +273,18 @@ FastAPI serving layer (via `TestClient` with the pipeline seam stubbed):
 uv run pytest                     # backend
 cd ui && npm run typecheck && npm run test   # UI: types + pure-logic units
 ```
+
+**Lint & types** are enforced by `ruff` and `mypy` (in the `lint` dependency group):
+
+```bash
+uv sync --group lint              # install the tooling
+uv run ruff check .               # lint (default rules + import sorting)
+uv run mypy src eval              # type-check
+```
+
+**CI** (`.github/workflows/ci.yml`) runs on every push to `main` and every PR: a fast
+`lint` job (ruff, no ML install) and a `test` job that installs the full stack and runs
+`mypy` + the backend suite.
 
 ## Evaluation
 

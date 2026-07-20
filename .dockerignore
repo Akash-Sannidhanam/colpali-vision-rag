@@ -1,0 +1,26 @@
+# Keep the build context small: only pyproject/uv.lock and src/ are needed (see Dockerfile).
+.git
+.github
+.venv
+__pycache__
+*.py[oc]
+
+# Generated / runtime data - rebuilt inside the container or mounted
+qdrant_data/
+page_images/
+eval/reports/
+
+# The UI is built and served separately, not baked into the backend image
+ui/
+
+# Local-only and secrets
+.env
+CLAUDE.md
+.claude/
+
+# Not needed at runtime
+tests/
+docs/
+*.md
+scripts/
+pdfs/
