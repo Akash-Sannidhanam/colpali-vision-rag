@@ -13,6 +13,7 @@ Because the endpoint handlers resolve module globals (`ping`, `run_query`,
 raise for the degraded-health case without breaking startup).
 """
 
+import asyncio
 import base64
 from types import SimpleNamespace
 
@@ -146,7 +147,11 @@ def test_query_not_found_has_no_crop(warm, monkeypatch):
 
 def test_query_inline_populates_data_uri(warm, monkeypatch):
     monkeypatch.setattr(server, "run_query", lambda q: _canned_result(found=True))
-    monkeypatch.setattr(server, "_encode_data_uri", lambda p: "data:image/png;base64,STUB")
+
+    async def fake_encode(p):  # _encode_data_uri is async (off-loop file read)
+        return "data:image/png;base64,STUB"
+
+    monkeypatch.setattr(server, "_encode_data_uri", fake_encode)
     resp = warm.post("/query?inline=true", json={"question": "q"})
     body = resp.json()
     assert body["pages"][0]["image"]["data_uri"] == "data:image/png;base64,STUB"
@@ -203,6 +208,6 @@ def test_encode_data_uri_roundtrips(tmp_path):
     fs = tmp_path / "p.png"
     payload = b"\x89PNG\r\n fake bytes"
     fs.write_bytes(payload)
-    uri = server._encode_data_uri(str(fs))
+    uri = asyncio.run(server._encode_data_uri(str(fs)))  # helper is async
     assert uri.startswith("data:image/png;base64,")
     assert base64.b64decode(uri.split(",", 1)[1]) == payload
