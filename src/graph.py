@@ -17,15 +17,20 @@ log = get_logger("graph")
 class RAGState(TypedDict):
     question: str
     retrieved: list[dict]
+    candidates: list[dict]
     answer: str
     citation: dict | None
     crop_path: str | None
     annotated_path: str | None
 
 def retrieve_node(state: RAGState) -> dict:
-    """Embed the quesiton visually and pull the top matching pages."""
-    query_vec = embed_query(state["question"])
-    return {"retrieved": search(query_vec)}
+    """Embed the quesiton visually and pull the top matching pages.
+
+    `candidates` keeps the full pre-rerank top-k (rerank overwrites `retrieved`),
+    so eval recall@k and a "retrieved N, used K" UI can see what retrieval produced.
+    """
+    hits = search(embed_query(state["question"]))
+    return {"retrieved": hits, "candidates": hits}
 
 def rerank_node(state: RAGState) -> dict:
     """Ask Gemini which retrieved pages are actually relevant; keep only those.
