@@ -48,8 +48,8 @@ _PROMPT = (
 
 def _thumb_part(image_path: Path, max_edge: int) -> types.Part:
     """Load a page as a downscaled JPEG part - a cheap image for the rerank triage."""
-    with Image.open(image_path) as im:
-        im = im.convert("RGB")
+    with Image.open(image_path) as src:
+        im = src.convert("RGB")
         im.thumbnail((max_edge, max_edge))  # in place, preserves aspect ratio
         buf = io.BytesIO()
         im.save(buf, format="JPEG", quality=80)

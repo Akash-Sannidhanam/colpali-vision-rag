@@ -1,7 +1,7 @@
 """Ingest CLI: PDF pages -> page PNGSs -> ColPali multivectors -> Qdrant."""
 
 import sys
-from pathlib import Path 
+from pathlib import Path
 
 from src.config import PDFS_DIR, UPSERT_BATCH_SIZE
 from src.embedder import embed_image
@@ -15,6 +15,7 @@ from src.vector_store import (
     ping,
     upsert_pages,
 )
+
 
 def ingest_pdf(pdf_path: Path, start_id: int, collection_name: str) -> int:
     """Render, embed, and store every page of one PDF, flushing in batches.

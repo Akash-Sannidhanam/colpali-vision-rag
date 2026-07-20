@@ -130,7 +130,7 @@ def generate(*, model: str, contents: list, response_schema: Any, purpose: str) 
     start = time.perf_counter()
     response = _call()
     latency_ms = round((time.perf_counter() - start) * 1000, 1)
-    attempts = _call.statistics.get("attempt_number", 1)
+    attempts = getattr(_call, "statistics", {}).get("attempt_number", 1)
     _log_usage(
         response, model=model, purpose=purpose, latency_ms=latency_ms, attempts=attempts
     )

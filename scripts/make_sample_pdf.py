@@ -1,6 +1,7 @@
 """ Generate a sample PDF whose content is pure pixels - no text layer at all."""
 
 from pathlib import Path
+
 from PIL import Image, ImageDraw, ImageFont
 
 OUT = Path(__file__).resolve().parent.parent / "pdfs" / "sales_report.pdf"
