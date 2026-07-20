@@ -264,6 +264,16 @@ def search(query_multivector: list[list[float]], top_k: int = RETRIEVE_K) -> lis
         if not all(field in payload for field in ("pdf", "page_number", "image_path")):
             log.warning("dropped hit with incomplete payload", extra={"point_id": p.id})
             continue
+        # Validate payload types before using them
+        if not isinstance(payload["image_path"], str) or not payload["image_path"]:
+            log.warning("dropped hit with invalid image_path", extra={"point_id": p.id})
+            continue
+        if not isinstance(payload["pdf"], str):
+            log.warning("dropped hit with invalid pdf", extra={"point_id": p.id})
+            continue
+        if not isinstance(payload["page_number"], int):
+            log.warning("dropped hit with invalid page_number", extra={"point_id": p.id})
+            continue
         if not Path(payload["image_path"]).exists():
             log.warning("dropped hit with missing image file",
                         extra={"point_id": p.id, "image_path": payload["image_path"]})
