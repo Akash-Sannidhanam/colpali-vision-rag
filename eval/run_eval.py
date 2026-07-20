@@ -132,12 +132,18 @@ def run_full(dataset: list[dict], use_judge: bool) -> list[dict]:
         reranked = result.get("retrieved", [])
         citation = result.get("citation")
         answer = result.get("answer", "")
+        source_page = (citation or {}).get("source_page", 0)
+        cited = (
+            {"pdf": reranked[source_page - 1]["pdf"], "page": reranked[source_page - 1]["page_number"]}
+            if 1 <= source_page <= len(reranked) else None
+        )
         row = {
             "id": item["id"],
             "tags": item["tags"],
             "gold_rank": gold_rank(result.get("candidates", []), item["gold"]),
             "rerank_hit": gold_rank(reranked, item["gold"]) is not None,
             "citation_correct": citation_correct(citation, reranked, item["gold"]),
+            "cited": cited,  # which page was actually cited - makes gold-label gaps auditable
             "found": bool(citation and citation.get("found")),
             "substring_match": substring_match(answer, item["answer_contains"]),
             "latency_ms": result.get("meta", {}).get("latency_ms"),
