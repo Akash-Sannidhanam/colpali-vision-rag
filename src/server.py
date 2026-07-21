@@ -210,8 +210,9 @@ async def _build_query_response(request: Request, result: dict, inline: bool) ->
             pdf=hit["pdf"],
             page_number=hit["page_number"],
             score=hit["score"],
-            # Retrieved pages always carry a resolvable image_path, so _image_ref
-            # never returns None here (unlike the optional crop/annotated paths).
+            # vector_store.search() drops hits whose image_path is missing/stale, so
+            # every retrieved page resolves and _image_ref never returns None here
+            # (unlike the optional crop/annotated paths).
             image=page_images[i - 1],  # type: ignore[arg-type]
         )
         for i, hit in enumerate(retrieved, start=1)
