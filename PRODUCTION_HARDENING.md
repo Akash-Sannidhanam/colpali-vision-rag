@@ -23,6 +23,7 @@ Work happens on branch **`production-hardening-pass`**.
 | 2 | Observability (request IDs, node timing, token/cost, tracing) | ✅ **Done** |
 | 3 | Warm serving (FastAPI) + Vision RAG UI (React/Vite) | ✅ **Done** |
 | 4 | Evaluation (retrieval + answer-quality suite) | ✅ **Done** |
+| 5 | Packaging & CI (app Dockerfile, compose service, ruff/mypy/pytest CI) | ✅ **Done** (follow-on) |
 
 **Guiding principle:** one top lever per area, scoped tight. Reuse existing
 patterns — the `reranker.py` `try/except → Qdrant top-k` fallback, `_valid_order`,
@@ -233,11 +234,56 @@ metric families + `purpose=judge` token-logged calls; a mislabeled gold → exit
 
 ---
 
+## Phase 5 — Packaging & CI ✅ DONE (the follow-on)
+
+Originally listed under **Out of scope** below; picked up once the warm server (Phase
+3) made a deployable image the obvious next step. Done after the main pass on its own
+branches (PRs #12–#14), not `production-hardening-pass`. All checks green on `main`:
+ruff clean, mypy clean (17 files), 118 tests, container smoke test passing.
+
+**Shipped:**
+- **`ruff` + `mypy` tooling** — a `lint` dependency group in `pyproject.toml`
+  (isolated from the ML runtime so CI's lint job installs only these), `[tool.ruff]`
+  (default rules + import sorting) and `[tool.mypy]` (configured for the
+  namespace-package `src/`, `ignore_missing_imports` for the stub-less ML/vector deps,
+  non-strict). Cleared the baseline: import blocks sorted and **7 genuine mypy
+  findings** fixed, all behavior-preserving (PIL `Image`/`ImageFile` reassignments,
+  `dict | None` payload unpack, tenacity `.statistics` via `getattr`, two documented
+  `type: ignore`s).
+- **`Dockerfile`** *(new)* + **`.dockerignore`** *(new)* — multi-stage `uv` build
+  serving the FastAPI backend (the UI ships separately). Slim runtime + `poppler-utils`,
+  non-root `appuser`, `PYTHONPATH=/app`, binds `0.0.0.0:8000`, `/health` HEALTHCHECK
+  with a generous start-period for the first-boot model download. On Linux `uv` pulls
+  the CUDA 12.8 torch wheels, so the image is GPU-capable with `--gpus all` and
+  **auto-falls back to CPU**. `COPY --chown` (not a trailing `chown -R /app`) keeps the
+  image at **11 GB** instead of 21.7 GB — the recursive chown would re-copy the
+  multi-GB torch venv into a new layer.
+- **`docker-compose.yml`** — new `app` service wired to the `qdrant` service
+  (`QDRANT_URL` over the compose network, `GEMINI_API_KEY` passthrough, an HF-cache
+  volume, a commented `deploy.resources` GPU-reservation block for NVIDIA hosts), so
+  `docker compose up` runs the whole stack.
+- **`.github/workflows/ci.yml`** *(new)* — on push to `main` + PRs, least-privilege
+  `GITHUB_TOKEN` (`contents: read`): a fast `lint` job (ruff, no ML install) and a
+  `test` job that installs the full stack and runs `mypy` + `pytest`. mypy lives in the
+  test job so it type-checks against real pydantic/PIL/fastapi types rather than `Any`.
+- **`vector_store.search()` hit filtering** — drops points whose payload is missing/
+  wrong-typed (`pdf`/`page_number`/`image_path`) or whose page image is gone from disk
+  (a persisted index outliving a wiped `page_images/`), logging each drop at WARNING so
+  a stale index stays visible. Downstream can now assume every hit resolves to a page.
+
+**Files:** `pyproject.toml`, `Dockerfile` *(new)*, `.dockerignore` *(new)*,
+`docker-compose.yml`, `.github/workflows/ci.yml` *(new)*, `src/vector_store.py`,
+`src/server.py`, `tests/test_vector_store.py`, `README.md`, plus the ruff/mypy baseline
+fixes across `src/`.
+**Verify:** `uv run ruff check .` + `uv run mypy src eval` clean; `uv run pytest` 118
+green; `docker build .` succeeds and a container smoke test imports `src.server`;
+`docker compose config` validates.
+
+---
+
 ## Out of scope (natural follow-ons, not in this pass)
 
 Security / input validation (PDF size/page caps, Qdrant auth/TLS, query length
-limits), scaling/perf (batch the embedder — it embeds one page at a time today —
-query-result cache, incremental content-hash ingest), and packaging/CI (app
-Dockerfile on a GPU base, GitHub Actions with ruff/mypy). The warm server (Phase 3)
-makes the app Dockerfile the obvious next step if this later targets a real
-deployment.
+limits) and scaling/perf (batch the embedder — it embeds one page at a time today —
+query-result cache, incremental content-hash ingest). *(Packaging & CI graduated out
+of this list — see Phase 5 above.)*
