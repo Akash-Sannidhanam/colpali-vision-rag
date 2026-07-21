@@ -17,6 +17,7 @@ from pydantic import BaseModel
 
 from src.answerer import image_part
 from src.config import (
+    RERANK_ADAPTIVE,
     RERANK_K,
     RERANK_MODEL,
     RERANK_THUMBNAIL_EDGE,
@@ -63,13 +64,19 @@ def _candidate_part(image_path: Path) -> types.Part:
     return _thumb_part(image_path, RERANK_THUMBNAIL_EDGE)
 
 
-def _valid_order(raw: list, n: int, k: int) -> list[int]:
-    """Clean a model's raw page_indices into exactly min(k, n) valid 1-based indices.
+def _valid_order(raw: list, n: int, k: int, *, top_up: bool = True) -> list[int]:
+    """Clean a model's raw page_indices into valid 1-based indices, best first.
 
-    Keeps in-range [1, n] ints in the model's order (rejecting bools/non-ints),
-    de-duplicates, then tops up from Qdrant score order (1..n) until it holds
-    min(k, n) entries. An empty `raw` therefore yields the pure Qdrant top-k, which
-    is the fallback path for a failed or empty response.
+    Keeps in-range [1, n] ints in the model's order (rejecting bools/non-ints) and
+    de-duplicates, capping at k.
+
+    With `top_up` (the fixed-count default), the result is topped up from Qdrant
+    score order (1..n) to exactly min(k, n) entries - so an empty `raw` yields the
+    pure Qdrant top-k, the fallback for a failed or empty response.
+
+    With `top_up=False` (adaptive), the model's own count is honored: 1..k pages,
+    no padding - *except* an empty result still falls back to the Qdrant top-k, so
+    a failed rerank never leaves the answer step with zero pages.
     """
     order: list[int] = []
     seen: set[int] = set()
@@ -79,21 +86,23 @@ def _valid_order(raw: list, n: int, k: int) -> list[int]:
             seen.add(idx)
             if len(order) == k:
                 break
-    for idx in range(1, n + 1):  # top-up / fallback in best-score order
-        if len(order) >= k:
-            break
-        if idx not in seen:
-            order.append(idx)
-            seen.add(idx)
+    if top_up or not order:  # pad to k, or guarantee a non-empty fallback when adaptive
+        for idx in range(1, n + 1):  # top-up / fallback in best-score order
+            if len(order) >= k:
+                break
+            if idx not in seen:
+                order.append(idx)
+                seen.add(idx)
     return order[:k]
 
 
 def rerank(question: str, pages: list[dict], k: int = RERANK_K) -> list[dict]:
-    """Return the k most relevant pages (subset of `pages`, reordered best-first).
+    """Return the most relevant pages (subset of `pages`, reordered best-first).
 
-    `pages` is the Qdrant result, already best-score-first. On any failure or a
-    degenerate request the result falls back to the Qdrant top-k, so this never
-    raises into the graph.
+    `pages` is the Qdrant result, already best-score-first. `k` is the number kept -
+    or, when RERANK_ADAPTIVE, the *cap*: the model may keep fewer if fewer pages are
+    relevant. On any failure or a degenerate request the result falls back to the
+    Qdrant top-k, so this never raises into the graph.
     """
     n = len(pages)
     if n == 0 or k >= n:  # nothing to trim -> skip the Gemini call
@@ -122,5 +131,5 @@ def rerank(question: str, pages: list[dict], k: int = RERANK_K) -> list[dict]:
         )
         raw = []
 
-    order = _valid_order(raw, n, k)
+    order = _valid_order(raw, n, k, top_up=not RERANK_ADAPTIVE)
     return [pages[i - 1] for i in order]

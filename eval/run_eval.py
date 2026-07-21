@@ -116,9 +116,14 @@ def run_retrieval_only(dataset: list[dict]) -> list[dict]:
     rows = []
     for item in dataset:
         hits = search(embed_query(item["question"]))
-        row = {"id": item["id"], "tags": item["tags"], "gold_rank": gold_rank(hits, item["gold"])}
+        rank = gold_rank(hits, item["gold"])
+        # The retrieval top-1 makes a recall@1 miss auditable: it shows *which* page
+        # out-ranked the gold page (kept in the report row, not the summary table).
+        top1 = {"pdf": hits[0]["pdf"], "page": hits[0]["page_number"]} if hits else None
+        row = {"id": item["id"], "tags": item["tags"], "gold_rank": rank, "top1": top1}
         rows.append(row)
-        log.info("eval question scored", extra={"eval_id": item["id"], **row})
+        log.info("eval question scored",
+                 extra={"eval_id": item["id"], "gold_rank": rank, "top1": top1})
     return rows
 
 
@@ -164,6 +169,8 @@ def _config_snapshot(mode: str, dataset_path: str, use_judge: bool) -> dict:
         "dataset": dataset_path,
         "retrieve_k": RETRIEVE_K,
         "rerank_k": RERANK_K,
+        "rerank_adaptive": config.RERANK_ADAPTIVE,
+        "rescore_oversampling": config.RESCORE_OVERSAMPLING,
         "gemini_model": config.GEMINI_MODEL,
         "rerank_model": config.RERANK_MODEL,
         "eval_judge_model": EVAL_JUDGE_MODEL if use_judge else None,
@@ -171,6 +178,21 @@ def _config_snapshot(mode: str, dataset_path: str, use_judge: bool) -> dict:
         "colpali_model": config.COLPALI_MODEL,
         "qdrant_mode": "server" if config.QDRANT_URL else "embedded",
     }
+
+
+def gate_status(summary: dict, metric: str, threshold: float | None) -> tuple[bool, object]:
+    """Evaluate the --fail-under-recall gate against a chosen summary metric.
+
+    Returns (failed, value). `failed` is False when no threshold is set. A metric
+    absent from the summary (unknown name, or N/A for the run) has value None and
+    fails the gate, so a typo can't silently pass. Kept pure so it's unit-testable
+    without running the pipeline (tests/test_run_eval.py).
+    """
+    if threshold is None:
+        return False, None
+    value = summary.get(metric)
+    failed = not isinstance(value, (int, float)) or value < threshold
+    return failed, value
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -182,7 +204,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--judge", action="store_true",
                         help="also score answers with the LLM judge (EVAL_JUDGE_MODEL)")
     parser.add_argument("--fail-under-recall", type=float, default=None, metavar="RATE",
-                        help=f"exit 1 if recall@{RETRIEVE_K} falls below RATE")
+                        help="exit 1 if the gate metric (see --fail-metric) falls below RATE")
+    parser.add_argument("--fail-metric", default=f"recall@{RETRIEVE_K}", metavar="METRIC",
+                        help="summary metric the --fail-under-recall threshold applies to, "
+                             "e.g. recall@1, recall@3, citation_accuracy "
+                             f"(default recall@{RETRIEVE_K})")
     args = parser.parse_args(argv)
     if args.retrieval_only and args.judge:
         parser.error("--judge needs the full pipeline; drop --retrieval-only")
@@ -223,12 +249,11 @@ def main(argv: list[str] | None = None) -> int:
     print(format_table(rows, {**summary, "per_tag": per_tag}))
     print(f"\nreport: {output}")
 
-    if args.fail_under_recall is not None:
-        recall = summary.get(f"recall@{RETRIEVE_K}")
-        if recall is None or recall < args.fail_under_recall:
-            print(f"FAIL: recall@{RETRIEVE_K}={recall} below threshold {args.fail_under_recall}",
-                  file=sys.stderr)
-            return 1
+    failed, value = gate_status(summary, args.fail_metric, args.fail_under_recall)
+    if failed:
+        print(f"FAIL: {args.fail_metric}={value} below threshold {args.fail_under_recall}",
+              file=sys.stderr)
+        return 1
     return 0
 
 

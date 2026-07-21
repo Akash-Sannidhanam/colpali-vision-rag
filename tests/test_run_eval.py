@@ -11,7 +11,7 @@ from types import SimpleNamespace
 import pytest
 
 from eval import run_eval
-from eval.run_eval import EvalSetupError, JudgeVerdict, check_corpus, judge_answer
+from eval.run_eval import EvalSetupError, JudgeVerdict, check_corpus, gate_status, judge_answer
 from src.config import EVAL_JUDGE_MODEL
 
 
@@ -62,3 +62,28 @@ def test_check_corpus_rejects_gold_page_beyond_page_count(monkeypatch):
     monkeypatch.setattr(run_eval, "list_documents", lambda: [{"pdf": "a.pdf", "page_count": 5}])
     with pytest.raises(EvalSetupError, match="page 9"):
         check_corpus([_dataset_row(page=9)])
+
+
+# --- the --fail-metric / --fail-under-recall gate ---
+
+_SUMMARY = {"recall@1": 0.77, "recall@3": 0.95, "recall@10": 1.0, "citation_accuracy": 1.0}
+
+
+def test_gate_no_threshold_never_fails():
+    assert gate_status(_SUMMARY, "recall@1", None) == (False, None)
+
+
+def test_gate_fails_when_chosen_metric_below_threshold():
+    # Gating on recall@1 (which has headroom) catches a regression the saturated
+    # recall@10 default would miss.
+    assert gate_status(_SUMMARY, "recall@1", 0.9) == (True, 0.77)
+
+
+def test_gate_passes_when_metric_meets_threshold():
+    assert gate_status(_SUMMARY, "recall@3", 0.9) == (False, 0.95)
+
+
+def test_gate_fails_on_unknown_or_na_metric():
+    # A typo'd or N/A metric can't silently pass the gate.
+    failed, value = gate_status(_SUMMARY, "recall@2", 0.5)
+    assert failed is True and value is None

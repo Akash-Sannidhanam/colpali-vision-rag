@@ -35,7 +35,16 @@ RENDER_DPI = 150
 COLLECTION_NAME = "pdf_pages"
 VECTOR_DIM = 128 # ColQwen emits one 128-d vector per patch
 RETRIEVE_K = 10          # candidate pages pulled from Qdrant per query
-RERANK_K = 2             # pages kept after the Gemini rerank pass
+RERANK_K = 2             # pages kept after the Gemini rerank pass (a cap when RERANK_ADAPTIVE)
+# When true, rerank keeps a *variable* number of pages (1..RERANK_K) - only the
+# pages the model judged relevant, instead of always topping up to RERANK_K. Trades
+# a little predictability for answer precision. Off by default until an eval diff
+# proves it wins (PRODUCTION_HARDENING.md retrieval-quality pass).
+RERANK_ADAPTIVE = os.getenv("RERANK_ADAPTIVE", "false").strip().lower() in ("1", "true", "yes")
+# Binary quantization is lossy; the fast quantized pass pulls RETRIEVE_K * this many
+# candidates, then rescores them against the full-precision vectors on disk. Higher
+# recovers recall@1 that quantization costs, at a little more disk I/O per query.
+RESCORE_OVERSAMPLING = float(os.getenv("RESCORE_OVERSAMPLING", "2.0"))
 UPSERT_BATCH_SIZE = 8    # pages per Qdrant upsert flush; small enough that a batch's
                          # multivector payload (~1.4 MB/page) stays well under Qdrant's
                          # REST size limit, even on the default 32 MB server config

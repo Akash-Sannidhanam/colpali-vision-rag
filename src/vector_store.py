@@ -19,6 +19,7 @@ from src.config import (
     QDRANT_API_KEY,
     QDRANT_PATH,
     QDRANT_URL,
+    RESCORE_OVERSAMPLING,
     RETRIEVE_K,
     VECTOR_DIM,
 )
@@ -253,8 +254,10 @@ def search(query_multivector: list[list[float]], top_k: int = RETRIEVE_K) -> lis
         with_payload = True,
         # Binary quantization is lossy: pull extra candidates on the fast quantized
         # pass, then rescore them against the full-precision vectors to keep recall.
+        # Oversampling depth is tunable (RESCORE_OVERSAMPLING) to trade recall vs I/O.
         search_params = qm.SearchParams(
-            quantization = qm.QuantizationSearchParams(rescore=True, oversampling=2.0),
+            quantization = qm.QuantizationSearchParams(
+                rescore=True, oversampling=RESCORE_OVERSAMPLING),
         ),
     )
 
