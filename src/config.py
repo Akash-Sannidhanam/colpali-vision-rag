@@ -28,9 +28,13 @@ _poppler_bin = shutil.which("pdftoppm")
 POPPLER_PATH = os.getenv("POPPLER_PATH") or (str(Path(_poppler_bin).parent) if _poppler_bin else None)
 
 # colqwen2-v1.0 (~2B) fits comfortably in 8 GB VRAM.
-# For higher chart/table accuracy on a bigger GPU, use "vidore/colqwen2.5-v0.2".
-COLPALI_MODEL = "vidore/colqwen2-v1.0"
-RENDER_DPI = 150
+# For higher chart/table accuracy on a bigger GPU, use "vidore/colqwen2.5-v0.2"
+# (the embedder auto-selects the ColQwen2_5 loader for colqwen2.5 checkpoints).
+# Env-overridable so a model A/B is a re-ingest, not a code edit.
+COLPALI_MODEL = os.getenv("COLPALI_MODEL") or "vidore/colqwen2-v1.0"
+# Page render resolution. Higher DPI = more ColQwen patches = finer detail on dense
+# tables/small text, at more ingest time + storage. Env-overridable for A/B ingests.
+RENDER_DPI = int(os.getenv("RENDER_DPI", "150"))
 
 COLLECTION_NAME = "pdf_pages"
 VECTOR_DIM = 128 # ColQwen emits one 128-d vector per patch
