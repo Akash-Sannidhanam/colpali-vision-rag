@@ -54,10 +54,12 @@ the reader) is complete, tested, and shipped. Captured here so they are not lost
   `RERANK_MODEL` (defaults to `GEMINI_MODEL`). Point it at a lighter tier (e.g.
   Flash-Lite) via `.env` to cut the rerank call's cost/latency — picking page
   indices is a coarser task than reading the answer.
-- **Adaptive rerank count.** `RERANK_K` is a fixed 2, and `_valid_order` tops up
-  to exactly `k`. Letting the reranker keep a variable number of pages (1 when a
-  single page clearly answers, more when the answer spans pages) would trade a
-  little predictability for precision.
+- **Adaptive rerank count.** _(✗ evaluated & rejected in the retrieval-quality pass.)_
+  `RERANK_ADAPTIVE` (config, default off) makes `_valid_order(top_up=False)` keep a
+  variable 1..`RERANK_K` pages instead of padding to `k`. On the hardened 53-question
+  eval it showed no citation/precision gain (citation_accuracy stays 1.0) and a small
+  judge-score dip, for ~5% lower latency — not worth flipping on for this corpus. Kept
+  as a knob for larger corpora where the extra page distracts the answer step.
 - **Surface the dropped candidates.** _(◐ half-done in Hardening Phase 4.)_
   `retrieve_node` now writes the untrimmed top-k to a `candidates` `RAGState` key
   (added so the eval harness can score recall@k), so the data is already threaded
