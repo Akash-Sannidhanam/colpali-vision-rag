@@ -75,13 +75,24 @@ class PageHit(BaseModel):
     image: ImageRef
 
 
+class RegionOut(BaseModel):
+    """One cited region: its box on a retrieved page, plus that region's own crop."""
+
+    source_page: int    # 1-based index into pages[]
+    box: list[int]      # [ymin, xmin, ymax, xmax] on a 0-1000 scale
+    pdf: str | None = None          # enriched from pages[source_page-1]
+    page_number: int | None = None
+    crop: ImageRef | None = None
+
+
 class CitationOut(BaseModel):
     found: bool
-    source_page: int    # 1-based index into pages[]; 0 when not found
+    source_page: int    # 1-based index into pages[]; 0 when not found (primary region)
     box: list[int]      # [ymin, xmin, ymax, xmax] on a 0-1000 scale; [] when not found
     pdf: str | None = None          # enriched from pages[source_page-1]
     page_number: int | None = None
     confidence: Confidence = "low"  # the model's self-reported answer confidence
+    regions: list[RegionOut] = []   # every cited region (primary first); [] when not found
 
 
 class StageMeta(BaseModel):
@@ -242,6 +253,26 @@ async def _build_query_response(request: Request, result: dict, inline: bool) ->
     cited = retrieved[source_page - 1] if 1 <= source_page <= len(retrieved) else None
     # Enforce not-found invariant: "low" confidence when not found, "medium" fallback when found.
     confidence: Confidence = "low" if not found else _coerce_confidence(citation.get("confidence"))
+
+    # Every validated region highlight produced, each with its own crop image. The list
+    # is authoritative (already validated + cropped upstream), so no re-indexing here.
+    cited_regions = result.get("cited_regions", [])
+    region_crops = await asyncio.gather(*[
+        _image_ref(request, r.get("crop_path"), inline) for r in cited_regions
+    ])
+    regions_out = [
+        RegionOut(
+            source_page=r["source_page"],
+            box=r["box"],
+            pdf=retrieved[r["source_page"] - 1]["pdf"]
+            if 1 <= r["source_page"] <= len(retrieved) else None,
+            page_number=retrieved[r["source_page"] - 1]["page_number"]
+            if 1 <= r["source_page"] <= len(retrieved) else None,
+            crop=crop_ref,
+        )
+        for r, crop_ref in zip(cited_regions, region_crops)
+    ]
+
     citation_out = CitationOut(
         found=found,
         source_page=source_page,
@@ -249,6 +280,7 @@ async def _build_query_response(request: Request, result: dict, inline: bool) ->
         pdf=cited["pdf"] if cited else None,
         page_number=cited["page_number"] if cited else None,
         confidence=confidence,
+        regions=regions_out,
     )
 
     crop, annotated = await asyncio.gather(

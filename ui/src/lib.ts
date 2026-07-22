@@ -1,4 +1,4 @@
-import type { PageHit } from './types'
+import type { PageHit, Region } from './types'
 
 /**
  * Convert a Gemini box `[ymin, xmin, ymax, xmax]` on a 0-1000 scale into CSS
@@ -20,4 +20,9 @@ export function boxToOverlay(
 /** The cited page for a 1-based source_page index (null when out of range / not found). */
 export function citedPage(pages: PageHit[], sourcePage: number): PageHit | null {
   return sourcePage >= 1 && sourcePage <= pages.length ? pages[sourcePage - 1] : null
+}
+
+/** The cited regions that fall on a given 1-based page - the ones to overlay on it. */
+export function regionsOnPage(regions: Region[], sourcePage: number): Region[] {
+  return regions.filter((r) => r.source_page === sourcePage)
 }

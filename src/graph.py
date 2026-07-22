@@ -21,8 +21,10 @@ class RAGState(TypedDict):
     candidates: list[dict]
     answer: str
     citation: dict | None
-    crop_path: str | None
-    annotated_path: str | None
+    crop_path: str | None            # primary (first) region's crop - CLI/server back-compat
+    annotated_path: str | None       # primary region's page, annotated
+    cited_regions: list[dict]        # [{source_page, box, crop_path}] for every valid region
+    annotated_paths: list[str]       # one annotated page image per distinct cited page
 
 def retrieve_node(state: RAGState) -> dict:
     """Embed the quesiton visually and pull the top matching pages.
@@ -47,21 +49,40 @@ def answer_node(state: RAGState) -> dict:
     return {"answer": result["answer"], "citation": result}
 
 def highlight_node(state: RAGState) -> dict:
-    """Crop the cited region out of its page and draw an annotated copy."""
+    """Crop every cited region out of its page and draw an annotated copy per page."""
     citation = state.get("citation")
     retrieved = state["retrieved"]
-    if not citation or not citation.get("found") or not citation.get("box"):
-        return {"crop_path": None, "annotated_path": None}
+    regions = (citation or {}).get("regions") or []
+    empty: dict = {"crop_path": None, "annotated_path": None, "cited_regions": [], "annotated_paths": []}
+    if not citation or not citation.get("found") or not regions:
+        return empty
 
-    source_page = citation.get("source_page", 0)
-    if not (1 <= source_page <= len(retrieved)):
-        return {"crop_path": None, "annotated_path": None}
+    # Crop each region whose source_page + box are valid (skip the rest - graceful
+    # degradation); collect the boxes per page for one annotated image apiece.
+    cited_regions: list[dict] = []
+    boxes_by_page: dict[int, list[list[int]]] = {}
+    for region in regions:
+        source_page = region.get("source_page", 0)
+        box = region.get("box") or []
+        if not (1 <= source_page <= len(retrieved)) or len(box) != 4:
+            continue
+        image_path = retrieved[source_page - 1]["image_path"]
+        crop_path = str(crop_region(image_path, box, index=len(cited_regions)))
+        cited_regions.append({"source_page": source_page, "box": box, "crop_path": crop_path})
+        boxes_by_page.setdefault(source_page, []).append(box)
 
-    image_path = retrieved[source_page - 1]["image_path"]
-    box = citation["box"]
+    if not cited_regions:
+        return empty
+
+    annotated_by_page = {
+        page: str(annotate_page(retrieved[page - 1]["image_path"], boxes))
+        for page, boxes in boxes_by_page.items()
+    }
     return {
-        "crop_path": str(crop_region(image_path, box)),
-        "annotated_path": str(annotate_page(image_path, box)),
+        "crop_path": cited_regions[0]["crop_path"],
+        "annotated_path": annotated_by_page[cited_regions[0]["source_page"]],
+        "cited_regions": cited_regions,
+        "annotated_paths": list(annotated_by_page.values()),
     }
 
 def _timed(name: str, fn):

@@ -1,5 +1,5 @@
 import { imageSrc } from '../api'
-import { boxToOverlay, citedPage } from '../lib'
+import { boxToOverlay, citedPage, regionsOnPage } from '../lib'
 import type { QueryResponse } from '../types'
 import { CandidateRail } from './CandidateRail'
 
@@ -34,8 +34,12 @@ export function Viewer({ res, loading }: { res: QueryResponse | null; loading: b
   }
 
   const cited = citedPage(res.pages, res.citation.source_page)
-  const overlay = res.citation.found ? boxToOverlay(res.citation.box) : null
   const citedSrc = cited ? imageSrc(cited.image) : undefined
+  const regions = res.citation.found ? res.citation.regions : []
+  // Overlays for the regions that land on the page currently shown (the primary page).
+  const overlays = regionsOnPage(regions, res.citation.source_page)
+    .map((r) => boxToOverlay(r.box))
+    .filter((o): o is NonNullable<typeof o> => o !== null)
 
   return (
     <div className="viewer">
@@ -54,13 +58,17 @@ export function Viewer({ res, loading }: { res: QueryResponse | null; loading: b
         {cited && citedSrc ? (
           <div className="page-frame">
             <img src={citedSrc} alt={`${cited.pdf} page ${cited.page_number}`} />
-            {overlay && (
-              <>
-                <div className="box-overlay" style={overlay} />
-                <span className="coord-tag" style={{ top: overlay.top, left: overlay.left }}>
-                  cited · box [{res.citation.box.join(',')}]
-                </span>
-              </>
+            {overlays.map((overlay, i) => (
+              <div
+                key={i}
+                className={`box-overlay${overlays.length > 1 ? ' multi' : ''}`}
+                style={overlay}
+              />
+            ))}
+            {overlays[0] && (
+              <span className="coord-tag" style={{ top: overlays[0].top, left: overlays[0].left }}>
+                cited · {regions.length} region{regions.length === 1 ? '' : 's'}
+              </span>
             )}
           </div>
         ) : (
@@ -73,13 +81,24 @@ export function Viewer({ res, loading }: { res: QueryResponse | null; loading: b
         )}
       </div>
 
-      {res.crop && imageSrc(res.crop) && (
+      {regions.length > 0 && (
         <div className="crop-block">
           <div className="section-label" style={{ padding: '0 0 8px' }}>
-            crop · where the answer was read
+            {regions.length === 1
+              ? 'crop · where the answer was read'
+              : `crops · ${regions.length} regions read`}
           </div>
-          <div className="crop-frame">
-            <img src={imageSrc(res.crop)} alt="cited crop" />
+          <div className="crops-strip">
+            {regions.map((r, i) =>
+              imageSrc(r.crop) ? (
+                <div className="crop-frame" key={i}>
+                  <img src={imageSrc(r.crop)} alt={`cited crop ${i + 1}`} />
+                  {regions.length > 1 && r.page_number != null && (
+                    <span className="crop-page">p.{r.page_number}</span>
+                  )}
+                </div>
+              ) : null,
+            )}
           </div>
         </div>
       )}
