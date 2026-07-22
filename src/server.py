@@ -19,13 +19,14 @@ owns the client lifecycle: opened lazily, closed once on shutdown.
 
 import asyncio
 import base64
+import json
 from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import urljoin
 
 from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -341,10 +342,12 @@ async def query(req: QueryRequest, request: Request, inline: bool = Query(defaul
     return await _build_query_response(request, result, inline)
 
 
-@app.post("/ingest", response_model=IngestResponse)
-async def ingest(file: UploadFile = File(...)):
-    """Upload and index a single PDF. Blocking and long-running - it holds the model
-    lock for the whole render/embed/upsert build, so queries wait while it runs."""
+async def _save_upload(file: UploadFile) -> tuple[str, list[Path]]:
+    """Validate + persist an uploaded PDF under PDFS_DIR; return (name, all pdfs to index).
+
+    Shared by the blocking and streaming ingest endpoints so the size/type checks and
+    the save live in exactly one place.
+    """
     name = Path(file.filename or "").name          # strip any path components
     if not name.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only .pdf uploads are accepted.")
@@ -360,10 +363,65 @@ async def ingest(file: UploadFile = File(...)):
     PDFS_DIR.mkdir(parents=True, exist_ok=True)
     dest = PDFS_DIR / name
     await asyncio.to_thread(dest.write_bytes, data)
-    all_pdfs = sorted(PDFS_DIR.glob("*.pdf"))
+    return name, sorted(PDFS_DIR.glob("*.pdf"))
+
+
+def _sse(event: dict) -> str:
+    """Format one dict as a Server-Sent Events `data:` frame."""
+    return f"data: {json.dumps(event)}\n\n"
+
+
+@app.post("/ingest", response_model=IngestResponse)
+async def ingest(file: UploadFile = File(...)):
+    """Upload and index a single PDF. Blocking and long-running - it holds the model
+    lock for the whole render/embed/upsert build, so queries wait while it runs."""
+    name, all_pdfs = await _save_upload(file)
     async with _gpu_lock:
         indexed = await asyncio.to_thread(run_ingest, all_pdfs)
     return IngestResponse(pdf=name, indexed_pages=indexed)
+
+
+@app.post("/ingest/stream")
+async def ingest_stream(file: UploadFile = File(...)):
+    """Same as /ingest, but streams per-page progress as Server-Sent Events.
+
+    The render/embed loop runs in a worker thread (holding the model lock the whole
+    time, exactly like /ingest); its progress callback hops each event back onto the
+    loop via an asyncio.Queue, and an async generator drains the queue into SSE frames.
+    A done-callback pushes a sentinel so the generator knows the build finished, then
+    re-raises any build failure as a final `error` event.
+    """
+    name, all_pdfs = await _save_upload(file)
+    loop = asyncio.get_running_loop()
+    queue: asyncio.Queue = asyncio.Queue()
+    done = object()
+
+    def progress(event: dict) -> None:
+        loop.call_soon_threadsafe(queue.put_nowait, event)   # called from the worker thread
+
+    async def event_stream():
+        async with _gpu_lock:                                # hold the model lock for the build
+            task = asyncio.create_task(asyncio.to_thread(run_ingest, all_pdfs, progress))
+            task.add_done_callback(lambda _t: loop.call_soon_threadsafe(queue.put_nowait, done))
+            try:
+                while True:
+                    event = await queue.get()
+                    if event is done:
+                        break
+                    yield _sse(event)
+                indexed = task.result()                      # task is finished here; re-raises on failure
+                yield _sse({"phase": "done", "pdf": name, "indexed_pages": indexed})
+            except Exception as exc:
+                log.warning("ingest stream failed", exc_info=exc)
+                yield _sse({"phase": "error", "detail": str(exc)})
+            finally:
+                # If the client disconnected mid-build, don't release the model lock until
+                # the in-flight embed loop actually finishes (a concurrent query forward
+                # pass on the one GPU model would otherwise race it).
+                if not task.done():
+                    await asyncio.shield(task)
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 @app.exception_handler(RuntimeError)

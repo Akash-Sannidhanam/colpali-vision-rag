@@ -711,6 +711,12 @@ body {
   opacity: 0.5;
   cursor: not-allowed;
 }
+.progress-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px 4px;
+}
 .progress {
   display: flex;
   align-items: center;
@@ -718,6 +724,21 @@ body {
   padding: 20px 4px;
   color: var(--t-3);
   font: 500 12px var(--mono);
+}
+.progress-wrap .progress {
+  padding: 0;
+}
+.progress-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--s-mute);
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  background: var(--acc);
+  border-radius: 3px;
+  transition: width 0.25s ease;
 }
 .spinner {
   width: 18px;

@@ -211,6 +211,32 @@ def test_ingest_rejects_non_pdf(warm):
     assert resp.status_code == 400
 
 
+def test_ingest_stream_emits_progress_and_done(warm, monkeypatch, tmp_path):
+    monkeypatch.setattr(server, "PDFS_DIR", tmp_path)
+
+    def fake_run_ingest(paths, progress):
+        progress({"phase": "render", "pdf": "doc.pdf"})
+        progress({"phase": "embed", "pdf": "doc.pdf", "page": 1, "total": 1})
+        return 1
+
+    monkeypatch.setattr(server, "run_ingest", fake_run_ingest)
+    resp = warm.post("/ingest/stream",
+                     files={"file": ("doc.pdf", b"%PDF-1.4 fake", "application/pdf")})
+    assert resp.status_code == 200
+    assert "text/event-stream" in resp.headers["content-type"]
+
+    frames = resp.text
+    assert '"phase": "render"' in frames
+    assert '"phase": "embed"' in frames                    # per-page progress streamed
+    assert '"phase": "done"' in frames and '"indexed_pages": 1' in frames
+
+
+def test_ingest_stream_rejects_non_pdf(warm):
+    # validation happens before the stream opens, so a bad upload is a plain 400
+    resp = warm.post("/ingest/stream", files={"file": ("notes.txt", b"hi", "text/plain")})
+    assert resp.status_code == 400
+
+
 def test_ingest_rejects_oversize(warm, monkeypatch):
     monkeypatch.setattr(server, "MAX_UPLOAD_MB", 0)                    # anything non-empty is too big
     resp = warm.post("/ingest", files={"file": ("big.pdf", b"%PDF-1.4 xxxxxxxx", "application/pdf")})
