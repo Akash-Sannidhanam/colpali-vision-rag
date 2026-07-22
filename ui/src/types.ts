@@ -19,6 +19,7 @@ export interface Citation {
   box: number[] // [ymin, xmin, ymax, xmax] on a 0-1000 scale; [] when not found
   pdf: string | null
   page_number: number | null
+  confidence: string // the model's self-reported answer confidence: high | medium | low
 }
 
 export interface StageMeta {
@@ -40,6 +41,7 @@ export interface QueryMeta {
   est_cost_usd: number
   gemini_calls: number
   retrieve_k: number
+  retrieval_confidence: number | null // deterministic softmax share on the cited page; null if none
   stages: StageMeta[]
 }
 

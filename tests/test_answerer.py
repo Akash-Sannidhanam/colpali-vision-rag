@@ -31,13 +31,21 @@ def _fake_generate(record, *, result=None, error=None):
 def test_valid_citation_passes_through_and_routes_as_answer(monkeypatch):
     monkeypatch.setattr(answerer, "image_part", lambda p: None)
     calls: list = []
-    citation = answerer.Citation(answer="42", found=True, source_page=1, box=[10, 20, 30, 40])
+    citation = answerer.Citation(
+        answer="42", found=True, source_page=1, box=[10, 20, 30, 40], confidence="high"
+    )
     resp = SimpleNamespace(parsed=citation, text="")
     monkeypatch.setattr(answerer, "generate", _fake_generate(calls, result=resp))
 
     out = answerer.answer("q", [_page(1)])
 
-    assert out == {"answer": "42", "found": True, "source_page": 1, "box": [10, 20, 30, 40]}
+    assert out == {
+        "answer": "42",
+        "found": True,
+        "source_page": 1,
+        "box": [10, 20, 30, 40],
+        "confidence": "high",
+    }
     # routed through the shared client, tagged as an answer call
     assert calls and calls[0]["model"] == answerer.GEMINI_MODEL
     assert calls[0]["purpose"] == "answer"
@@ -54,7 +62,14 @@ def test_valid_text_json_is_parsed_when_sdk_parse_is_none(monkeypatch):
 
     out = answerer.answer("q", [_page(1), _page(2)])
 
-    assert out == {"answer": "x", "found": True, "source_page": 2, "box": [1, 2, 3, 4]}
+    # confidence is omitted from the JSON, so it takes the schema's neutral default.
+    assert out == {
+        "answer": "x",
+        "found": True,
+        "source_page": 2,
+        "box": [1, 2, 3, 4],
+        "confidence": "medium",
+    }
 
 
 def test_malformed_text_falls_back_to_not_found(monkeypatch):

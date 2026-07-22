@@ -32,10 +32,12 @@ def _canned_result(found: bool = True) -> dict:
          "image_path": str(server.PAGE_IMAGES_DIR / "attention_page_5.png")},
     ]
     if found:
-        citation = {"answer": "42", "found": True, "source_page": 1, "box": [140, 300, 660, 700]}
+        citation = {"answer": "42", "found": True, "source_page": 1, "box": [140, 300, 660, 700],
+                    "confidence": "high"}
         crop = str(server.PAGE_IMAGES_DIR / "crops" / "attention_page_3_crop.png")
         annotated = str(server.PAGE_IMAGES_DIR / "crops" / "attention_page_3_annotated.png")
     else:
+        # confidence intentionally omitted -> the server should fall back to "low".
         citation = {"answer": "Couldn't find it.", "found": False, "source_page": 0, "box": []}
         crop = annotated = None
     return {
@@ -49,6 +51,7 @@ def _canned_result(found: bool = True) -> dict:
             "request_id": "abc123", "latency_ms": 3400.0,
             "prompt_tokens": 9000, "output_tokens": 2000, "total_tokens": 11000,
             "est_cost_usd": 0.015, "gemini_calls": 2,
+            "retrieval_confidence": 0.82 if found else None,
             "stages": [
                 {"node": "retrieve", "latency_ms": 900.0, "total_tokens": 0, "est_cost_usd": 0.0, "gemini_calls": 0},
                 {"node": "rerank", "latency_ms": 1200.0, "total_tokens": 3100, "est_cost_usd": 0.004, "gemini_calls": 1},
@@ -119,6 +122,7 @@ def test_query_happy_path_shape(warm, monkeypatch):
     assert cit["found"] is True and cit["source_page"] == 1
     assert cit["box"] == [140, 300, 660, 700]
     assert cit["pdf"] == "attention.pdf" and cit["page_number"] == 3   # enriched from pages[0]
+    assert cit["confidence"] == "high"                                 # model self-report
 
     assert len(body["pages"]) == 2
     assert body["pages"][0]["image"]["url"].endswith("/images/attention_page_3.png")
@@ -131,6 +135,7 @@ def test_query_happy_path_shape(warm, monkeypatch):
     assert meta["request_id"] == "abc123"
     assert meta["total_tokens"] == 11000 and meta["est_cost_usd"] == 0.015
     assert meta["retrieve_k"] == server.RETRIEVE_K
+    assert meta["retrieval_confidence"] == 0.82                        # deterministic retrieval signal
     assert [s["node"] for s in meta["stages"]] == ["retrieve", "rerank", "answer", "highlight"]
 
 
@@ -141,6 +146,8 @@ def test_query_not_found_has_no_crop(warm, monkeypatch):
     body = resp.json()
     assert body["citation"]["found"] is False and body["citation"]["source_page"] == 0
     assert body["citation"]["pdf"] is None
+    assert body["citation"]["confidence"] == "low"                     # default when omitted
+    assert body["meta"]["retrieval_confidence"] is None                # nothing cited
     assert body["crop"] is None and body["annotated"] is None
     assert len(body["pages"]) == 2                                     # candidates still surfaced
 

@@ -334,6 +334,45 @@ body {
   color: var(--t-5);
 }
 
+/* confidence chips: a deterministic retrieval-decisiveness % + the model's
+   self-reported answer confidence, shown side by side and honestly distinct. */
+.conf-row {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.conf-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--s-chip);
+  border: 1px solid var(--ln-2);
+  color: var(--t-4);
+  font: 500 10px var(--mono);
+  white-space: nowrap;
+}
+.conf-chip b {
+  color: var(--t-2);
+  font-weight: 600;
+}
+.conf-chip.high {
+  color: var(--green);
+  border-color: rgba(110, 231, 183, 0.3);
+}
+.conf-chip.high b {
+  color: var(--green);
+}
+.conf-chip.low {
+  color: var(--red);
+  border-color: rgba(239, 68, 68, 0.3);
+}
+.conf-chip.low b {
+  color: var(--red);
+}
+
 /* answer trace disclosure */
 .trace {
   border-top: 1px solid var(--ln-2);

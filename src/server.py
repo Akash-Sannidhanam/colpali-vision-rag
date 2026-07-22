@@ -80,6 +80,7 @@ class CitationOut(BaseModel):
     box: list[int]      # [ymin, xmin, ymax, xmax] on a 0-1000 scale; [] when not found
     pdf: str | None = None          # enriched from pages[source_page-1]
     page_number: int | None = None
+    confidence: str = "low"         # the model's self-reported answer confidence
 
 
 class StageMeta(BaseModel):
@@ -101,6 +102,9 @@ class QueryMeta(BaseModel):
     est_cost_usd: float = 0.0
     gemini_calls: int = 0
     retrieve_k: int = 0             # configured candidate count (for "retrieved N" display)
+    # Deterministic retrieval-decisiveness (softmax share of the cited page over the
+    # candidate MaxSim scores). None when nothing was cited. See src/confidence.py.
+    retrieval_confidence: float | None = None
     stages: list[StageMeta] = []
 
 
@@ -227,6 +231,7 @@ async def _build_query_response(request: Request, result: dict, inline: bool) ->
         box=citation.get("box") or [],
         pdf=cited["pdf"] if cited else None,
         page_number=cited["page_number"] if cited else None,
+        confidence=citation.get("confidence", "low"),
     )
 
     crop, annotated = await asyncio.gather(
