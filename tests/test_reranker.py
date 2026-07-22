@@ -48,6 +48,23 @@ def test_result_never_exceeds_available_pages():
     assert _valid_order([], 1, 2) == [1]
 
 
+# --- adaptive count (top_up=False) ---
+
+def test_adaptive_honors_model_count_without_topup():
+    # The model kept one page; adaptive returns exactly that, no Qdrant padding.
+    assert _valid_order([3], 10, 2, top_up=False) == [3]
+
+
+def test_adaptive_caps_at_k():
+    # More relevant than the cap -> trimmed to k in the model's order.
+    assert _valid_order([3, 1, 2], 10, 2, top_up=False) == [3, 1]
+
+
+def test_adaptive_empty_still_falls_back_to_qdrant_top_k():
+    # A failed/empty rerank must never leave the answer step with zero pages.
+    assert _valid_order([], 10, 2, top_up=False) == [1, 2]
+
+
 def test_rerank_passthrough_when_k_ge_pages():
     # k >= number retrieved: no Gemini call, pages returned unchanged.
     pages = [_page(1), _page(2)]
@@ -78,3 +95,17 @@ def test_rerank_routes_through_shared_client_with_rerank_model(monkeypatch):
     assert calls and calls[0]["model"] == reranker.RERANK_MODEL
     assert calls[0]["purpose"] == "rerank"
     assert calls[0]["response_schema"] is reranker.Rerank
+
+
+def test_rerank_adaptive_keeps_only_the_relevant_pages(monkeypatch):
+    # With RERANK_ADAPTIVE on, the model keeping a single page yields a single page -
+    # no top-up to the cap, so the answer step isn't handed a distracting extra.
+    def fake_generate(**kwargs):
+        return SimpleNamespace(parsed=SimpleNamespace(page_indices=[2]), text="")
+
+    monkeypatch.setattr(reranker, "_candidate_part", lambda p: None)
+    monkeypatch.setattr(reranker, "generate", fake_generate)
+    monkeypatch.setattr(reranker, "RERANK_ADAPTIVE", True)
+
+    pages = [_page(1), _page(2), _page(3)]
+    assert rerank("q", pages, k=2) == [pages[1]]

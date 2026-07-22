@@ -287,3 +287,39 @@ Security / input validation (PDF size/page caps, Qdrant auth/TLS, query length
 limits) and scaling/perf (batch the embedder — it embeds one page at a time today —
 query-result cache, incremental content-hash ingest). *(Packaging & CI graduated out
 of this list — see Phase 5 above.)*
+
+---
+
+## Retrieval-quality pass (follow-on)
+
+Work on branch **`retrieval-quality-sweep`**. Goal: lift retrieval recall@1 and turn
+the eval into a sensitive regression instrument. The eval was **saturated** — every
+downstream metric pinned at 1.0 on 22 questions — so no retrieval change could be
+proven either way.
+
+**Foundation (shipped):**
+- Eval set grown **22 → 53** questions (`eval/dataset.jsonl`): single-page-gold,
+  visually-confusable "hard" table/figure lookups mined from the page images.
+  De-saturates retrieval — recall@1 now **0.83** with real per-tag headroom (text 0.74).
+- Tunable knobs, all defaulting to prior behavior: `RESCORE_OVERSAMPLING` (binary-quant
+  rescore depth, `vector_store.search`), `RERANK_ADAPTIVE` (variable rerank count via
+  `_valid_order(top_up=…)`), env-overridable `RENDER_DPI` and `COLPALI_MODEL` (the
+  embedder auto-selects the `ColQwen2_5` loader for colqwen2.5 checkpoints).
+  `run_eval.py` gains a `--fail-metric` gate (gate on a metric with headroom, not the
+  saturated recall@10) and per-row top-1 miss diagnostics.
+
+**Lever sweep — every candidate measured, none adopted:**
+
+| Lever | Result | Decision |
+|-------|--------|----------|
+| Rescore oversampling (1→4×) | no-op — binary quantization is lossless here (server == exact recall) | keep 2.0 |
+| Adaptive rerank | no precision gain (citation stays 1.0), small judge dip, ~5% faster | keep off |
+| Render DPI 150→220 | +3.8 pts recall@1 / −1.9 pts recall@3, costlier ingest+query, no end-to-end gain | keep 150 |
+| Model → colqwen2.5-v0.2 | MPS OOM on the dev box (Apple M5) — needs a bigger GPU | not evaluable locally |
+
+**Takeaway:** on this 43-page corpus the pipeline is already saturated **end-to-end**
+(recall@10 = 1.0, rerank_recall = 1.0, citation_accuracy = 1.0) — the reranker recovers
+every recall@1 miss, so raw-recall tuning has no downstream effect. The recall@1 gap is
+genuine ColQwen2 ranking, not quantization loss. Real gains would need a larger/harder
+corpus (distractor docs, which stress `RERANK_K`) or a bigger GPU for the colqwen2.5
+upgrade — both deliberately out of this pass's scope.

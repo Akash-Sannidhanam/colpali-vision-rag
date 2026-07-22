@@ -246,6 +246,30 @@ def test_search_keeps_valid_hits_and_drops_invalid(monkeypatch, tmp_path):
                        "image_path": str(img), "score": 0.9912}
 
 
+def test_search_passes_configured_oversampling(monkeypatch, tmp_path):
+    # The RESCORE_OVERSAMPLING knob must reach Qdrant's QuantizationSearchParams so
+    # the recall/I-O trade-off is actually tunable (patch the by-value module global).
+    img = tmp_path / "p.png"
+    img.write_bytes(b"x")
+    captured: dict = {}
+
+    def query_points(**kw):
+        captured.update(kw)
+        return SimpleNamespace(points=[SimpleNamespace(
+            id=1, score=0.9,
+            payload={"pdf": "a.pdf", "page_number": 1, "image_path": str(img)})])
+
+    monkeypatch.setattr(vector_store, "get_client",
+                        lambda: SimpleNamespace(query_points=query_points))
+    monkeypatch.setattr(vector_store, "RESCORE_OVERSAMPLING", 3.5)
+
+    vector_store.search([[0.0] * 128])
+
+    quant = captured["search_params"].quantization
+    assert quant.rescore is True
+    assert quant.oversampling == 3.5
+
+
 def test_search_returns_all_when_every_hit_is_valid(monkeypatch, tmp_path):
     imgs = [tmp_path / f"p{n}.png" for n in (1, 2)]
     for p in imgs:
