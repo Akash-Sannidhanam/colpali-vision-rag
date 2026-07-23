@@ -26,3 +26,34 @@ export function citedPage(pages: PageHit[], sourcePage: number): PageHit | null 
 export function regionsOnPage(regions: Region[], sourcePage: number): Region[] {
   return regions.filter((r) => r.source_page === sourcePage)
 }
+
+/**
+ * Map a normalized patch score in [0,1] to an RGBA tuple (alpha 0-1) for the "why this
+ * page?" heatmap: cold patches stay clear, ramping blue -> cyan -> yellow -> red as the
+ * query match strengthens, with alpha rising so only the patches that matter tint the
+ * page. Input is clamped to [0,1].
+ */
+export function heatmapRGBA(value: number): [number, number, number, number] {
+  const v = Math.max(0, Math.min(1, value))
+  const stops: [number, [number, number, number]][] = [
+    [0.0, [30, 60, 220]], // blue
+    [0.33, [0, 200, 210]], // cyan
+    [0.66, [240, 220, 40]], // yellow
+    [1.0, [230, 40, 40]], // red
+  ]
+  let rgb = stops[stops.length - 1][1]
+  for (let i = 0; i < stops.length - 1; i++) {
+    const [lo, c0] = stops[i]
+    const [hi, c1] = stops[i + 1]
+    if (v <= hi) {
+      const t = hi === lo ? 0 : (v - lo) / (hi - lo)
+      rgb = [
+        Math.round(c0[0] + (c1[0] - c0[0]) * t),
+        Math.round(c0[1] + (c1[1] - c0[1]) * t),
+        Math.round(c0[2] + (c1[2] - c0[2]) * t),
+      ]
+      break
+    }
+  }
+  return [rgb[0], rgb[1], rgb[2], v * 0.72] // cold -> clear; hottest patch ~0.72 alpha
+}

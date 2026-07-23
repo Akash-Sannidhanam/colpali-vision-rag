@@ -188,6 +188,45 @@ def test_query_empty_question_is_422(warm):
     assert warm.post("/query", json={}).status_code == 422
 
 
+# --- /heatmap ---
+
+def test_heatmap_happy_path(warm, monkeypatch, tmp_path):
+    png = tmp_path / "attention_page_3.png"
+    png.write_bytes(b"x")                                  # only existence is checked here
+    monkeypatch.setattr(server, "page_image_path", lambda pdf, page: png)
+    monkeypatch.setattr(server, "page_similarity",
+                        lambda q, path: ([[0.0, 1.0], [0.5, 0.25]], 2, 2))
+    resp = warm.post("/heatmap",
+                     json={"question": "where's the total?", "pdf": "attention.pdf", "page_number": 3})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["pdf"] == "attention.pdf" and body["page_number"] == 3
+    assert body["n_x"] == 2 and body["n_y"] == 2
+    assert body["grid"] == [[0.0, 1.0], [0.5, 0.25]]       # n_y rows x n_x cols, grid[y][x]
+
+
+def test_heatmap_404_when_page_missing_never_runs_model(warm, monkeypatch, tmp_path):
+    monkeypatch.setattr(server, "page_image_path", lambda pdf, page: tmp_path / "nope.png")
+    ran = {"model": False}
+
+    def spy(q, path):
+        ran["model"] = True
+        return ([], 0, 0)
+
+    monkeypatch.setattr(server, "page_similarity", spy)
+    resp = warm.post("/heatmap", json={"question": "q", "pdf": "ghost.pdf", "page_number": 9})
+    assert resp.status_code == 404
+    assert ran["model"] is False                           # short-circuits before the GPU work
+
+
+def test_heatmap_validates_request(warm):
+    assert warm.post("/heatmap",
+                     json={"question": "", "pdf": "a.pdf", "page_number": 1}).status_code == 422
+    assert warm.post("/heatmap",
+                     json={"question": "q", "pdf": "a.pdf", "page_number": 0}).status_code == 422
+    assert warm.post("/heatmap", json={"question": "q", "pdf": "a.pdf"}).status_code == 422
+
+
 # --- /ingest ---
 
 def test_ingest_happy_path(warm, monkeypatch, tmp_path):

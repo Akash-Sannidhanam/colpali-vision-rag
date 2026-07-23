@@ -183,7 +183,11 @@ suite green (74 backend tests + UI typecheck/units).
 `README.md`.
 **Deferred** (design outran the backend): multi-region citations, the MaxSim patch
 heatmap, normalized confidence %, live-streaming ingest (SSE), and the `4a` animated
-walkthrough — layered onto v1 later.
+walkthrough — layered onto v1 later. **Since shipped:** multi-region citations, normalized
+confidence %, and SSE ingest (all on `main`), plus the **MaxSim patch heatmap** — a
+`POST /heatmap` endpoint (`src/heatmap.py`) returns a per-patch query→page similarity grid
+that the Viewer's "why this page?" toggle paints over the cited page (`ui/src/components/Viewer.tsx`).
+Still open: the `4a` animated walkthrough.
 
 ---
 

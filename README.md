@@ -115,6 +115,7 @@ see the model load once and a `server warm` log line; the live OpenAPI schema is
 | Method & path | What it does |
 |---|---|
 | `POST /query` `{question}` | Answer + citation (with `box`) + the used pages + crop/annotated images + a per-request `meta` (request_id, latency, tokens, cost, and a per-stage breakdown). Add `?inline=true` to also get images as base64 data-URIs (for a sandboxed UI); the default returns `/images/...` URLs. |
+| `POST /heatmap` `{question, pdf, page_number}` | Per-patch **MaxSim heatmap** for one page — an `n_x × n_y` grid of query→page match strengths in `[0,1]`. Powers the viewer's **"why this page?"** toggle (which patches the query lit up, vs. the crop's *where the answer was read*). On-demand: it recomputes two forward passes on the model lock, so it's a separate call, not part of `/query`. |
 | `GET /health` | `model_loaded` + Qdrant reachability. `503` when Qdrant is unreachable. |
 | `GET /corpus` | Indexed documents + page counts (powers the UI's corpus rail). |
 | `POST /ingest` (multipart PDF) | Render → embed → index an uploaded PDF. Blocking and long-running — it holds the model lock for the whole build. |
@@ -138,8 +139,10 @@ curl -s -X POST localhost:8000/query -H 'content-type: application/json' \
 A React + Vite single-page app — a three-column workspace (corpus rail · conversation ·
 document viewer) that renders each answer with its **visual citation**: the cited page
 with the bounding box drawn over it, the cropped slice, and the reranked-candidate rail,
-plus a "how this was answered" per-stage trace. It runs as its own dev server and calls
-the API above (two processes: the API on `:8000`, the UI on `:5173`).
+plus a "how this was answered" per-stage trace. A **"why this page?"** toggle on the viewer
+overlays the MaxSim patch heatmap (via `POST /heatmap`), tinting the patches the query
+matched — the retrieval-side complement to the answer crop. It runs as its own dev server
+and calls the API above (two processes: the API on `:8000`, the UI on `:5173`).
 
 ```bash
 cd ui
