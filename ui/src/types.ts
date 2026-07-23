@@ -1,5 +1,7 @@
 // Mirrors the FastAPI response contract (src/server.py). Keep in sync with the DTOs.
 
+export type Confidence = "high" | "medium" | "low"
+
 export interface ImageRef {
   url: string | null
   data_uri: string | null
@@ -19,6 +21,7 @@ export interface Citation {
   box: number[] // [ymin, xmin, ymax, xmax] on a 0-1000 scale; [] when not found
   pdf: string | null
   page_number: number | null
+  confidence: Confidence // the model's self-reported answer confidence
 }
 
 export interface StageMeta {
@@ -40,6 +43,7 @@ export interface QueryMeta {
   est_cost_usd: number
   gemini_calls: number
   retrieve_k: number
+  retrieval_confidence: number | null // deterministic softmax share on the cited page; null if none
   stages: StageMeta[]
 }
 

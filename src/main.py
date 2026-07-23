@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 
 from src import request_context
+from src.confidence import retrieval_confidence
 from src.config import validate
 from src.graph import get_graph
 from src.logging_setup import get_logger
@@ -50,10 +51,26 @@ def run_query(question: str) -> dict:
         stages = request_context.stage_breakdown()
         log.info("query complete", extra={"latency_ms": latency_ms, **usage})
         request_context.end_request(scope)
+
+    # Deterministic retrieval-decisiveness confidence: how sharply MaxSim preferred
+    # the cited page over the full pre-rerank candidate set. None when nothing was
+    # cited (a not-found answer). This is about retrieval, not answer correctness -
+    # the model's own self-report rides on citation.confidence.
+    citation = result.get("citation") or {}
+    retrieved = result.get("retrieved", [])
+    source_page = citation.get("source_page", 0)
+    # Only derive cited when the citation is marked as found and source_page is valid
+    cited = (
+        retrieved[source_page - 1]
+        if citation.get("found") and 1 <= source_page <= len(retrieved)
+        else None
+    )
+
     result["meta"] = {
         "request_id": request_id,
         "latency_ms": latency_ms,
         **usage,
+        "retrieval_confidence": retrieval_confidence(result.get("candidates", []), cited),
         "stages": stages,
     }
     return result

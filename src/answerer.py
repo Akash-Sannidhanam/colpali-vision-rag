@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from typing import Literal
 
 from google.genai import types
 from pydantic import BaseModel
@@ -12,6 +13,8 @@ from src.logging_setup import get_logger
 
 log = get_logger("answerer")
 
+Confidence = Literal["high", "medium", "low"]
+
 
 class Citation(BaseModel):
     """Structured answer plus the region of the page it was read from."""
@@ -20,6 +23,11 @@ class Citation(BaseModel):
     found: bool          # whether the answer was actually located in the pages
     source_page: int     # 1-based PAGE number from the labels below (0 if not found)
     box: list[int]       # [ymin, xmin, ymax, xmax], integers 0-1000; [] if not found
+    # The model's own self-reported confidence in the answer. Optional with a neutral
+    # default so a valid answer that omits it still comes through rather than degrading
+    # to not-found. Miscalibrated by nature - surface it as the model's word, next to
+    # the deterministic retrieval confidence, never as ground truth.
+    confidence: Confidence = "medium"
 
 
 _PROMPT = (
@@ -34,6 +42,8 @@ _PROMPT = (
       integers [ymin, xmin, ymax, xmax] normalized to a 0-1000 scale (top-left
       origin) relative to that page.
     - found: true if the pages contain the answer, otherwise false.
+    - confidence: how confident you are that this answer is correct given only
+      these pages - exactly one of "high", "medium", or "low".
 
     If the pages do not contain the answer, say so in `answer`, set found=false,
     source_page=0, and box=[].
@@ -52,6 +62,7 @@ _NOT_FOUND = {
     "found": False,
     "source_page": 0,
     "box": [],
+    "confidence": "low",
 }
 
 
@@ -78,11 +89,19 @@ def answer(question: str, pages: list[dict]) -> dict:
         )
         parsed = response.parsed
         if parsed is not None:
-            return parsed.model_dump()
+            result = parsed.model_dump()
+            # Enforce not-found invariant: confidence must be "low" when found is false
+            if not result.get("found"):
+                result["confidence"] = "low"
+            return result
         # No SDK-parsed object: validate the raw JSON text through the schema, so a
         # valid-JSON-but-wrong-shape response also degrades to not-found instead of
         # KeyError-ing downstream where answer_node reads result["answer"].
-        return Citation(**json.loads(response.text)).model_dump()
+        result = Citation(**json.loads(response.text)).model_dump()
+        # Enforce not-found invariant: confidence must be "low" when found is false
+        if not result.get("found"):
+            result["confidence"] = "low"
+        return result
     except Exception:
         log.warning(
             "answer step failed; returning not-found citation",

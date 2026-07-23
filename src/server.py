@@ -29,6 +29,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from src.answerer import Confidence
 from src.config import (
     CORS_ALLOW_ORIGINS,
     MAX_UPLOAD_MB,
@@ -80,6 +81,7 @@ class CitationOut(BaseModel):
     box: list[int]      # [ymin, xmin, ymax, xmax] on a 0-1000 scale; [] when not found
     pdf: str | None = None          # enriched from pages[source_page-1]
     page_number: int | None = None
+    confidence: Confidence = "low"  # the model's self-reported answer confidence
 
 
 class StageMeta(BaseModel):
@@ -101,6 +103,9 @@ class QueryMeta(BaseModel):
     est_cost_usd: float = 0.0
     gemini_calls: int = 0
     retrieve_k: int = 0             # configured candidate count (for "retrieved N" display)
+    # Deterministic retrieval-decisiveness (softmax share of the cited page over the
+    # candidate MaxSim scores). None when nothing was cited. See src/confidence.py.
+    retrieval_confidence: float | None = None
     stages: list[StageMeta] = []
 
 
@@ -192,6 +197,19 @@ async def _image_ref(request: Request, fs_path: str | None, inline: bool) -> Ima
     )
 
 
+_CONFIDENCE_LEVELS: tuple[Confidence, ...] = ("high", "medium", "low")
+
+
+def _coerce_confidence(value: object) -> Confidence:
+    """Narrow an untyped citation confidence to the Confidence literal; unknown -> "medium".
+
+    `citation` is a plain dict here, so its `confidence` is statically `str | Any`. Coercing
+    it keeps the typed response model honest (an unexpected value degrades to "medium" rather
+    than raising when CitationOut is built) and lets mypy verify the field type.
+    """
+    return next((level for level in _CONFIDENCE_LEVELS if level == value), "medium")
+
+
 async def _build_query_response(request: Request, result: dict, inline: bool) -> QueryResponse:
     """Shape a raw `run_query` result dict into the HTTP contract.
 
@@ -220,13 +238,17 @@ async def _build_query_response(request: Request, result: dict, inline: bool) ->
 
     citation = result.get("citation") or {}
     source_page = citation.get("source_page", 0)
+    found = bool(citation.get("found"))
     cited = retrieved[source_page - 1] if 1 <= source_page <= len(retrieved) else None
+    # Enforce not-found invariant: "low" confidence when not found, "medium" fallback when found.
+    confidence: Confidence = "low" if not found else _coerce_confidence(citation.get("confidence"))
     citation_out = CitationOut(
-        found=bool(citation.get("found")),
+        found=found,
         source_page=source_page,
         box=citation.get("box") or [],
         pdf=cited["pdf"] if cited else None,
         page_number=cited["page_number"] if cited else None,
+        confidence=confidence,
     )
 
     crop, annotated = await asyncio.gather(
