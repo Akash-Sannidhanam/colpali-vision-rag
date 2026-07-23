@@ -59,7 +59,12 @@ def run_query(question: str) -> dict:
     citation = result.get("citation") or {}
     retrieved = result.get("retrieved", [])
     source_page = citation.get("source_page", 0)
-    cited = retrieved[source_page - 1] if 1 <= source_page <= len(retrieved) else None
+    # Only derive cited when the citation is marked as found and source_page is valid
+    cited = (
+        retrieved[source_page - 1]
+        if citation.get("found") and 1 <= source_page <= len(retrieved)
+        else None
+    )
 
     result["meta"] = {
         "request_id": request_id,

@@ -89,11 +89,19 @@ def answer(question: str, pages: list[dict]) -> dict:
         )
         parsed = response.parsed
         if parsed is not None:
-            return parsed.model_dump()
+            result = parsed.model_dump()
+            # Enforce not-found invariant: confidence must be "low" when found is false
+            if not result.get("found"):
+                result["confidence"] = "low"
+            return result
         # No SDK-parsed object: validate the raw JSON text through the schema, so a
         # valid-JSON-but-wrong-shape response also degrades to not-found instead of
         # KeyError-ing downstream where answer_node reads result["answer"].
-        return Citation(**json.loads(response.text)).model_dump()
+        result = Citation(**json.loads(response.text)).model_dump()
+        # Enforce not-found invariant: confidence must be "low" when found is false
+        if not result.get("found"):
+            result["confidence"] = "low"
+        return result
     except Exception:
         log.warning(
             "answer step failed; returning not-found citation",

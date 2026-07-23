@@ -29,6 +29,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from src.answerer import Confidence
 from src.config import (
     CORS_ALLOW_ORIGINS,
     MAX_UPLOAD_MB,
@@ -80,7 +81,7 @@ class CitationOut(BaseModel):
     box: list[int]      # [ymin, xmin, ymax, xmax] on a 0-1000 scale; [] when not found
     pdf: str | None = None          # enriched from pages[source_page-1]
     page_number: int | None = None
-    confidence: str = "low"         # the model's self-reported answer confidence
+    confidence: Confidence = "low"  # the model's self-reported answer confidence
 
 
 class StageMeta(BaseModel):
@@ -224,14 +225,17 @@ async def _build_query_response(request: Request, result: dict, inline: bool) ->
 
     citation = result.get("citation") or {}
     source_page = citation.get("source_page", 0)
+    found = bool(citation.get("found"))
     cited = retrieved[source_page - 1] if 1 <= source_page <= len(retrieved) else None
+    # Enforce not-found invariant: "low" confidence when not found, "medium" fallback when found
+    confidence = "low" if not found else citation.get("confidence", "medium")
     citation_out = CitationOut(
-        found=bool(citation.get("found")),
+        found=found,
         source_page=source_page,
         box=citation.get("box") or [],
         pdf=cited["pdf"] if cited else None,
         page_number=cited["page_number"] if cited else None,
-        confidence=citation.get("confidence", "low"),
+        confidence=confidence,
     )
 
     crop, annotated = await asyncio.gather(
