@@ -7,7 +7,7 @@ model is never asked to run two forward passes at once and `/health` stays respo
 
 Endpoints:
   POST /query   {question}          -> answer + visual citation + used pages + meta
-  POST /heatmap {question,pdf,page} -> per-patch MaxSim heatmap grid for one page (on-demand)
+  POST /heatmap {question,pdf,page_number} -> per-patch MaxSim heatmap grid for one page (on-demand)
   GET  /health                      -> model-loaded flag + Qdrant reachability (503 if down)
   GET  /corpus                      -> indexed documents + page counts (for the UI rail)
   POST /ingest  (multipart PDF)     -> render/embed/index a PDF (blocking, holds the lock)
