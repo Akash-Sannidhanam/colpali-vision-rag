@@ -88,6 +88,16 @@ export interface IngestResponse {
   indexed_pages: number
 }
 
+// Per-patch MaxSim heatmap for one page (POST /heatmap). grid[y][x] in [0,1] over an
+// n_x x n_y patch grid — the query's match strength at each ColQwen2 patch.
+export interface HeatmapResponse {
+  pdf: string
+  page_number: number
+  n_x: number
+  n_y: number
+  grid: number[][]
+}
+
 // One conversation turn: the question plus its eventual answer (or error/loading).
 export interface Turn {
   question: string

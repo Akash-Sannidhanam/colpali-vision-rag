@@ -1,6 +1,7 @@
 import type {
   CorpusResponse,
   HealthResponse,
+  HeatmapResponse,
   IngestResponse,
   ImageRef,
   QueryResponse,
@@ -42,6 +43,21 @@ export async function query(
     body: JSON.stringify({ question }),
   })
   return asJson<QueryResponse>(res)
+}
+
+/** Per-patch MaxSim heatmap for the given page ("why this page?"). On-demand: called
+ *  only when the Viewer toggle is enabled, since it costs extra model forward passes. */
+export async function heatmap(
+  question: string,
+  pdf: string,
+  pageNumber: number,
+): Promise<HeatmapResponse> {
+  const res = await fetch(`${BASE}/heatmap`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ question, pdf, page_number: pageNumber }),
+  })
+  return asJson<HeatmapResponse>(res)
 }
 
 /** /health returns 503 (not throw) when degraded; parse the body either way. */

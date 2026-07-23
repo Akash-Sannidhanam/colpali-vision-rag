@@ -7,6 +7,7 @@ model is never asked to run two forward passes at once and `/health` stays respo
 
 Endpoints:
   POST /query   {question}          -> answer + visual citation + used pages + meta
+  POST /heatmap {question,pdf,page} -> per-patch MaxSim heatmap grid for one page (on-demand)
   GET  /health                      -> model-loaded flag + Qdrant reachability (503 if down)
   GET  /corpus                      -> indexed documents + page counts (for the UI rail)
   POST /ingest  (multipart PDF)     -> render/embed/index a PDF (blocking, holds the lock)
@@ -43,9 +44,11 @@ from src.config import (
 )
 from src.embedder import is_loaded, load_model
 from src.graph import get_graph
+from src.heatmap import page_similarity
 from src.ingest import run_ingest
 from src.logging_setup import get_logger
 from src.main import run_query
+from src.pdf_render import page_image_path
 from src.vector_store import close_client, list_documents, ping
 
 log = get_logger("server")
@@ -151,6 +154,24 @@ class HealthResponse(BaseModel):
 class IngestResponse(BaseModel):
     pdf: str
     indexed_pages: int
+
+
+class HeatmapRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=2000)
+    pdf: str = Field(min_length=1)
+    page_number: int = Field(ge=1)
+
+
+class HeatmapResponse(BaseModel):
+    """A per-patch MaxSim heatmap for one page: `grid[y][x]` in [0, 1] over an n_x x n_y
+    patch grid (the query's match strength at each ColQwen2 patch). Small enough to send
+    as JSON; the UI paints it onto a canvas stretched over the page image."""
+
+    pdf: str
+    page_number: int
+    n_x: int
+    n_y: int
+    grid: list[list[float]]
 
 
 # --- Lifespan warmup: pay the cold start once, at boot ---
@@ -340,6 +361,25 @@ async def query(req: QueryRequest, request: Request, inline: bool = Query(defaul
     async with _gpu_lock:
         result = await asyncio.to_thread(run_query, req.question)
     return await _build_query_response(request, result, inline)
+
+
+@app.post("/heatmap", response_model=HeatmapResponse)
+async def heatmap(req: HeatmapRequest):
+    """Per-patch MaxSim heatmap for one page - which patches the query lit up ("why this
+    page?"). On-demand (the UI's toggle), not folded into /query, because it costs two
+    extra model forward passes; stateless - the page is named explicitly by (pdf, page).
+    Serializes on the same model lock as /query so the one GPU model runs one pass at a time."""
+    image_path = page_image_path(req.pdf, req.page_number)
+    if not image_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"No indexed page image for {req.pdf} p.{req.page_number}.",
+        )
+    async with _gpu_lock:
+        grid, n_x, n_y = await asyncio.to_thread(page_similarity, req.question, image_path)
+    return HeatmapResponse(
+        pdf=req.pdf, page_number=req.page_number, n_x=n_x, n_y=n_y, grid=grid
+    )
 
 
 async def _save_upload(file: UploadFile) -> tuple[str, list[Path]]:

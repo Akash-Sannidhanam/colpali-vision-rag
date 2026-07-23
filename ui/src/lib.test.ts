@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { boxToOverlay, citedPage, regionsOnPage } from './lib'
+import { boxToOverlay, citedPage, heatmapRGBA, regionsOnPage } from './lib'
 import type { PageHit, Region } from './types'
 
 describe('boxToOverlay', () => {
@@ -59,5 +59,27 @@ describe('regionsOnPage', () => {
     ])
     expect(regionsOnPage(regions, 2)).toHaveLength(1)
     expect(regionsOnPage(regions, 9)).toEqual([])
+  })
+})
+
+describe('heatmapRGBA', () => {
+  it('is fully transparent for a cold patch', () => {
+    expect(heatmapRGBA(0)[3]).toBe(0)
+  })
+
+  it('is red-dominant and near-opaque at the hot end', () => {
+    const [r, g, b, a] = heatmapRGBA(1)
+    expect(a).toBeCloseTo(0.72)
+    expect(r).toBeGreaterThan(g)
+    expect(r).toBeGreaterThan(b)
+  })
+
+  it('has monotonically increasing alpha with value', () => {
+    expect(heatmapRGBA(0.25)[3]).toBeLessThan(heatmapRGBA(0.75)[3])
+  })
+
+  it('clamps out-of-range input', () => {
+    expect(heatmapRGBA(-1)[3]).toBe(0)
+    expect(heatmapRGBA(2)[3]).toBeCloseTo(0.72)
   })
 })
