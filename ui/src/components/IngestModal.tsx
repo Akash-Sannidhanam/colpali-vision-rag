@@ -1,11 +1,17 @@
 import { useRef, useState } from 'react'
-import { ingest } from '../api'
+import { ingestStream } from '../api'
 import type { IngestResponse } from '../types'
 
-type Status = { phase: 'idle' | 'running' | 'done' | 'error'; msg?: string; result?: IngestResponse }
+type Progress = { label: string; page?: number; total?: number }
+type Status = {
+  phase: 'idle' | 'running' | 'done' | 'error'
+  msg?: string
+  result?: IngestResponse
+  progress?: Progress
+}
 
-/** The ingest modal: drop/choose a PDF, then a blocking render→embed→index run with a
- *  simple progress state (live per-page streaming is a deferred enhancement). */
+/** The ingest modal: drop/choose a PDF, then a render→embed→index run that streams
+ *  live per-page progress (SSE) into a progress bar. */
 export function IngestModal({
   onClose,
   onDone,
@@ -29,9 +35,28 @@ export function IngestModal({
 
   const run = async () => {
     if (!file) return
-    setStatus({ phase: 'running' })
+    setStatus({ phase: 'running', progress: { label: 'starting…' } })
+    let indexed = 0
+    let pdf = file.name
     try {
-      const r = await ingest(file)
+      await ingestStream(file, (e) => {
+        if (e.phase === 'render') {
+          setStatus({ phase: 'running', progress: { label: `rendering ${e.pdf}…` } })
+        } else if (e.phase === 'pages') {
+          setStatus({ phase: 'running', progress: { label: `${e.total} pages to index`, total: e.total } })
+        } else if (e.phase === 'embed') {
+          setStatus({
+            phase: 'running',
+            progress: { label: `embedding page ${e.page} / ${e.total}`, page: e.page, total: e.total },
+          })
+        } else if (e.phase === 'done') {
+          indexed = e.indexed_pages ?? 0
+          pdf = e.pdf ?? pdf
+        } else if (e.phase === 'error') {
+          throw new Error(e.detail ?? 'Ingest failed.')
+        }
+      })
+      const r = { pdf, indexed_pages: indexed }
       setStatus({ phase: 'done', result: r })
       onDone(r)
     } catch (e) {
@@ -40,6 +65,8 @@ export function IngestModal({
   }
 
   const running = status.phase === 'running'
+  const prog = status.progress
+  const pct = prog?.total ? Math.round(((prog.page ?? 0) / prog.total) * 100) : null
 
   return (
     <div className="overlay" onClick={running ? undefined : onClose}>
@@ -52,9 +79,15 @@ export function IngestModal({
             ✓ {status.result.pdf} indexed · {status.result.indexed_pages} pages
           </div>
         ) : running ? (
-          <div className="progress">
-            <div className="spinner" /> rendering → embedding → indexing {file?.name}… this can take a
-            minute.
+          <div className="progress-wrap">
+            <div className="progress">
+              <div className="spinner" /> {prog?.label ?? `indexing ${file?.name}…`}
+            </div>
+            {prog?.total ? (
+              <div className="progress-bar">
+                <div className="progress-fill" style={{ width: `${pct ?? 0}%` }} />
+              </div>
+            ) : null}
           </div>
         ) : (
           <div

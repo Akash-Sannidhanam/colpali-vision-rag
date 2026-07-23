@@ -32,16 +32,21 @@ def test_valid_citation_passes_through_and_routes_as_answer(monkeypatch):
     monkeypatch.setattr(answerer, "image_part", lambda p: None)
     calls: list = []
     citation = answerer.Citation(
-        answer="42", found=True, source_page=1, box=[10, 20, 30, 40], confidence="high"
+        answer="42",
+        found=True,
+        regions=[answerer.Region(source_page=1, box=[10, 20, 30, 40])],
+        confidence="high",
     )
     resp = SimpleNamespace(parsed=citation, text="")
     monkeypatch.setattr(answerer, "generate", _fake_generate(calls, result=resp))
 
     out = answerer.answer("q", [_page(1)])
 
+    # regions is authoritative; source_page/box are derived from the first region.
     assert out == {
         "answer": "42",
         "found": True,
+        "regions": [{"source_page": 1, "box": [10, 20, 30, 40]}],
         "source_page": 1,
         "box": [10, 20, 30, 40],
         "confidence": "high",
@@ -56,7 +61,7 @@ def test_valid_text_json_is_parsed_when_sdk_parse_is_none(monkeypatch):
     monkeypatch.setattr(answerer, "image_part", lambda p: None)
     resp = SimpleNamespace(
         parsed=None,
-        text='{"answer": "x", "found": true, "source_page": 2, "box": [1, 2, 3, 4]}',
+        text='{"answer": "x", "found": true, "regions": [{"source_page": 2, "box": [1, 2, 3, 4]}]}',
     )
     monkeypatch.setattr(answerer, "generate", _fake_generate([], result=resp))
 
@@ -66,6 +71,7 @@ def test_valid_text_json_is_parsed_when_sdk_parse_is_none(monkeypatch):
     assert out == {
         "answer": "x",
         "found": True,
+        "regions": [{"source_page": 2, "box": [1, 2, 3, 4]}],
         "source_page": 2,
         "box": [1, 2, 3, 4],
         "confidence": "medium",
@@ -100,6 +106,37 @@ def test_generate_exception_falls_back_to_not_found(monkeypatch):
     assert answerer.answer("q", [_page(1)]) == answerer._NOT_FOUND
 
 
+def test_multiple_regions_pass_through_capped_at_max(monkeypatch):
+    monkeypatch.setattr(answerer, "image_part", lambda p: None)
+    # Four regions returned; MAX_REGIONS keeps the first few, primary = the first.
+    regions = [answerer.Region(source_page=i, box=[i, i, i + 10, i + 10]) for i in range(1, 5)]
+    citation = answerer.Citation(answer="two cells", found=True, regions=regions)
+    resp = SimpleNamespace(parsed=citation, text="")
+    monkeypatch.setattr(answerer, "generate", _fake_generate([], result=resp))
+
+    out = answerer.answer("compare", [_page(i) for i in range(1, 5)])
+
+    assert len(out["regions"]) == answerer.MAX_REGIONS
+    assert out["source_page"] == 1 and out["box"] == [1, 1, 11, 11]   # primary = first region
+    assert [r["source_page"] for r in out["regions"]] == [1, 2, 3]
+
+
+def test_not_found_normalizes_regions_to_empty(monkeypatch):
+    monkeypatch.setattr(answerer, "image_part", lambda p: None)
+    # A found=false response with a stray region -> regions cleared, primary zeroed.
+    citation = answerer.Citation(
+        answer="not here", found=False,
+        regions=[answerer.Region(source_page=1, box=[1, 2, 3, 4])],
+    )
+    resp = SimpleNamespace(parsed=citation, text="")
+    monkeypatch.setattr(answerer, "generate", _fake_generate([], result=resp))
+
+    out = answerer.answer("q", [_page(1)])
+
+    assert out["found"] is False
+    assert out["regions"] == [] and out["source_page"] == 0 and out["box"] == []
+
+
 def test_answer_node_to_highlight_node_survives_bad_response(monkeypatch):
     """A failed answer yields a not-found citation that highlight_node skips cleanly."""
     from src import graph
@@ -119,4 +156,9 @@ def test_answer_node_to_highlight_node_survives_bad_response(monkeypatch):
     assert answered["citation"]["found"] is False
     state.update(answered)
 
-    assert graph.highlight_node(state) == {"crop_path": None, "annotated_path": None}
+    assert graph.highlight_node(state) == {
+        "crop_path": None,
+        "annotated_path": None,
+        "cited_regions": [],
+        "annotated_paths": [],
+    }

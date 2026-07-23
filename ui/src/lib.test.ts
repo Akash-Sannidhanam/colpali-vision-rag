@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { boxToOverlay, citedPage } from './lib'
-import type { PageHit } from './types'
+import { boxToOverlay, citedPage, regionsOnPage } from './lib'
+import type { PageHit, Region } from './types'
 
 describe('boxToOverlay', () => {
   it('maps a 0-1000 box to CSS percentages', () => {
@@ -42,5 +42,22 @@ describe('citedPage', () => {
   it('returns null when out of range (e.g. not-found -> 0)', () => {
     expect(citedPage(pages, 0)).toBeNull()
     expect(citedPage(pages, 3)).toBeNull()
+  })
+})
+
+describe('regionsOnPage', () => {
+  const regions = [
+    { source_page: 1, box: [10, 10, 20, 20], pdf: 'a.pdf', page_number: 3, crop: null },
+    { source_page: 2, box: [30, 30, 40, 40], pdf: 'a.pdf', page_number: 5, crop: null },
+    { source_page: 1, box: [50, 50, 60, 60], pdf: 'a.pdf', page_number: 3, crop: null },
+  ] as Region[]
+
+  it('keeps only the regions that fall on the given page', () => {
+    expect(regionsOnPage(regions, 1).map((r) => r.box)).toEqual([
+      [10, 10, 20, 20],
+      [50, 50, 60, 60],
+    ])
+    expect(regionsOnPage(regions, 2)).toHaveLength(1)
+    expect(regionsOnPage(regions, 9)).toEqual([])
   })
 })

@@ -45,28 +45,37 @@ def _to_pixel_box(
     return (left, upper, right, lower)
 
 
-def crop_region(image_path: Path, box: list[int]) -> Path:
-    """Crop the answer region out of a page PNG and save it. Returns the path."""
+def crop_region(image_path: Path, box: list[int], index: int = 0) -> Path:
+    """Crop one answer region out of a page PNG and save it. Returns the path.
+
+    `index` disambiguates the filename so several regions cropped from the same page
+    in one answer don't clobber each other (`<stem>_crop_<index>.png`).
+    """
     CROPS_DIR.mkdir(parents=True, exist_ok=True)
     image_path = Path(image_path)
     with Image.open(image_path) as page_file:
         page = page_file.convert("RGB")
         pixel_box = _to_pixel_box(box, page.width, page.height)
         crop = page.crop(pixel_box)
-        out_path = CROPS_DIR / f"{image_path.stem}_crop.png"
+        out_path = CROPS_DIR / f"{image_path.stem}_crop_{index}.png"
         crop.save(out_path, format="PNG")
     return out_path
 
 
-def annotate_page(image_path: Path, box: list[int]) -> Path:
-    """Save a copy of the page with the answer region outlined. Returns the path."""
+def annotate_page(image_path: Path, boxes: list[list[int]]) -> Path:
+    """Save a copy of the page with every answer region on it outlined. Returns the path.
+
+    Takes a list of boxes (all the cited regions that fall on this page) and draws each,
+    so a single annotated image shows all of a page's citations at once.
+    """
     CROPS_DIR.mkdir(parents=True, exist_ok=True)
     image_path = Path(image_path)
     with Image.open(image_path) as page_file:
         page = page_file.convert("RGB")
-        pixel_box = _to_pixel_box(box, page.width, page.height)
         draw = ImageDraw.Draw(page)
-        draw.rectangle(pixel_box, outline="red", width=max(3, page.width // 200))
+        for box in boxes:
+            pixel_box = _to_pixel_box(box, page.width, page.height)
+            draw.rectangle(pixel_box, outline="red", width=max(3, page.width // 200))
         out_path = CROPS_DIR / f"{image_path.stem}_annotated.png"
         page.save(out_path, format="PNG")
     return out_path

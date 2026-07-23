@@ -31,15 +31,23 @@ def _canned_result(found: bool = True) -> dict:
         {"pdf": "attention.pdf", "page_number": 5, "score": 8.1,
          "image_path": str(server.PAGE_IMAGES_DIR / "attention_page_5.png")},
     ]
+    crops = server.PAGE_IMAGES_DIR / "crops"
     if found:
         citation = {"answer": "42", "found": True, "source_page": 1, "box": [140, 300, 660, 700],
                     "confidence": "high"}
-        crop = str(server.PAGE_IMAGES_DIR / "crops" / "attention_page_3_crop.png")
-        annotated = str(server.PAGE_IMAGES_DIR / "crops" / "attention_page_3_annotated.png")
+        crop = str(crops / "attention_page_3_crop_0.png")
+        annotated = str(crops / "attention_page_3_annotated.png")
+        # two cited regions across the two reranked pages, each with its own crop
+        cited_regions = [
+            {"source_page": 1, "box": [140, 300, 660, 700], "crop_path": crop},
+            {"source_page": 2, "box": [100, 100, 400, 400],
+             "crop_path": str(crops / "attention_page_5_crop_1.png")},
+        ]
     else:
         # confidence intentionally omitted -> the server should fall back to "low".
         citation = {"answer": "Couldn't find it.", "found": False, "source_page": 0, "box": []}
         crop = annotated = None
+        cited_regions = []
     return {
         "question": "what?",
         "retrieved": retrieved,
@@ -47,6 +55,7 @@ def _canned_result(found: bool = True) -> dict:
         "citation": citation,
         "crop_path": crop,
         "annotated_path": annotated,
+        "cited_regions": cited_regions,
         "meta": {
             "request_id": "abc123", "latency_ms": 3400.0,
             "prompt_tokens": 9000, "output_tokens": 2000, "total_tokens": 11000,
@@ -124,11 +133,18 @@ def test_query_happy_path_shape(warm, monkeypatch):
     assert cit["pdf"] == "attention.pdf" and cit["page_number"] == 3   # enriched from pages[0]
     assert cit["confidence"] == "high"                                 # model self-report
 
+    # multi-region: each cited region carries its own page enrichment + crop image
+    assert len(cit["regions"]) == 2
+    assert cit["regions"][0]["source_page"] == 1 and cit["regions"][0]["page_number"] == 3
+    assert cit["regions"][1]["source_page"] == 2 and cit["regions"][1]["page_number"] == 5
+    assert cit["regions"][0]["crop"]["url"].endswith("attention_page_3_crop_0.png")
+    assert cit["regions"][1]["crop"]["url"].endswith("attention_page_5_crop_1.png")
+
     assert len(body["pages"]) == 2
     assert body["pages"][0]["image"]["url"].endswith("/images/attention_page_3.png")
     assert body["pages"][0]["image"]["data_uri"] is None               # url mode by default
 
-    assert body["crop"]["url"].endswith("attention_page_3_crop.png")
+    assert body["crop"]["url"].endswith("attention_page_3_crop_0.png")
     assert body["annotated"]["url"].endswith("attention_page_3_annotated.png")
 
     meta = body["meta"]
@@ -147,6 +163,7 @@ def test_query_not_found_has_no_crop(warm, monkeypatch):
     assert body["citation"]["found"] is False and body["citation"]["source_page"] == 0
     assert body["citation"]["pdf"] is None
     assert body["citation"]["confidence"] == "low"                     # default when omitted
+    assert body["citation"]["regions"] == []                           # no regions when not found
     assert body["meta"]["retrieval_confidence"] is None                # nothing cited
     assert body["crop"] is None and body["annotated"] is None
     assert len(body["pages"]) == 2                                     # candidates still surfaced
@@ -191,6 +208,32 @@ def test_ingest_happy_path(warm, monkeypatch, tmp_path):
 
 def test_ingest_rejects_non_pdf(warm):
     resp = warm.post("/ingest", files={"file": ("notes.txt", b"hello", "text/plain")})
+    assert resp.status_code == 400
+
+
+def test_ingest_stream_emits_progress_and_done(warm, monkeypatch, tmp_path):
+    monkeypatch.setattr(server, "PDFS_DIR", tmp_path)
+
+    def fake_run_ingest(paths, progress):
+        progress({"phase": "render", "pdf": "doc.pdf"})
+        progress({"phase": "embed", "pdf": "doc.pdf", "page": 1, "total": 1})
+        return 1
+
+    monkeypatch.setattr(server, "run_ingest", fake_run_ingest)
+    resp = warm.post("/ingest/stream",
+                     files={"file": ("doc.pdf", b"%PDF-1.4 fake", "application/pdf")})
+    assert resp.status_code == 200
+    assert "text/event-stream" in resp.headers["content-type"]
+
+    frames = resp.text
+    assert '"phase": "render"' in frames
+    assert '"phase": "embed"' in frames                    # per-page progress streamed
+    assert '"phase": "done"' in frames and '"indexed_pages": 1' in frames
+
+
+def test_ingest_stream_rejects_non_pdf(warm):
+    # validation happens before the stream opens, so a bad upload is a plain 400
+    resp = warm.post("/ingest/stream", files={"file": ("notes.txt", b"hi", "text/plain")})
     assert resp.status_code == 400
 
 

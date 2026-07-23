@@ -513,6 +513,11 @@ body {
   animation: box-in 0.5s ease;
   pointer-events: none;
 }
+/* With more than one region the single-box "spotlight" scrim can't compose (each box
+   would darken the others), so multi-region overlays keep just the outline + glow. */
+.box-overlay.multi {
+  box-shadow: 0 0 22px var(--acc-glow);
+}
 .coord-tag {
   position: absolute;
   transform: translateY(-100%);
@@ -528,13 +533,30 @@ body {
   padding: 12px 16px 4px;
   border-top: 1px solid var(--ln-2);
 }
+.crops-strip {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
 .crop-frame {
+  position: relative;
   border-radius: 8px;
   overflow: hidden;
   border: 1px solid var(--acc-bd);
   background: var(--s-base);
   max-height: 180px;
   display: inline-block;
+}
+.crop-page {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  font: 600 9px var(--mono);
+  background: var(--scrim);
+  color: var(--t-2);
+  padding: 2px 5px;
+  border-radius: 4px;
 }
 .crop-frame img {
   display: block;
@@ -689,6 +711,12 @@ body {
   opacity: 0.5;
   cursor: not-allowed;
 }
+.progress-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px 4px;
+}
 .progress {
   display: flex;
   align-items: center;
@@ -696,6 +724,21 @@ body {
   padding: 20px 4px;
   color: var(--t-3);
   font: 500 12px var(--mono);
+}
+.progress-wrap .progress {
+  padding: 0;
+}
+.progress-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--s-mute);
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  background: var(--acc);
+  border-radius: 3px;
+  transition: width 0.25s ease;
 }
 .spinner {
   width: 18px;

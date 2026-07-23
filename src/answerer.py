@@ -15,14 +15,25 @@ log = get_logger("answerer")
 
 Confidence = Literal["high", "medium", "low"]
 
+# Cap on regions the model may cite, so one answer can't fan out into a wall of crops.
+MAX_REGIONS = 3
+
+
+class Region(BaseModel):
+    """One place the answer was read from: a box on a specific retrieved page."""
+
+    source_page: int     # 1-based PAGE number from the labels below
+    box: list[int]       # [ymin, xmin, ymax, xmax], integers 0-1000
+
 
 class Citation(BaseModel):
-    """Structured answer plus the region of the page it was read from."""
+    """Structured answer plus every region of the pages it was read from."""
 
     answer: str          # natural-language answer, using only the pages
     found: bool          # whether the answer was actually located in the pages
-    source_page: int     # 1-based PAGE number from the labels below (0 if not found)
-    box: list[int]       # [ymin, xmin, ymax, xmax], integers 0-1000; [] if not found
+    # Cited regions, most important first ([] if not found). The first region is the
+    # "primary" one the back-compat source_page/box fields are derived from.
+    regions: list[Region]
     # The model's own self-reported confidence in the answer. Optional with a neutral
     # default so a valid answer that omits it still comes through rather than degrading
     # to not-found. Miscalibrated by nature - surface it as the model's word, next to
@@ -36,17 +47,19 @@ _PROMPT = (
     including charts, tables, and scanned text. If the answer is a number from a
     chart or table, state it exactly.
 
-    Also report exactly where you read the answer from:
-    - source_page: the PAGE <n> number the answer came from.
-    - box: a tight bounding box around that chart/table/text region, as four
-      integers [ymin, xmin, ymax, xmax] normalized to a 0-1000 scale (top-left
-      origin) relative to that page.
+    Also report every distinct region you read the answer from, most important
+    first (at most 3 - e.g. two cells being compared, or a value and its label):
+    - regions: a list where each item has:
+        - source_page: the PAGE <n> number that region came from.
+        - box: a tight bounding box around that chart/table/text region, as four
+          integers [ymin, xmin, ymax, xmax] normalized to a 0-1000 scale (top-left
+          origin) relative to that page.
     - found: true if the pages contain the answer, otherwise false.
     - confidence: how confident you are that this answer is correct given only
       these pages - exactly one of "high", "medium", or "low".
 
     If the pages do not contain the answer, say so in `answer`, set found=false,
-    source_page=0, and box=[].
+    and regions=[].
 
     Question: {question}""")
 
@@ -60,10 +73,34 @@ def image_part(image_path: Path) -> types.Part:
 _NOT_FOUND = {
     "answer": "Couldn't read the retrieved pages.",
     "found": False,
+    "regions": [],
     "source_page": 0,
     "box": [],
     "confidence": "low",
 }
+
+
+def _with_primary(citation: Citation) -> dict:
+    """Flatten a parsed Citation to the pipeline dict, adding back-compat primary fields.
+
+    The multi-region `regions` list is authoritative, but downstream consumers (graph
+    highlight, server, CLI, eval/scoring) still read a single 1-based `source_page` +
+    `box`. Derive those from the first region (capped at MAX_REGIONS), and normalize a
+    not-found answer to no regions (and "low" confidence) so highlight/eval skip cleanly.
+    """
+    d = citation.model_dump()
+    if d["found"]:
+        regions = d["regions"][:MAX_REGIONS]
+    else:
+        # A model may claim found=false yet report high confidence; pin the not-found
+        # invariant so a not-found answer is always "low" with no regions.
+        regions = []
+        d["confidence"] = "low"
+    d["regions"] = regions
+    primary = regions[0] if regions else {"source_page": 0, "box": []}
+    d["source_page"] = primary["source_page"]
+    d["box"] = primary["box"]
+    return d
 
 
 def answer(question: str, pages: list[dict]) -> dict:
@@ -89,19 +126,11 @@ def answer(question: str, pages: list[dict]) -> dict:
         )
         parsed = response.parsed
         if parsed is not None:
-            result = parsed.model_dump()
-            # Enforce not-found invariant: confidence must be "low" when found is false
-            if not result.get("found"):
-                result["confidence"] = "low"
-            return result
+            return _with_primary(parsed)
         # No SDK-parsed object: validate the raw JSON text through the schema, so a
         # valid-JSON-but-wrong-shape response also degrades to not-found instead of
         # KeyError-ing downstream where answer_node reads result["answer"].
-        result = Citation(**json.loads(response.text)).model_dump()
-        # Enforce not-found invariant: confidence must be "low" when found is false
-        if not result.get("found"):
-            result["confidence"] = "low"
-        return result
+        return _with_primary(Citation(**json.loads(response.text)))
     except Exception:
         log.warning(
             "answer step failed; returning not-found citation",
