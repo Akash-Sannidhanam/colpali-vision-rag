@@ -197,6 +197,19 @@ async def _image_ref(request: Request, fs_path: str | None, inline: bool) -> Ima
     )
 
 
+_CONFIDENCE_LEVELS: tuple[Confidence, ...] = ("high", "medium", "low")
+
+
+def _coerce_confidence(value: object) -> Confidence:
+    """Narrow an untyped citation confidence to the Confidence literal; unknown -> "medium".
+
+    `citation` is a plain dict here, so its `confidence` is statically `str | Any`. Coercing
+    it keeps the typed response model honest (an unexpected value degrades to "medium" rather
+    than raising when CitationOut is built) and lets mypy verify the field type.
+    """
+    return next((level for level in _CONFIDENCE_LEVELS if level == value), "medium")
+
+
 async def _build_query_response(request: Request, result: dict, inline: bool) -> QueryResponse:
     """Shape a raw `run_query` result dict into the HTTP contract.
 
@@ -227,8 +240,8 @@ async def _build_query_response(request: Request, result: dict, inline: bool) ->
     source_page = citation.get("source_page", 0)
     found = bool(citation.get("found"))
     cited = retrieved[source_page - 1] if 1 <= source_page <= len(retrieved) else None
-    # Enforce not-found invariant: "low" confidence when not found, "medium" fallback when found
-    confidence = "low" if not found else citation.get("confidence", "medium")
+    # Enforce not-found invariant: "low" confidence when not found, "medium" fallback when found.
+    confidence: Confidence = "low" if not found else _coerce_confidence(citation.get("confidence"))
     citation_out = CitationOut(
         found=found,
         source_page=source_page,
