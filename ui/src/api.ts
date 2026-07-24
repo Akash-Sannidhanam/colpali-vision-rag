@@ -1,5 +1,6 @@
 import type {
   CorpusResponse,
+  DeleteResponse,
   HealthResponse,
   HeatmapResponse,
   IngestResponse,
@@ -70,6 +71,12 @@ export async function getCorpus(): Promise<CorpusResponse> {
   return asJson<CorpusResponse>(await fetch(`${BASE}/corpus`))
 }
 
+/** Remove a document from the corpus: vectors, page images, crops, and the stored PDF. */
+export async function deleteDocument(pdf: string): Promise<DeleteResponse> {
+  const res = await fetch(`${BASE}/corpus/${encodeURIComponent(pdf)}`, { method: 'DELETE' })
+  return asJson<DeleteResponse>(res)
+}
+
 export async function ingest(file: File): Promise<IngestResponse> {
   const fd = new FormData()
   fd.append('file', file)
@@ -78,7 +85,7 @@ export async function ingest(file: File): Promise<IngestResponse> {
 
 // One progress event from POST /ingest/stream (mirrors src.ingest event dicts).
 export interface IngestEvent {
-  phase: 'render' | 'pages' | 'embed' | 'stored' | 'done' | 'error'
+  phase: 'render' | 'pages' | 'embed' | 'stored' | 'skip' | 'done' | 'error'
   pdf?: string
   page?: number
   total?: number

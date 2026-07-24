@@ -22,6 +22,7 @@ def _capture(logger_name: str):
 
 
 def test_timed_logs_start_and_end_with_node_and_latency():
+    """The wrapper logs node start/end with a latency and passes the return value through."""
     records, detach = _capture("graph")
     try:
         wrapped = graph._timed("retrieve", lambda state: {"ok": True})
@@ -37,7 +38,9 @@ def test_timed_logs_start_and_end_with_node_and_latency():
 
 
 def test_timed_logs_end_even_when_node_raises():
+    """A raising node still logs `node end` and the exception still propagates."""
     def boom(state):
+        """A node that always raises, to exercise the failure path."""
         raise RuntimeError("nope")
 
     records, detach = _capture("graph")
@@ -56,6 +59,7 @@ def test_timed_logs_end_even_when_node_raises():
 
 
 def test_timed_records_a_stage_when_inside_a_request():
+    """Inside a request scope the wrapper contributes a stage to the breakdown."""
     scope = request_context.begin_request()
     try:
         graph._timed("rerank", lambda state: {"ok": True})({"question": "q"})

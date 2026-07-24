@@ -164,6 +164,7 @@ def run_full(dataset: list[dict], use_judge: bool) -> list[dict]:
 
 
 def _config_snapshot(mode: str, dataset_path: str, use_judge: bool) -> dict:
+    """The knob values this run used, embedded in the report so runs diff cleanly."""
     return {
         "mode": mode,
         "dataset": dataset_path,
@@ -196,6 +197,7 @@ def gate_status(summary: dict, metric: str, threshold: float | None) -> tuple[bo
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Parse args, run the requested eval mode, write the report; return the exit code."""
     parser = argparse.ArgumentParser(description="Score the RAG pipeline against the labeled dataset.")
     parser.add_argument("--dataset", default=str(DEFAULT_DATASET))
     parser.add_argument("--output", default=None, help="report path (default eval/reports/eval_<utc>.json)")

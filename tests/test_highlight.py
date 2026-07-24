@@ -10,26 +10,31 @@ from src.highlight import _to_pixel_box
 
 
 def test_full_page_box_clamps_to_image():
+    """A full-extent box maps to the whole image without overflowing it."""
     # [ymin, xmin, ymax, xmax] covering the whole 0-1000 space -> full image.
     assert _to_pixel_box([0, 0, 1000, 1000], 800, 1000) == (0, 0, 800, 1000)
 
 
 def test_empty_or_malformed_box_falls_back_to_full_page():
+    """A missing or wrong-length box degrades to the full page."""
     assert _to_pixel_box([], 800, 1000) == (0, 0, 800, 1000)
     assert _to_pixel_box([1, 2, 3], 800, 1000) == (0, 0, 800, 1000)
 
 
 def test_mid_box_scales_and_pads():
+    """A mid-page box scales from the 0-1000 scale and gains the context padding."""
     # [250,250,750,750] on a 1000x1000 page -> 250..750px, +4% (40px) padding.
     assert _to_pixel_box([250, 250, 750, 750], 1000, 1000) == (210, 210, 790, 790)
 
 
 def test_swapped_min_max_is_normalized():
+    """A model that swaps min and max still produces the same rectangle."""
     # A box with max < min must still produce the same valid region.
     assert _to_pixel_box([750, 750, 250, 250], 1000, 1000) == (210, 210, 790, 790)
 
 
 def test_padding_is_clamped_at_edges():
+    """Padding never pushes the crop outside the image bounds."""
     # A box hugging the top-left corner cannot pad below (0, 0).
     left, upper, right, lower = _to_pixel_box([0, 0, 100, 100], 1000, 1000)
     assert (left, upper) == (0, 0)
@@ -37,11 +42,12 @@ def test_padding_is_clamped_at_edges():
 
 
 def test_degenerate_box_falls_back_to_full_page():
-    # Zero-area box with no padding -> whole page rather than an empty crop.
+    """A zero-area box shows the whole page rather than an empty crop."""
     assert _to_pixel_box([500, 500, 500, 500], 1000, 1000, pad_frac=0) == (0, 0, 1000, 1000)
 
 
 def test_crop_and_annotate_write_files(tmp_path, monkeypatch):
+    """Both outputs are written; the crop is a sub-region and the annotated copy is full size."""
     monkeypatch.setattr(highlight, "CROPS_DIR", tmp_path)
     page = tmp_path / "doc_page_1.png"
     Image.new("RGB", (1000, 1400), "white").save(page)
@@ -59,12 +65,14 @@ def test_crop_and_annotate_write_files(tmp_path, monkeypatch):
 
 
 def _red_pixels(path) -> int:
+    """Count roughly-red pixels in an image - a proxy for drawn outline."""
     with Image.open(path) as img:
         colors = img.getcolors(maxcolors=1_000_000) or []
         return sum(count for count, px in colors if px[0] > 150 and px[1] < 100 and px[2] < 100)
 
 
 def test_crop_index_disambiguates_filenames(tmp_path, monkeypatch):
+    """Two regions from one page get distinct filenames instead of clobbering each other."""
     monkeypatch.setattr(highlight, "CROPS_DIR", tmp_path)
     page = tmp_path / "doc_page_1.png"
     Image.new("RGB", (1000, 1400), "white").save(page)
@@ -77,6 +85,7 @@ def test_crop_index_disambiguates_filenames(tmp_path, monkeypatch):
 
 
 def test_annotate_draws_every_box(tmp_path, monkeypatch):
+    """Every box in the list is drawn, not just the first."""
     monkeypatch.setattr(highlight, "CROPS_DIR", tmp_path)
     page = tmp_path / "doc_page_1.png"
     Image.new("RGB", (1000, 1400), "white").save(page)
@@ -90,6 +99,7 @@ def test_annotate_draws_every_box(tmp_path, monkeypatch):
 
 
 def test_highlight_node_crops_each_region(tmp_path, monkeypatch):
+    """Each cited region gets its own crop, with the primary mirroring the first region."""
     from src import graph
 
     monkeypatch.setattr(highlight, "CROPS_DIR", tmp_path)
@@ -116,6 +126,7 @@ def test_highlight_node_crops_each_region(tmp_path, monkeypatch):
 
 
 def test_highlight_node_skips_invalid_regions(tmp_path, monkeypatch):
+    """Out-of-range pages and malformed boxes are skipped rather than crashing the node."""
     from src import graph
 
     monkeypatch.setattr(highlight, "CROPS_DIR", tmp_path)

@@ -21,6 +21,7 @@ def _page(n: int) -> dict:
 def _fake_generate(record, *, result=None, error=None):
     """A stand-in for gemini_client.generate that records kwargs and returns/raises."""
     def _gen(**kwargs):
+        """Record the call kwargs, then raise `error` or return the canned response."""
         record.append(kwargs)
         if error is not None:
             raise error
@@ -29,6 +30,7 @@ def _fake_generate(record, *, result=None, error=None):
 
 
 def test_valid_citation_passes_through_and_routes_as_answer(monkeypatch):
+    """A well-formed Citation survives intact and is routed through the shared client as an answer call."""
     monkeypatch.setattr(answerer, "image_part", lambda p: None)
     calls: list = []
     citation = answerer.Citation(
@@ -58,6 +60,7 @@ def test_valid_citation_passes_through_and_routes_as_answer(monkeypatch):
 
 
 def test_valid_text_json_is_parsed_when_sdk_parse_is_none(monkeypatch):
+    """When the SDK gives no `.parsed`, the raw JSON text is parsed and defaults are filled in."""
     monkeypatch.setattr(answerer, "image_part", lambda p: None)
     resp = SimpleNamespace(
         parsed=None,
@@ -79,6 +82,7 @@ def test_valid_text_json_is_parsed_when_sdk_parse_is_none(monkeypatch):
 
 
 def test_malformed_text_falls_back_to_not_found(monkeypatch):
+    """Unparseable text degrades to a copy of the not-found citation, never the shared constant."""
     monkeypatch.setattr(answerer, "image_part", lambda p: None)
     resp = SimpleNamespace(parsed=None, text="definitely not json {{{")
     monkeypatch.setattr(answerer, "generate", _fake_generate([], result=resp))
@@ -91,6 +95,7 @@ def test_malformed_text_falls_back_to_not_found(monkeypatch):
 
 
 def test_wrong_shape_json_falls_back_to_not_found(monkeypatch):
+    """Valid JSON of the wrong shape is rejected by re-validation and degrades to not-found."""
     monkeypatch.setattr(answerer, "image_part", lambda p: None)
     resp = SimpleNamespace(parsed=None, text='{"unexpected": "shape"}')
     monkeypatch.setattr(answerer, "generate", _fake_generate([], result=resp))
@@ -99,6 +104,7 @@ def test_wrong_shape_json_falls_back_to_not_found(monkeypatch):
 
 
 def test_generate_exception_falls_back_to_not_found(monkeypatch):
+    """A Gemini failure degrades instead of raising, so the graph's highlight step still runs."""
     monkeypatch.setattr(answerer, "image_part", lambda p: None)
     monkeypatch.setattr(answerer, "generate", _fake_generate([], error=RuntimeError("boom")))
 
@@ -107,6 +113,7 @@ def test_generate_exception_falls_back_to_not_found(monkeypatch):
 
 
 def test_multiple_regions_pass_through_capped_at_max(monkeypatch):
+    """Regions are capped at MAX_REGIONS and the primary box mirrors the first region."""
     monkeypatch.setattr(answerer, "image_part", lambda p: None)
     # Four regions returned; MAX_REGIONS keeps the first few, primary = the first.
     regions = [answerer.Region(source_page=i, box=[i, i, i + 10, i + 10]) for i in range(1, 5)]
@@ -122,6 +129,7 @@ def test_multiple_regions_pass_through_capped_at_max(monkeypatch):
 
 
 def test_not_found_normalizes_regions_to_empty(monkeypatch):
+    """A found=false answer has its stray regions cleared and its primary citation zeroed."""
     monkeypatch.setattr(answerer, "image_part", lambda p: None)
     # A found=false response with a stray region -> regions cleared, primary zeroed.
     citation = answerer.Citation(

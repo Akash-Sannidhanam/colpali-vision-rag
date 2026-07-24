@@ -35,6 +35,11 @@ COLPALI_MODEL = os.getenv("COLPALI_MODEL") or "vidore/colqwen2-v1.0"
 # Page render resolution. Higher DPI = more ColQwen patches = finer detail on dense
 # tables/small text, at more ingest time + storage. Env-overridable for A/B ingests.
 RENDER_DPI = int(os.getenv("RENDER_DPI", "150"))
+# Identifies what produced a stored vector. Written into every point's payload so an
+# incremental ingest can tell a still-current page from a stale one: changing the model
+# or the render DPI invalidates every embedding while leaving the PDF bytes untouched,
+# which a content hash alone would miss (see src/ingest.py).
+EMBED_VERSION = f"{COLPALI_MODEL}@{RENDER_DPI}"
 
 COLLECTION_NAME = "pdf_pages"
 VECTOR_DIM = 128 # ColQwen emits one 128-d vector per patch

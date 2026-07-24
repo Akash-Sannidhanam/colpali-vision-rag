@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { getCorpus, getHealth, query } from './api'
+import { deleteDocument, getCorpus, getHealth, query } from './api'
 import { CorpusRail } from './components/CorpusRail'
 import { Conversation } from './components/Conversation'
 import { IngestModal } from './components/IngestModal'
@@ -68,16 +68,36 @@ export default function App() {
   }, [])
 
   const onIngestDone = (r: IngestResponse) => {
-    setToast({ kind: 'ok', msg: `${r.pdf} indexed · ${r.indexed_pages} pages` })
+    const msg = r.indexed_pages === 0
+      ? `${r.pdf} was already indexed · unchanged`
+      : `${r.pdf} indexed · ${r.indexed_pages} pages`
+    setToast({ kind: 'ok', msg })
     refreshCorpus()
     refreshHealth()
   }
+
+  const onDelete = useCallback(async (pdf: string) => {
+    try {
+      const r = await deleteDocument(pdf)
+      setToast({ kind: 'ok', msg: `${r.pdf} removed · ${r.removed_pages} pages` })
+      // The viewer renders page images that no longer exist once the document is gone.
+      setViewer((v) => (v?.pages.some((p) => p.pdf === pdf) ? null : v))
+      refreshCorpus()
+    } catch (e) {
+      setToast({ kind: 'err', msg: e instanceof Error ? e.message : 'Delete failed.' })
+    }
+  }, [refreshCorpus])
 
   const corpusEmpty = corpus !== null && corpus.total_pages === 0
 
   return (
     <div className="app">
-      <CorpusRail corpus={corpus} health={health} onIngest={() => setIngestOpen(true)} />
+      <CorpusRail
+        corpus={corpus}
+        health={health}
+        onIngest={() => setIngestOpen(true)}
+        onDelete={onDelete}
+      />
       <Conversation
         turns={turns}
         onAsk={ask}

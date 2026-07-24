@@ -22,21 +22,25 @@ class _ConnectionReset(Exception):
 
 
 def test_retryable_api_error_codes():
+    """Rate limiting and transient server errors are retried."""
     assert _is_retryable(genai_errors.APIError(429, {}))   # rate limited
     assert _is_retryable(genai_errors.APIError(503, {}))   # transient server error
 
 
 def test_non_retryable_api_error_codes():
+    """Auth and bad-request failures are permanent and must not be retried."""
     assert not _is_retryable(genai_errors.APIError(400, {}))  # bad request
     assert not _is_retryable(genai_errors.APIError(401, {}))  # auth
 
 
 def test_network_errors_are_retryable_by_name():
+    """Timeouts and connection resets are retried, matched by exception type name."""
     assert _is_retryable(_Timeout())
     assert _is_retryable(_ConnectionReset())
 
 
 def test_unrelated_errors_are_not_retryable():
+    """An ordinary programming error is not mistaken for a transient failure."""
     assert not _is_retryable(ValueError("nope"))
 
 
@@ -53,6 +57,7 @@ def _capture(logger_name: str):
 
 
 def test_log_usage_reports_tokens_latency_and_estimated_cost():
+    """One `gemini call` line carries tokens, latency, attempts, and the estimated cost."""
     resp = SimpleNamespace(usage_metadata=SimpleNamespace(
         prompt_token_count=1000, candidates_token_count=500, total_token_count=1500))
     records, detach = _capture("gemini")
@@ -75,7 +80,8 @@ def test_log_usage_reports_tokens_latency_and_estimated_cost():
 
 
 def test_log_usage_without_metadata_still_logs_latency_and_attempts():
-    # No usage_metadata -> still one line (latency/attempts observable), but no tokens.
+    """Latency and attempts stay observable even when the SDK returns no usage metadata -
+    still exactly one line, just without the token/cost fields."""
     records, detach = _capture("gemini")
     try:
         _log_usage(SimpleNamespace(usage_metadata=None), model="x", purpose="answer",
@@ -91,6 +97,7 @@ def test_log_usage_without_metadata_still_logs_latency_and_attempts():
 
 
 def test_log_usage_accumulates_into_request_totals():
+    """Each call folds into the per-request token and call-count accumulator."""
     from src import request_context
 
     resp = SimpleNamespace(usage_metadata=SimpleNamespace(

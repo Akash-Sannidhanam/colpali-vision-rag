@@ -194,6 +194,7 @@ body {
 }
 .doc {
   display: flex;
+  align-items: flex-start;
   gap: 9px;
   padding: 9px 8px;
   border-radius: 8px;
@@ -201,6 +202,53 @@ body {
 }
 .doc:hover {
   background: var(--ln-1);
+}
+/* Remove affordance: revealed on hover/focus so the rail stays calm at rest, but
+   always reachable by keyboard. */
+.doc-remove {
+  flex: none;
+  border: 0;
+  background: transparent;
+  color: var(--t-5);
+  font: 500 11px var(--mono);
+  line-height: 1;
+  padding: 3px 4px;
+  border-radius: 5px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s, background 0.15s;
+}
+.doc:hover .doc-remove,
+.doc-remove:focus-visible {
+  opacity: 1;
+}
+.doc-remove:hover,
+.doc-remove:focus-visible {
+  color: var(--red);
+  background: var(--ln-1);
+}
+.doc-confirm {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 3px;
+  font: 500 10px var(--mono);
+  color: var(--t-5);
+}
+.doc-confirm-btn {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font: 600 10px var(--mono);
+  color: var(--t-3);
+  cursor: pointer;
+  text-decoration: underline;
+}
+.doc-confirm-btn:hover {
+  color: var(--t-ink);
+}
+.doc-confirm-btn.danger:hover {
+  color: var(--red);
 }
 .doc-status {
   width: 9px;

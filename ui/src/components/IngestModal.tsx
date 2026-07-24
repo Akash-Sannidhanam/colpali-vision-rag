@@ -8,6 +8,7 @@ type Status = {
   msg?: string
   result?: IngestResponse
   progress?: Progress
+  skipped?: boolean // the backend recognised the document and re-embedded nothing
 }
 
 /** The ingest modal: drop/choose a PDF, then a render→embed→index run that streams
@@ -37,6 +38,7 @@ export function IngestModal({
     if (!file) return
     setStatus({ phase: 'running', progress: { label: 'starting…' } })
     let indexed = 0
+    let skipped = false
     let pdf = file.name
     try {
       await ingestStream(file, (e) => {
@@ -49,6 +51,10 @@ export function IngestModal({
             phase: 'running',
             progress: { label: `embedding page ${e.page} / ${e.total}`, page: e.page, total: e.total },
           })
+        } else if (e.phase === 'skip') {
+          // Same bytes, same embedding config — the backend re-embedded nothing.
+          skipped = true
+          setStatus({ phase: 'running', progress: { label: `${e.pdf} already indexed` } })
         } else if (e.phase === 'done') {
           indexed = e.indexed_pages ?? 0
           pdf = e.pdf ?? pdf
@@ -57,7 +63,7 @@ export function IngestModal({
         }
       })
       const r = { pdf, indexed_pages: indexed }
-      setStatus({ phase: 'done', result: r })
+      setStatus({ phase: 'done', result: r, skipped })
       onDone(r)
     } catch (e) {
       setStatus({ phase: 'error', msg: e instanceof Error ? e.message : 'Ingest failed.' })
@@ -76,7 +82,9 @@ export function IngestModal({
 
         {status.phase === 'done' && status.result ? (
           <div className="result-line">
-            ✓ {status.result.pdf} indexed · {status.result.indexed_pages} pages
+            {status.skipped
+              ? `✓ ${status.result.pdf} was already indexed · unchanged`
+              : `✓ ${status.result.pdf} indexed · ${status.result.indexed_pages} pages`}
           </div>
         ) : running ? (
           <div className="progress-wrap">

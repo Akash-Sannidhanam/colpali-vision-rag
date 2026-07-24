@@ -17,33 +17,40 @@ def _page(n: int) -> dict:
 
 
 def test_model_order_is_preserved():
+    """A valid model ordering is honoured exactly."""
     # Gemini's chosen order wins over Qdrant score order.
     assert _valid_order([2, 1], 10, 2) == [2, 1]
 
 
 def test_out_of_range_indices_are_dropped_then_topped_up():
+    """Bad indices are dropped and the result is topped up from Qdrant order."""
     # 99/0/-1 are out of [1, 10]; only 2 survives, then top-up adds Qdrant #1.
     assert _valid_order([99, 0, -1, 2], 10, 2) == [2, 1]
 
 
 def test_duplicates_are_removed():
+    """Repeated indices collapse to one entry."""
     assert _valid_order([5, 5, 3], 10, 2) == [5, 3]
 
 
 def test_bools_are_rejected_as_non_ints():
+    """Booleans are not accepted as page indices despite being int subclasses."""
     # True/False are ints in Python; they must not count as page indices.
     assert _valid_order([True, 2], 10, 2) == [2, 1]
 
 
 def test_fewer_than_k_tops_up_from_qdrant_order():
+    """Too few valid indices are padded to k from Qdrant order."""
     assert _valid_order([3], 10, 2) == [3, 1]
 
 
 def test_empty_raw_falls_back_to_qdrant_top_k():
+    """No usable indices falls back to Qdrant top-k."""
     assert _valid_order([], 10, 2) == [1, 2]
 
 
 def test_result_never_exceeds_available_pages():
+    """The result never claims more pages than were retrieved."""
     # Fewer pages than k -> returns exactly the pages that exist.
     assert _valid_order([], 1, 2) == [1]
 
@@ -51,37 +58,44 @@ def test_result_never_exceeds_available_pages():
 # --- adaptive count (top_up=False) ---
 
 def test_adaptive_honors_model_count_without_topup():
+    """Adaptive mode keeps only the pages the model judged relevant."""
     # The model kept one page; adaptive returns exactly that, no Qdrant padding.
     assert _valid_order([3], 10, 2, top_up=False) == [3]
 
 
 def test_adaptive_caps_at_k():
+    """Adaptive mode still respects k as an upper bound."""
     # More relevant than the cap -> trimmed to k in the model's order.
     assert _valid_order([3, 1, 2], 10, 2, top_up=False) == [3, 1]
 
 
 def test_adaptive_empty_still_falls_back_to_qdrant_top_k():
+    """Adaptive mode keeps the Qdrant fallback when the model returns nothing."""
     # A failed/empty rerank must never leave the answer step with zero pages.
     assert _valid_order([], 10, 2, top_up=False) == [1, 2]
 
 
 def test_rerank_passthrough_when_k_ge_pages():
+    """With no trimming to do, the pages pass through untouched and unspent."""
     # k >= number retrieved: no Gemini call, pages returned unchanged.
     pages = [_page(1), _page(2)]
     assert rerank("q", pages, k=2) == pages
 
 
 def test_rerank_passthrough_on_empty_retrieval():
+    """Empty retrieval short-circuits before any Gemini call."""
     assert rerank("q", [], k=2) == []
 
 
 def test_rerank_routes_through_shared_client_with_rerank_model(monkeypatch):
+    """Rerank goes through the shared client tagged with RERANK_MODEL and purpose=rerank."""
     # With more pages than k, the Gemini call is reached: assert it goes through
     # gemini_client.generate tagged as a rerank call using RERANK_MODEL, and that
     # the model's page order is honored.
     calls: list = []
 
     def fake_generate(**kwargs):
+        """A stubbed Gemini call returning fixed rerank indices."""
         calls.append(kwargs)
         return SimpleNamespace(parsed=SimpleNamespace(page_indices=[2, 1]), text="")
 
@@ -98,9 +112,10 @@ def test_rerank_routes_through_shared_client_with_rerank_model(monkeypatch):
 
 
 def test_rerank_adaptive_keeps_only_the_relevant_pages(monkeypatch):
-    # With RERANK_ADAPTIVE on, the model keeping a single page yields a single page -
-    # no top-up to the cap, so the answer step isn't handed a distracting extra.
+    """With RERANK_ADAPTIVE on, a single relevant page is returned alone - no top-up to
+    the cap, so the answer step isn't handed a distracting extra."""
     def fake_generate(**kwargs):
+        """A stubbed Gemini call returning fixed rerank indices."""
         return SimpleNamespace(parsed=SimpleNamespace(page_indices=[2]), text="")
 
     monkeypatch.setattr(reranker, "_candidate_part", lambda p: None)

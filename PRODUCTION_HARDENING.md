@@ -289,8 +289,45 @@ green; `docker build .` succeeds and a container smoke test imports `src.server`
 
 Security / input validation (PDF size/page caps, Qdrant auth/TLS, query length
 limits) and scaling/perf (batch the embedder — it embeds one page at a time today —
-query-result cache, incremental content-hash ingest). *(Packaging & CI graduated out
-of this list — see Phase 5 above.)*
+query-result cache). *(Packaging & CI graduated out of this list — see Phase 5 above.
+**Incremental content-hash ingest** graduated too — see the corpus-lifecycle pass
+below.)*
+
+---
+
+## Corpus-lifecycle pass (follow-on) ✅ DONE
+
+Work on branch **`feat/corpus-lifecycle`**. The last big *functional* hole once the
+UI made ingest interactive: `POST /ingest` passed every PDF in `PDFS_DIR` to a
+fresh-collection rebuild, so adding one document re-rendered and re-embedded the whole
+corpus through the ~2B model — and nothing could be removed from the index at all.
+
+**Shipped:**
+- **Incremental sync is the default** (`ingest.run_ingest`, `vector_store.live_collection`)
+  — upserts into the live collection and embeds only documents whose fingerprint moved.
+  The fingerprint is `content_hash` (sha256 of the PDF bytes) **plus** `embed_version`
+  (`COLPALI_MODEL@RENDER_DPI`), both stored per point: a content hash alone would
+  silently keep stale vectors after a DPI or model change. A changed document is deleted
+  before re-embedding, since stable `uuid5(pdf, page)` ids would otherwise strand the
+  tail pages of a longer previous revision. Sync never prunes — removal is always explicit.
+- **Atomicity preserved where it matters** — the incremental path never touches existing
+  points, so an interrupted add leaves every other document serving; `--rebuild` keeps the
+  original alias-swap path for a genuine wipe.
+- **`DELETE /corpus/{pdf}`** — drops vectors (a filter on the now-indexed `pdf` payload
+  field, supported in both Qdrant modes), page images, crops, and the source PDF. Takes no
+  GPU lock. The path parameter is normalized with `Path(pdf).name` and must be present in
+  the index before anything is unlinked; file matching uses anchored regexes rather than
+  globs (`pdf_render.page_images_for` / `crop_images_for`) so a document named
+  `report_page_1.pdf` can't be caught in `report.pdf`'s sweep.
+- **UI** — a hover-revealed remove action with an inline confirm in the corpus rail, and a
+  `skip` SSE phase surfaced as "already indexed — unchanged" in the ingest modal.
+
+**Files:** `src/ingest.py`, `src/vector_store.py`, `src/pdf_render.py`, `src/server.py`,
+`src/config.py`, `tests/test_pdf_render.py` *(new)* + extended ingest/vector_store/server
+tests, `ui/src/{api,types,App}.ts(x)`, `ui/src/components/{CorpusRail,IngestModal}.tsx`,
+`ui/src/theme.css`, `README.md`, `CLAUDE.md`, `ENHANCEMENTS.md`.
+**Migration:** points indexed before this change carry no fingerprint, so the first sync
+after upgrading re-embeds everything once. Run `src/ingest.py --rebuild` once instead.
 
 ---
 

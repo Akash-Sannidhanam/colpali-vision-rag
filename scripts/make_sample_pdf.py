@@ -8,6 +8,7 @@ OUT = Path(__file__).resolve().parent.parent / "pdfs" / "sales_report.pdf"
 W, H = 1240, 1754 #~150 DPI A4
 
 def _font(size: int):
+    """A TrueType face at `size`, falling back to PIL's bitmap default if absent."""
     try:
         return ImageFont.truetype("C:/Windows/Fonts/ariel.ttf", size)
     except OSError:
@@ -15,6 +16,7 @@ def _font(size: int):
 
 
 def make_chart_page() -> Image.Image:
+    """Render the quarterly-revenue bar chart page as pure pixels (no text layer)."""
     img = Image.new("RGB", (W,H), "white")
     d = ImageDraw.Draw(img)
     d.text((90, 70), "Acme USA - Quarterly Revenue (Thousands)", font = _font(46), fill = "black")
@@ -34,6 +36,7 @@ def make_chart_page() -> Image.Image:
 
 
 def make_table_page() -> Image.Image:
+    """Render the regional-sales table page as pure pixels (no text layer)."""
     img = Image.new("RGB", (W,H), "white")
     d = ImageDraw.Draw(img)
     d.text((90, 70), "Regional Sales - FY2025 (Thousands)", font = _font(46), fill = "black")
@@ -53,6 +56,7 @@ def make_table_page() -> Image.Image:
 
 
 def main() -> None:
+    """Write the two-page sample PDF into pdfs/."""
     OUT.parent.mkdir(parents=True, exist_ok=True)
     chart = make_chart_page().convert("P")
     table = make_table_page().convert("P")

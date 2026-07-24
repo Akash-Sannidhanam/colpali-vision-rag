@@ -35,6 +35,7 @@ class _RequestIdFilter(logging.Filter):
     """
 
     def filter(self, record: logging.LogRecord) -> bool:
+        """Attach the active request id to `record` and always keep the record."""
         record.request_id = request_context.current_request_id()
         return True
 
@@ -43,10 +44,12 @@ class _Formatter(logging.Formatter):
     """Render records as human lines or JSON, including any `extra=` fields."""
 
     def __init__(self, json_mode: bool):
+        """Set up the formatter; `json_mode` selects one JSON object per line."""
         super().__init__(datefmt="%H:%M:%S")
         self.json_mode = json_mode
 
     def format(self, record: logging.LogRecord) -> str:
+        """Render one record, appending any `extra=` fields not shadowed by stdlib attrs."""
         extras = {k: v for k, v in record.__dict__.items() if k not in _RESERVED}
         if self.json_mode:
             payload = {

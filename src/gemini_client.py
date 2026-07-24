@@ -118,6 +118,7 @@ def generate(*, model: str, contents: list, response_schema: Any, purpose: str) 
         before_sleep=before_sleep_log(log, logging.WARNING),
     )
     def _call() -> Any:
+        """One structured-output generate_content attempt, retried on transient errors."""
         return get_client().models.generate_content(
             model=model,
             contents=contents,
