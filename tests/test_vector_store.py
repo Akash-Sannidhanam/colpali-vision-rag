@@ -20,10 +20,13 @@ ALIAS = vector_store.COLLECTION_NAME  # "pdf_pages"
 class FakeClient:
     """Records collection/alias operations for assertions; no real Qdrant."""
 
-    def __init__(self, collections=(), alias_target=None, get_collections_error=None):
+    def __init__(self, collections=(), alias_target=None, get_collections_error=None,
+                 payloads=(), scroll_page=256):
         self._names = list(collections)
         self._alias_target = alias_target
         self._get_collections_error = get_collections_error
+        self._payloads = list(payloads)   # one dict per stored point, for scroll()
+        self._scroll_page = scroll_page   # small values force multi-page scrolls
         self.calls: list[tuple] = []
 
     def get_collections(self):
@@ -56,8 +59,23 @@ class FakeClient:
             if create is not None and create.alias_name == ALIAS:
                 self._alias_target = create.collection_name
 
+    def create_payload_index(self, collection_name, field_name, field_schema):
+        self.calls.append(("index", collection_name, field_name))
+
     def upsert(self, collection_name, points):
         self.calls.append(("upsert", collection_name))
+
+    def scroll(self, collection_name, with_payload, with_vectors, limit, offset):
+        """Paginate self._payloads, using the list index as the scroll offset."""
+        self.calls.append(("scroll", collection_name))
+        start = offset or 0
+        page = self._payloads[start:start + min(limit, self._scroll_page)]
+        nxt = start + len(page)
+        points = [SimpleNamespace(id=start + i, payload=p) for i, p in enumerate(page)]
+        return points, (nxt if nxt < len(self._payloads) else None)
+
+    def delete(self, collection_name, points_selector):
+        self.calls.append(("delete_points", collection_name, points_selector))
 
 
 def _use(monkeypatch, fake, *, qdrant_url="http://x"):
@@ -157,6 +175,130 @@ def test_begin_ingest_server_creates_version_without_touching_alias(monkeypatch)
     assert vector_store.begin_ingest() == "pdf_pages_1"
     assert ("create", "pdf_pages_1") in fake.calls
     assert not any(c[0] in ("swap", "delete") for c in fake.calls)  # alias untouched during build
+
+
+def test_create_collection_indexes_the_pdf_field(monkeypatch):
+    # delete_document and the fingerprint lookup both filter on `pdf`; without the
+    # payload index those degrade to a full scan as the corpus grows.
+    fake = FakeClient(collections=[])
+    _use(monkeypatch, fake)
+    vector_store.begin_ingest()
+    assert ("index", "pdf_pages_1", "pdf") in fake.calls
+
+
+# --- incremental path: live_collection ---
+
+def test_live_collection_returns_alias_when_one_exists(monkeypatch):
+    fake = FakeClient(collections=["pdf_pages_2"], alias_target="pdf_pages_2")
+    _use(monkeypatch, fake, qdrant_url="http://x")
+
+    assert vector_store.live_collection() == ALIAS
+    # an existing index is reused as-is: nothing created, nothing swapped
+    assert not any(c[0] in ("create", "swap") for c in fake.calls)
+
+
+def test_live_collection_bootstraps_on_a_cold_server(monkeypatch):
+    fake = FakeClient(collections=[], alias_target=None)
+    _use(monkeypatch, fake, qdrant_url="http://x")
+
+    assert vector_store.live_collection() == ALIAS
+    assert ("create", "pdf_pages_1") in fake.calls
+    assert any(c[0] == "swap" for c in fake.calls)      # promoted so the alias resolves
+
+
+def test_live_collection_embedded_creates_without_wiping(monkeypatch):
+    fake = FakeClient(collections=["pdf_pages"])
+    _use(monkeypatch, fake, qdrant_url=None)
+
+    assert vector_store.live_collection() == ALIAS
+    # the whole point of the incremental path: existing pages survive
+    assert not any(c[0] == "delete" for c in fake.calls)
+
+
+# --- incremental path: document_index / delete_document ---
+
+def _page(pdf, content_hash="h1", embed_version="m@150"):
+    return {"pdf": pdf, "content_hash": content_hash, "embed_version": embed_version}
+
+
+def test_document_index_aggregates_counts_and_fingerprints(monkeypatch):
+    fake = FakeClient(payloads=[_page("a.pdf"), _page("b.pdf", "h2"), _page("a.pdf")])
+    monkeypatch.setattr(vector_store, "get_client", lambda: fake)
+
+    index = vector_store.document_index()
+
+    assert list(index) == ["a.pdf", "b.pdf"]                  # sorted by name
+    assert index["a.pdf"] == {"page_count": 2, "content_hash": "h1", "embed_version": "m@150"}
+    assert index["b.pdf"]["content_hash"] == "h2"
+
+
+def test_document_index_pages_through_a_long_scroll(monkeypatch):
+    fake = FakeClient(payloads=[_page("a.pdf")] * 5, scroll_page=2)
+    monkeypatch.setattr(vector_store, "get_client", lambda: fake)
+
+    assert vector_store.document_index()["a.pdf"]["page_count"] == 5
+    assert len([c for c in fake.calls if c[0] == "scroll"]) == 3   # 2 + 2 + 1
+
+
+def test_document_index_defaults_missing_fingerprints_to_empty(monkeypatch):
+    # Points written before fingerprinting existed: "" never equals a real sha256, so
+    # the next sync re-embeds them once rather than trusting a stale vector.
+    fake = FakeClient(payloads=[{"pdf": "old.pdf", "page_number": 1}])
+    monkeypatch.setattr(vector_store, "get_client", lambda: fake)
+
+    assert vector_store.document_index()["old.pdf"] == {
+        "page_count": 1, "content_hash": "", "embed_version": "",
+    }
+
+
+def test_list_documents_derives_from_the_index(monkeypatch):
+    fake = FakeClient(payloads=[_page("b.pdf"), _page("a.pdf"), _page("a.pdf")])
+    monkeypatch.setattr(vector_store, "get_client", lambda: fake)
+
+    assert vector_store.list_documents() == [
+        {"pdf": "a.pdf", "page_count": 2}, {"pdf": "b.pdf", "page_count": 1},
+    ]
+
+
+def test_delete_document_filters_on_pdf_and_returns_page_count(monkeypatch):
+    fake = FakeClient(payloads=[_page("a.pdf"), _page("a.pdf"), _page("b.pdf")])
+    monkeypatch.setattr(vector_store, "get_client", lambda: fake)
+
+    assert vector_store.delete_document("a.pdf") == 2
+
+    deletes = [c for c in fake.calls if c[0] == "delete_points"]
+    assert len(deletes) == 1
+    assert deletes[0][1] == ALIAS                              # targets the live alias
+    assert deletes[0][2] == qm.FilterSelector(filter=qm.Filter(
+        must=[qm.FieldCondition(key="pdf", match=qm.MatchValue(value="a.pdf"))]))
+
+
+def test_delete_document_is_a_noop_for_an_unknown_pdf(monkeypatch):
+    fake = FakeClient(payloads=[_page("a.pdf")])
+    monkeypatch.setattr(vector_store, "get_client", lambda: fake)
+
+    assert vector_store.delete_document("ghost.pdf") == 0
+    assert not any(c[0] == "delete_points" for c in fake.calls)
+
+
+# --- deterministic point ids ---
+
+def test_point_id_is_stable_per_page_and_distinct_across_pages():
+    # Stability is what makes an incremental re-ingest overwrite in place instead of
+    # duplicating; distinctness is what stops pages from clobbering each other.
+    assert vector_store.point_id("a.pdf", 1) == vector_store.point_id("a.pdf", 1)
+    assert vector_store.point_id("a.pdf", 1) != vector_store.point_id("a.pdf", 2)
+    assert vector_store.point_id("a.pdf", 1) != vector_store.point_id("b.pdf", 1)
+
+
+def test_build_point_carries_the_fingerprint_payload():
+    point = vector_store.build_point([[0.0] * 128], "a.pdf", 3, "/img/a_page_3.png",
+                                     "deadbeef", "model@150")
+    assert point.id == vector_store.point_id("a.pdf", 3)
+    assert point.payload == {
+        "pdf": "a.pdf", "page_number": 3, "image_path": "/img/a_page_3.png",
+        "content_hash": "deadbeef", "embed_version": "model@150",
+    }
 
 
 # --- upsert targeting ---

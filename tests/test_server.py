@@ -118,6 +118,116 @@ def test_corpus_lists_documents_and_total(warm, monkeypatch):
     assert [d["pdf"] for d in body["documents"]] == ["attention.pdf", "colpali.pdf"]
 
 
+# --- DELETE /corpus/{pdf} ---
+
+@pytest.fixture
+def corpus_files(monkeypatch, tmp_path):
+    """A tmp corpus on disk: two documents' pages + crops, plus their source PDFs."""
+    pages, crops, pdfs = tmp_path / "page_images", tmp_path / "page_images" / "crops", tmp_path / "pdfs"
+    for d in (pages, crops, pdfs):
+        d.mkdir(parents=True)
+    written: dict[str, list] = {}
+    for name in ("doomed.pdf", "keeper.pdf"):
+        stem = name[:-4]
+        written[name] = [
+            pages / f"{stem}_page_1.png", pages / f"{stem}_page_2.png",
+            crops / f"{stem}_page_1_crop_0.png", crops / f"{stem}_page_1_annotated.png",
+            pdfs / name,
+        ]
+        for p in written[name]:
+            p.write_bytes(b"x")
+
+    monkeypatch.setattr(server, "PAGE_IMAGES_DIR", pages)
+    monkeypatch.setattr(server, "PDFS_DIR", pdfs)
+    # the file-matching helpers resolve their directories from src.config at call time
+    monkeypatch.setattr("src.pdf_render.PAGE_IMAGES_DIR", pages)
+    monkeypatch.setattr("src.pdf_render.CROPS_DIR", crops)
+    monkeypatch.setattr(server, "document_index", lambda: {
+        "doomed.pdf": {"page_count": 2, "content_hash": "h", "embed_version": "m"},
+        "keeper.pdf": {"page_count": 2, "content_hash": "h", "embed_version": "m"},
+    })
+    monkeypatch.setattr(server, "delete_document", lambda name: 2)
+    return written
+
+
+def test_delete_removes_vectors_and_every_file_for_that_document(warm, corpus_files, monkeypatch):
+    dropped: list[str] = []
+    monkeypatch.setattr(server, "delete_document", lambda name: dropped.append(name) or 2)
+
+    resp = warm.delete("/corpus/doomed.pdf")
+
+    assert resp.status_code == 200
+    assert resp.json() == {"pdf": "doomed.pdf", "removed_pages": 2}
+    assert dropped == ["doomed.pdf"]
+    assert not any(p.exists() for p in corpus_files["doomed.pdf"])   # pages, crops, PDF
+    assert all(p.exists() for p in corpus_files["keeper.pdf"])       # the other doc is intact
+
+
+def test_delete_404s_for_an_unindexed_document_without_touching_disk(warm, corpus_files, monkeypatch):
+    dropped: list[str] = []
+    monkeypatch.setattr(server, "delete_document", lambda name: dropped.append(name) or 0)
+
+    resp = warm.delete("/corpus/ghost.pdf")
+
+    assert resp.status_code == 404
+    assert dropped == []                                             # short-circuits first
+    assert all(p.exists() for p in corpus_files["keeper.pdf"])
+
+
+@pytest.mark.parametrize("target", ["..%2F..%2Fkeeper.pdf", "..%2F..%2Fetc%2Fpasswd",
+                                    "%2Fetc%2Fpasswd"])
+def test_delete_path_traversal_never_reaches_the_handler(warm, corpus_files, monkeypatch, target):
+    # First line of defence: a `{pdf}` path parameter does not match `/`, so anything
+    # carrying a separator 404s in the router before any of our code runs.
+    dropped: list[str] = []
+    monkeypatch.setattr(server, "delete_document", lambda name: dropped.append(name) or 0)
+
+    resp = warm.delete(f"/corpus/{target}")
+
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == "Not Found"          # the router's, not ours
+    assert dropped == []
+    assert all(p.exists() for p in corpus_files["keeper.pdf"])
+
+
+def test_delete_only_ever_touches_an_indexed_document(warm, corpus_files, monkeypatch, tmp_path):
+    # Second line of defence, and the one that actually constrains the filesystem: the
+    # normalized name must be in the index before anything is unlinked. A PDF sitting in
+    # PDFS_DIR that was never ingested is not the API's to delete.
+    stray = server.PDFS_DIR / "never_ingested.pdf"
+    stray.write_bytes(b"%PDF-1.4")
+    unlinked: list[str] = []
+    monkeypatch.setattr(server, "_remove_document",
+                        lambda name: unlinked.append(name) or 0)
+
+    assert warm.delete("/corpus/never_ingested.pdf").status_code == 404
+
+    assert unlinked == []
+    assert stray.exists()
+
+
+def test_delete_normalizes_the_name_before_looking_it_up(warm, corpus_files, monkeypatch):
+    # `Path(pdf).name` runs before the index lookup, so the name that is checked is the
+    # same one that is deleted - a lookup on a raw string and an unlink on a normalized
+    # one would be exactly the mismatch that lets something unintended through.
+    looked_up: list[str] = []
+    monkeypatch.setattr(server, "_remove_document", lambda name: looked_up.append(name) or 2)
+
+    assert warm.delete("/corpus/doomed.pdf").status_code == 200
+    assert looked_up == ["doomed.pdf"]
+
+
+def test_delete_survives_a_missing_file_on_disk(warm, corpus_files):
+    # Files are best-effort: a page image already gone must not fail the request after
+    # the vectors have been removed.
+    corpus_files["doomed.pdf"][0].unlink()
+
+    resp = warm.delete("/corpus/doomed.pdf")
+
+    assert resp.status_code == 200
+    assert not any(p.exists() for p in corpus_files["doomed.pdf"])
+
+
 # --- /query ---
 
 def test_query_happy_path_shape(warm, monkeypatch):
@@ -243,6 +353,19 @@ def test_ingest_happy_path(warm, monkeypatch, tmp_path):
     assert resp.json() == {"pdf": "doc.pdf", "indexed_pages": 7}
     assert (tmp_path / "doc.pdf").read_bytes() == b"%PDF-1.4 fake"     # saved under PDFS_DIR
     assert captured["paths"] == [tmp_path / "doc.pdf"]                 # run_ingest got the saved path
+
+
+def test_ingest_does_not_re_embed_the_rest_of_the_corpus(warm, monkeypatch, tmp_path):
+    # An upload used to hand run_ingest every PDF in PDFS_DIR, so adding one document
+    # re-rendered and re-embedded the whole corpus through the ~2B model.
+    (tmp_path / "already_indexed.pdf").write_bytes(b"%PDF-1.4 old")
+    captured = {}
+    monkeypatch.setattr(server, "PDFS_DIR", tmp_path)
+    monkeypatch.setattr(server, "run_ingest", lambda paths: captured.update(paths=paths) or 2)
+
+    warm.post("/ingest", files={"file": ("new.pdf", b"%PDF-1.4 new", "application/pdf")})
+
+    assert captured["paths"] == [tmp_path / "new.pdf"]                 # only the upload
 
 
 def test_ingest_rejects_non_pdf(warm):

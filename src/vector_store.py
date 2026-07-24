@@ -1,14 +1,25 @@
 """Qdrant multivector store - one multivector per page, ranked by MaxSim.
 
-Server deployments get atomic re-ingest: each ingest builds a fresh versioned
-physical collection (`pdf_pages_<n>`), and the read alias `COLLECTION_NAME` is
-swapped onto it in a single atomic operation only once the build completes - so a
-mid-ingest crash leaves the previous index serving. The embedded on-disk fallback
-(no QDRANT_URL) keeps the simpler wipe-and-rebuild path, since QdrantLocal does
-not support aliases. `search()`/`upsert_pages()` reference the alias, which Qdrant
-resolves to the live physical collection transparently.
+Two write paths, both reached through the mode-hiding seam at the bottom so
+`ingest.py` never branches on deployment mode:
+
+- **Incremental** (the default) - upsert straight into the live collection via
+  `live_collection()`, touching only the documents that changed, and remove one
+  document with `delete_document()`. Adding a document is O(its own pages), and it
+  inherits the crash-safety that matters for free: existing points are never
+  touched, so an interrupted add leaves every other document intact.
+- **Rebuild** (`begin_ingest`/`finish_ingest`/`abort_ingest`) - the atomic
+  wholesale path. Server deployments build a fresh versioned physical collection
+  (`pdf_pages_<n>`) and swap the read alias `COLLECTION_NAME` onto it in a single
+  atomic operation only once the build completes, so a mid-ingest crash leaves the
+  previous index serving. The embedded on-disk fallback (no QDRANT_URL) keeps the
+  simpler wipe-and-rebuild path, since QdrantLocal does not support aliases.
+
+`search()`/`upsert_pages()` reference the alias, which Qdrant resolves to the live
+physical collection transparently.
 """
 
+import uuid
 from pathlib import Path
 
 from qdrant_client import QdrantClient
@@ -32,6 +43,10 @@ _client: QdrantClient | None = None
 # Physical collections are named "pdf_pages_<n>"; COLLECTION_NAME ("pdf_pages") is
 # the alias that resolves to the live one.
 _PHYSICAL_PREFIX = f"{COLLECTION_NAME}_"
+
+# Namespace for deriving a stable point id from (pdf name, page number), so an
+# incremental re-ingest of a page overwrites it in place instead of duplicating it.
+_POINT_NAMESPACE = uuid.UUID("6f9e6a5c-1f1e-4c8a-9b3d-0a1c2d3e4f50")
 
 
 def get_client() -> QdrantClient:
@@ -88,6 +103,11 @@ def _create_collection(client: QdrantClient, name: str) -> None:
         quantization_config=qm.BinaryQuantization(
             binary=qm.BinaryQuantizationConfig(always_ram=True),
         ),
+    )
+    # Every per-document operation (fingerprint lookup, delete_document) filters on
+    # `pdf`; indexing it keeps those off a full payload scan as the corpus grows.
+    client.create_payload_index(
+        collection_name=name, field_name="pdf", field_schema=qm.PayloadSchemaType.KEYWORD,
     )
 
 def ensure_collection(reset: bool = False) -> None:
@@ -218,12 +238,72 @@ def finish_ingest(target: str) -> None:
     if QDRANT_URL:
         promote_collection_version(target)
 
-def build_point(point_id, multivector, pdf_name, page_number, image_path) -> qm.PointStruct:
-    """Build one page's point: its multivector plus source metadata."""
+def live_collection() -> str:
+    """The collection an incremental ingest writes into, creating it if this is a cold start.
+
+    The counterpart to begin_ingest for the non-rebuild path: instead of building a new
+    version off to the side, it returns the collection that is already serving reads, so
+    upserts land in the live index immediately. Server mode returns the alias (creating
+    and promoting a first physical collection when no alias exists yet); embedded mode
+    creates COLLECTION_NAME if missing - `reset=False`, so existing pages survive.
+    """
+    if QDRANT_URL:
+        if _current_alias_target(get_client()) is None:
+            promote_collection_version(create_collection_version())
+        return COLLECTION_NAME
+    ensure_collection(reset=False)
+    return COLLECTION_NAME
+
+def delete_document(pdf_name: str) -> int:
+    """Remove every page of one PDF from the live collection; return the pages removed.
+
+    Filters on the indexed `pdf` payload field, so it is independent of point ids and
+    works identically in both modes (QdrantLocal implements filtered delete too). The
+    count comes from document_index() beforehand because Qdrant's UpdateResult reports
+    an operation status, not a row count.
+    """
+    removed = document_index().get(pdf_name, {}).get("page_count", 0)
+    if not removed:
+        return 0
+    get_client().delete(
+        collection_name=COLLECTION_NAME,
+        points_selector=qm.FilterSelector(filter=_pdf_filter(pdf_name)),
+    )
+    log.info("deleted document from index", extra={"pdf": pdf_name, "pages": removed})
+    return removed
+
+def _pdf_filter(pdf_name: str) -> qm.Filter:
+    """Match every point belonging to one PDF."""
+    return qm.Filter(must=[qm.FieldCondition(key="pdf", match=qm.MatchValue(value=pdf_name))])
+
+def point_id(pdf_name: str, page_number: int) -> str:
+    """The stable point id for one page: a uuid5 of (pdf name, page number).
+
+    Deriving the id rather than assigning it sequentially is what makes incremental
+    ingest safe - re-ingesting a page overwrites it in place, and adding a document to
+    a live collection cannot collide with ids handed out by an earlier run.
+    """
+    return str(uuid.uuid5(_POINT_NAMESPACE, f"{pdf_name}:{page_number}"))
+
+def build_point(
+    multivector, pdf_name, page_number, image_path, content_hash="", embed_version="",
+) -> qm.PointStruct:
+    """Build one page's point: its multivector plus source metadata and fingerprint.
+
+    `content_hash` + `embed_version` are what let a later ingest decide whether this
+    page is still current (see `ingest.run_ingest`) - the PDF's bytes and the embedding
+    config that produced the vector, respectively.
+    """
     return qm.PointStruct(
-        id = point_id,
+        id = point_id(pdf_name, page_number),
         vector = multivector,
-        payload = {"pdf": pdf_name, "page_number": page_number, "image_path": str(image_path)},
+        payload = {
+            "pdf": pdf_name,
+            "page_number": page_number,
+            "image_path": str(image_path),
+            "content_hash": content_hash,
+            "embed_version": embed_version,
+        },
     )
 
 def upsert_pages(points: list[qm.PointStruct], collection_name: str = COLLECTION_NAME) -> None:
@@ -284,28 +364,44 @@ def search(query_multivector: list[list[float]], top_k: int = RETRIEVE_K) -> lis
         hits.append({**payload, "score": round(p.score, 4)})
     return hits
 
-def list_documents() -> list[dict]:
-    """List the indexed PDFs and their page counts (powers GET /corpus).
+def document_index() -> dict[str, dict]:
+    """Every indexed PDF -> {page_count, content_hash, embed_version}.
 
-    Scrolls the live collection (one point per page) and aggregates the payloads into
-    {pdf, page_count}, sorted by name. Scrolls in pages - and pulls only the `pdf`
-    payload field, no vectors - so it holds up beyond the 43-page sample corpus.
+    The one place the collection is scrolled, shared by `list_documents` (the /corpus
+    rail), `delete_document` (page counts), and `ingest` (the skip-unchanged decision).
+    Scrolls in pages and pulls three payload fields with no vectors, so it stays cheap
+    as the corpus grows past the sample set.
+
+    A document's fingerprint is taken from the first page seen for it; all of its pages
+    are written by one ingest, so they agree. Pages indexed before fingerprinting
+    existed report `""`, which never matches a real hash - so they re-embed once.
     """
     client = get_client()
-    counts: dict[str, int] = {}
+    index: dict[str, dict] = {}
     offset = None
     while True:
         points, offset = client.scroll(
             collection_name=COLLECTION_NAME,
-            with_payload=["pdf"],
+            with_payload=["pdf", "content_hash", "embed_version"],
             with_vectors=False,
             limit=256,
             offset=offset,
         )
         for p in points:
-            pdf = (p.payload or {}).get("pdf")
-            if pdf:
-                counts[pdf] = counts.get(pdf, 0) + 1
+            payload = p.payload or {}
+            pdf = payload.get("pdf")
+            if not pdf:
+                continue
+            entry = index.setdefault(pdf, {
+                "page_count": 0,
+                "content_hash": payload.get("content_hash") or "",
+                "embed_version": payload.get("embed_version") or "",
+            })
+            entry["page_count"] += 1
         if offset is None:
             break
-    return [{"pdf": pdf, "page_count": n} for pdf, n in sorted(counts.items())]
+    return dict(sorted(index.items()))
+
+def list_documents() -> list[dict]:
+    """List the indexed PDFs and their page counts, by name (powers GET /corpus)."""
+    return [{"pdf": pdf, "page_count": e["page_count"]} for pdf, e in document_index().items()]

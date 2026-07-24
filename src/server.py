@@ -11,6 +11,7 @@ Endpoints:
   GET  /health                      -> model-loaded flag + Qdrant reachability (503 if down)
   GET  /corpus                      -> indexed documents + page counts (for the UI rail)
   POST /ingest  (multipart PDF)     -> render/embed/index a PDF (blocking, holds the lock)
+  DELETE /corpus/{pdf}              -> drop a document's vectors, page images, crops, PDF
   /images/...                       -> static page/crop/annotated PNGs
 
 The pipeline seam is `main.run_query` (never the CLI `run()`, which closes the Qdrant
@@ -48,8 +49,8 @@ from src.heatmap import page_similarity
 from src.ingest import run_ingest
 from src.logging_setup import get_logger
 from src.main import run_query
-from src.pdf_render import page_image_path
-from src.vector_store import close_client, list_documents, ping
+from src.pdf_render import crop_images_for, page_image_path, page_images_for
+from src.vector_store import close_client, delete_document, document_index, list_documents, ping
 
 log = get_logger("server")
 
@@ -154,6 +155,11 @@ class HealthResponse(BaseModel):
 class IngestResponse(BaseModel):
     pdf: str
     indexed_pages: int
+
+
+class DeleteResponse(BaseModel):
+    pdf: str
+    removed_pages: int
 
 
 class HeatmapRequest(BaseModel):
@@ -355,6 +361,48 @@ async def corpus():
     )
 
 
+def _remove_document(name: str) -> int:
+    """Drop one document's vectors, then its page/crop PNGs, then its source PDF.
+
+    Points go first so the window in which a query can retrieve a page whose image is
+    already unlinked stays as small as possible - and even inside it `search()` drops
+    hits whose `image_path` is gone from disk, so a racing query degrades rather than
+    breaks. File removal is best-effort: a leftover PNG is cosmetic, and failing the
+    request after the vectors are gone would be a worse lie than a warning.
+    """
+    removed = delete_document(name)
+    for path in [*page_images_for(name), *crop_images_for(name), PDFS_DIR / name]:
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            log.warning("failed to remove file for deleted document",
+                        extra={"pdf": name, "path": str(path)}, exc_info=True)
+    return removed
+
+
+@app.delete("/corpus/{pdf}", response_model=DeleteResponse)
+async def delete_corpus_document(pdf: str):
+    """Remove one document from the corpus entirely: vectors, page images, crops, and
+    the stored PDF. 404 when it isn't indexed.
+
+    Takes no GPU lock - deletion is pure Qdrant + filesystem work, so it stays responsive
+    while a query or ingest is running.
+
+    Two guards, because this unlinks files named by a URL path parameter. A `{pdf}` path
+    parameter does not match `/`, so anything carrying a separator 404s in the router
+    before this runs; `Path(pdf).name` then normalizes what is left. The one that actually
+    constrains the filesystem is the index-membership check: the normalized name must
+    already be indexed, so only a document the corpus owns can ever be deleted.
+    """
+    name = Path(pdf).name
+    index = await asyncio.to_thread(document_index)
+    if name not in index:
+        raise HTTPException(status_code=404, detail=f"{pdf} is not indexed.")
+
+    removed = await asyncio.to_thread(_remove_document, name)
+    return DeleteResponse(pdf=name, removed_pages=removed)
+
+
 @app.post("/query", response_model=QueryResponse)
 async def query(req: QueryRequest, request: Request, inline: bool = Query(default=False)):
     """Answer one question. Serializes on the model lock; base64 reads happen outside it."""
@@ -383,10 +431,12 @@ async def heatmap(req: HeatmapRequest):
 
 
 async def _save_upload(file: UploadFile) -> tuple[str, list[Path]]:
-    """Validate + persist an uploaded PDF under PDFS_DIR; return (name, all pdfs to index).
+    """Validate + persist an uploaded PDF under PDFS_DIR; return (name, [saved path]).
 
     Shared by the blocking and streaming ingest endpoints so the size/type checks and
-    the save live in exactly one place.
+    the save live in exactly one place. Only the uploaded file is handed to the ingest -
+    this used to pass every PDF in PDFS_DIR, which made each upload re-embed the entire
+    corpus through the ~2B model.
     """
     name = Path(file.filename or "").name          # strip any path components
     if not name.lower().endswith(".pdf"):
@@ -403,7 +453,7 @@ async def _save_upload(file: UploadFile) -> tuple[str, list[Path]]:
     PDFS_DIR.mkdir(parents=True, exist_ok=True)
     dest = PDFS_DIR / name
     await asyncio.to_thread(dest.write_bytes, data)
-    return name, sorted(PDFS_DIR.glob("*.pdf"))
+    return name, [dest]
 
 
 def _sse(event: dict) -> str:

@@ -27,6 +27,19 @@ the reader) is complete, tested, and shipped. Captured here so they are not lost
   Adding a short hash of the question to the filename keeps a history across
   queries instead of clobbering the previous one.
 
+## Corpus lifecycle
+
+- **Incremental ingest + document delete.** _(✅ done.)_ Adding a PDF used to
+  re-render and re-embed the *entire* corpus (`POST /ingest` handed every file in
+  `pdfs/` to a fresh-collection rebuild), and there was no way to remove a document
+  at all. `run_ingest` now defaults to an incremental sync that upserts into the live
+  collection and embeds only what changed — decided by a `content_hash` (sha256 of
+  the PDF bytes) plus an `embed_version` (`COLPALI_MODEL@RENDER_DPI`) stored in every
+  point's payload, so a model/DPI change re-embeds even when the bytes are identical.
+  Point ids are `uuid5(pdf, page)`, so a re-ingest overwrites in place. `--rebuild`
+  keeps the atomic wholesale path. `DELETE /corpus/{pdf}` (+ a remove action in the
+  corpus rail) drops a document's vectors, page images, crops, and source PDF.
+
 ## Robustness
 
 - **Harden structured-output parsing.** _(✅ done in Hardening Phase 1.)_

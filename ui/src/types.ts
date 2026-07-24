@@ -88,6 +88,11 @@ export interface IngestResponse {
   indexed_pages: number
 }
 
+export interface DeleteResponse {
+  pdf: string
+  removed_pages: number
+}
+
 // Per-patch MaxSim heatmap for one page (POST /heatmap). grid[y][x] in [0,1] over an
 // n_x x n_y patch grid — the query's match strength at each ColQwen2 patch.
 export interface HeatmapResponse {

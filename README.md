@@ -54,6 +54,9 @@ uv run python scripts/make_sample_pdf.py
 # 2. Ingest: render pages → embed with ColQwen2 → store in Qdrant
 PYTHONPATH=. uv run python src/ingest.py            # indexes everything in pdfs/
 #   or point at specific files:  ... src/ingest.py path/to/doc.pdf
+#   ingest is incremental — re-running only embeds documents whose bytes (or the
+#   model / render DPI that produced them) changed, so an unchanged corpus is a no-op
+PYTHONPATH=. uv run python src/ingest.py --rebuild   # force a full atomic re-index
 
 # 3. Ask a question
 PYTHONPATH=. uv run python src/main.py "What was the Q4 revenue in the chart?"
@@ -118,7 +121,8 @@ see the model load once and a `server warm` log line; the live OpenAPI schema is
 | `POST /heatmap` `{question, pdf, page_number}` | Per-patch **MaxSim heatmap** for one page — an `n_x × n_y` grid of query→page match strengths in `[0,1]`. Powers the viewer's **"why this page?"** toggle (which patches the query lit up, vs. the crop's *where the answer was read*). On-demand: it recomputes two forward passes on the model lock, so it's a separate call, not part of `/query`. |
 | `GET /health` | `model_loaded` + Qdrant reachability. `503` when Qdrant is unreachable. |
 | `GET /corpus` | Indexed documents + page counts (powers the UI's corpus rail). |
-| `POST /ingest` (multipart PDF) | Render → embed → index an uploaded PDF. Blocking and long-running — it holds the model lock for the whole build. |
+| `POST /ingest` (multipart PDF) | Render → embed → index an uploaded PDF. Blocking and long-running — it holds the model lock for the whole build. Only the uploaded document is embedded; re-uploading an unchanged one is recognised and costs nothing. |
+| `DELETE /corpus/{pdf}` | Remove a document completely — its vectors, page images, crops, and the stored PDF. `404` when it isn't indexed. Takes no model lock, so it stays responsive during a query or ingest. |
 | `GET /images/...` | Static page / crop / annotated PNGs. |
 
 ```bash
@@ -203,14 +207,14 @@ src/
   config.py        # paths, model names, Qdrant + DPI + retrieve/rerank settings
   pdf_render.py    # PDF → page PNGs (pdf2image / Poppler)
   embedder.py      # ColQwen2 image + query embeddings
-  vector_store.py  # Qdrant multivector store (create / upsert / search, binary quantized)
-  ingest.py        # ingest CLI: render → embed → batched upsert
+  vector_store.py  # Qdrant multivector store (upsert / search / delete, binary quantized)
+  ingest.py        # ingest CLI: render → embed → batched upsert (incremental, or --rebuild)
   reranker.py      # Gemini thumbnail rerank: candidates → the pages that matter
   answerer.py      # Gemini structured answer + bounding box
   highlight.py     # crop + annotate the cited region
   graph.py         # LangGraph: retrieve → rerank → answer → highlight
   main.py          # query CLI (run_query seam + CLI wrapper)
-  server.py        # warm FastAPI service: /query /health /corpus /ingest + static images
+  server.py        # warm FastAPI service: /query /health /corpus /ingest /heatmap + images
 scripts/
   make_sample_pdf.py   # generates the text-layer-free sample PDF
 eval/
