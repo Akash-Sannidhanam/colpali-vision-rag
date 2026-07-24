@@ -13,7 +13,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
-from src import ratelimit, server
+from src import auth, ratelimit, server
 
 
 @pytest.fixture(autouse=True)
@@ -177,3 +177,22 @@ def test_zero_disables_limiting_end_to_end(warm, monkeypatch):
     monkeypatch.setattr(ratelimit, "RATE_LIMIT_PER_MINUTE", 0)
     monkeypatch.setattr(ratelimit, "_clock", lambda: 0.0)
     assert all(warm.get("/corpus").status_code == 200 for _ in range(50))
+
+
+def test_unauthenticated_requests_are_throttled_too(warm, monkeypatch):
+    """The limiter must run BEFORE the API-key gate, not after.
+
+    FastAPI solves router dependencies in order. With auth first, a caller holding no
+    key burns unlimited 401s - the throttle would only ever apply to requests that had
+    already passed the gate, leaving key guessing and unauthenticated floods unbounded.
+    Caught on a live server; this pins the ordering so it can't silently flip back.
+    """
+    monkeypatch.setattr(auth, "API_KEY", "the-real-key")
+    monkeypatch.setattr(ratelimit, "RATE_LIMIT_PER_MINUTE", 3)
+    monkeypatch.setattr(ratelimit, "_clock", lambda: 0.0)
+
+    codes = [warm.get("/corpus", headers={"X-API-Key": "guess"}).status_code
+             for _ in range(6)]
+
+    assert codes[:3] == [401, 401, 401]          # rejected, but counted
+    assert codes[3:] == [429, 429, 429]          # then throttled like anything else

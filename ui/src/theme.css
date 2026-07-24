@@ -794,6 +794,26 @@ body {
   color: var(--t-ink);
   margin-bottom: 4px;
 }
+/* API-key entry (ApiKeyModal). Monospace because a key is a token, not prose —
+   the same treatment the trace and hint text get. */
+.key-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 11px 13px;
+  border: 1px solid var(--ln-4);
+  border-radius: 12px;
+  background: var(--s-panel2);
+  color: var(--t-ink);
+  font: 500 13px var(--mono);
+  outline: none;
+  transition: border-color 0.15s;
+}
+.key-input:focus {
+  border-color: var(--acc-bd);
+}
+.key-input::placeholder {
+  color: var(--t-5);
+}
 .modal-actions {
   display: flex;
   justify-content: flex-end;

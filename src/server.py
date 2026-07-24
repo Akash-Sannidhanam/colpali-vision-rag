@@ -249,7 +249,12 @@ app.mount("/images", StaticFiles(directory=PAGE_IMAGES_DIR), name="images")
 # Every real endpoint hangs off this router, so auth + rate limiting are structural
 # rather than per-route opt-ins. `/health` stays on `app` (orchestrators probe it
 # without the secret) and so does the `/images` mount (`<img src>` can't send headers).
-api = APIRouter(dependencies=[Depends(require_api_key), Depends(rate_limit)])
+#
+# rate_limit is listed FIRST deliberately. FastAPI solves dependencies in order, so
+# auth-first would let a caller with no key burn unlimited 401s - the throttle would
+# only ever apply to requests that had already passed the gate, leaving key guessing
+# and unauthenticated floods unbounded. Limiting first throttles both.
+api = APIRouter(dependencies=[Depends(rate_limit), Depends(require_api_key)])
 
 _gpu_lock = asyncio.Lock()     # serialize the single GPU-resident model across requests
 

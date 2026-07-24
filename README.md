@@ -131,11 +131,41 @@ curl -s -X POST localhost:8000/query -H 'content-type: application/json' \
   -d '{"question":"What was the Q4 revenue in the chart?"}' | jq .answer   # "180"
 ```
 
+#### Auth and rate limiting
+
+Set `API_KEY` and every endpoint above requires it in an `X-API-Key` header. **Leaving
+it unset disables auth entirely**, which is the default so a local run needs no setup —
+the server logs a warning at boot when it starts up open.
+
+```bash
+API_KEY=$(openssl rand -hex 24) PYTHONPATH=. uv run uvicorn src.server:app
+curl -s localhost:8000/corpus                          # 401
+curl -s -H "X-API-Key: $API_KEY" localhost:8000/corpus # 200
+```
+
+Two endpoints stay open by design:
+
+- **`GET /health`** — so an orchestrator can probe liveness without holding the secret.
+- **`GET /images/...`** — because `<img src>` cannot send a custom header. Page and crop
+  PNGs are all it exposes, and their paths are only discoverable through an
+  authenticated `/query`. **If your pages are themselves sensitive, this is the gap to
+  close** (put the deployment behind a proxy that authenticates, or serve images as
+  data-URIs with `?inline=true`).
+
+Requests are also rate limited per client IP — a sliding window, counted in-process
+(the server is single-worker by design, so one process sees everything). Exceeding it
+returns `429` with a `Retry-After` header. The limit is applied **before** the key
+check, so unauthenticated requests are throttled too and key guessing isn't free.
+
 | Setting | Default | Notes |
 |---|---|---|
 | `SERVER_HOST` | `127.0.0.1` | uvicorn bind host (the `python src/server.py` runner) |
 | `SERVER_PORT` | `8000` | uvicorn bind port |
-| `CORS_ALLOW_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | comma-separated browser origins allowed to call the API; `*` allows any |
+| `API_KEY` | *(empty)* | shared secret required in `X-API-Key`. **Empty disables auth** — set it for anything reachable beyond localhost |
+| `RATE_LIMIT_PER_MINUTE` | `30` | per-IP cap on the query/read endpoints; `0` disables |
+| `RATE_LIMIT_INGEST_PER_HOUR` | `10` | per-IP cap on `/ingest` and `/ingest/stream`, on top of the per-minute one; `0` disables |
+| `TRUST_PROXY_HEADERS` | `false` | read the client IP from `X-Forwarded-For`. Only enable behind a trusted proxy — otherwise any client can forge it and get a fresh rate-limit bucket |
+| `CORS_ALLOW_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | comma-separated browser origins allowed to call the API; `*` allows any. Irrelevant in the Docker deployment, where the UI is served from the same origin |
 | `MAX_UPLOAD_MB` | `50` | reject larger PDF uploads to `POST /ingest` |
 
 ### UI (`ui/`)
@@ -145,8 +175,9 @@ document viewer) that renders each answer with its **visual citation**: the cite
 with the bounding box drawn over it, the cropped slice, and the reranked-candidate rail,
 plus a "how this was answered" per-stage trace. A **"why this page?"** toggle on the viewer
 overlays the MaxSim patch heatmap (via `POST /heatmap`), tinting the patches the query
-matched — the retrieval-side complement to the answer crop. It runs as its own dev server
-and calls the API above (two processes: the API on `:8000`, the UI on `:5173`).
+matched — the retrieval-side complement to the answer crop. In development it runs as its
+own dev server against the API (two processes: the API on `:8000`, the UI on `:5173`); in
+the Docker image it is compiled to static assets and served by the API itself on one origin.
 
 ```bash
 cd ui
@@ -154,22 +185,45 @@ npm install
 npm run dev            # http://localhost:5173  (expects the API on :8000)
 ```
 
-Point it at a non-default API with `VITE_API_BASE` (e.g.
-`VITE_API_BASE=http://host:8000 npm run dev`). The API already allows the Vite dev
-origin via CORS. `npm run typecheck` and `npm run test` cover the UI's pure logic (the
-`citation.box → overlay` math and 1-based page resolution).
+That's the **dev** setup — two processes, cross-origin, which is why the API allows the
+Vite dev origin via CORS. A **production build defaults to same-origin relative URLs**
+instead, because the deployed shape is FastAPI serving the built bundle itself (see
+Deployment below). `VITE_API_BASE` overrides either (e.g.
+`VITE_API_BASE=http://host:8000 npm run dev` to point a dev UI at a remote backend).
+
+`npm run typecheck` and `npm run test` cover the UI's pure logic (the
+`citation.box → overlay` math and 1-based page resolution); CI runs both plus the build
+on every PR.
 
 ### Deployment (Docker)
 
-The `Dockerfile` packages the **backend API** (the UI is served separately). It's a
-multi-stage `uv` build on a slim base; on Linux it pulls the CUDA 12.8 torch wheels, so
-the image is GPU-capable with `--gpus all` and **auto-falls back to CPU** when no GPU is
-present. Poppler is included; it runs as a non-root user and serves on `0.0.0.0:8000`.
+The `Dockerfile` packages the **API and the UI together**: a `node:22-slim` stage
+compiles `ui/` to static assets, and FastAPI serves them at `/` alongside the API. One
+container, one origin — so there is no separate web server to run and CORS never enters
+the picture. The Python side is a multi-stage `uv` build on a slim base; on Linux it
+pulls the CUDA 12.8 torch wheels, so the image is GPU-capable with `--gpus all` and
+**auto-falls back to CPU** when no GPU is present. Poppler is included; it runs as a
+non-root user and serves on `0.0.0.0:8000`.
+
+The whole stack, which is the recommended path — the `app` service is wired to the
+`qdrant` service and passes secrets through from your environment:
+
+```bash
+GEMINI_API_KEY=... API_KEY=... docker compose up   # then open http://localhost:8000
+docker compose up -d qdrant                        # Qdrant only (run the app on the host)
+```
+
+`http://localhost:8000` is the whole product: the UI loads there and calls the API on
+its own origin. With `API_KEY` set it prompts for the key on first load and keeps it for
+that browser tab (never baked into the bundle — that JS ships to every visitor).
+
+The image alone, if you're wiring it into something else:
 
 ```bash
 docker build -t vision-rag .
 docker run --rm -p 8000:8000 \
   -e GEMINI_API_KEY=$GEMINI_API_KEY \
+  -e API_KEY=$API_KEY \
   -e QDRANT_URL=http://host.docker.internal:6333 \
   -v vision-rag-hf:/home/appuser/.cache/huggingface \   # persist the model download
   vision-rag                                            # add --gpus all on a GPU host
@@ -180,16 +234,12 @@ are warm); `/health` returns `503` until the model is loaded and Qdrant is reach
 Qdrant must be reachable at `QDRANT_URL` — the model isn't baked in, and Qdrant runs
 separately (see the compose file).
 
-Or bring up the whole stack with Compose — the `app` service is wired to the `qdrant`
-service and passes `GEMINI_API_KEY` through from your environment:
-
-```bash
-GEMINI_API_KEY=... docker compose up          # Qdrant + the containerized API
-docker compose up -d qdrant                    # Qdrant only (run the app on the host)
-```
-
 On a GPU host, uncomment the `deploy.resources` block in the `app` service (needs the
 NVIDIA container toolkit).
+
+**Before exposing it beyond localhost:** set `API_KEY`, keep the single worker, and
+terminate TLS at a proxy in front (the app speaks plain HTTP, so an `X-API-Key` on an
+unencrypted hop is readable in transit). Note the `/images` exemption described above.
 
 ## How it works
 

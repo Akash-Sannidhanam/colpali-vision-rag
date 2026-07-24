@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import { deleteDocument, getCorpus, getHealth, query } from './api'
+import { UnauthorizedError, deleteDocument, getCorpus, getHealth, query } from './api'
+import { ApiKeyModal } from './components/ApiKeyModal'
 import { CorpusRail } from './components/CorpusRail'
 import { Conversation } from './components/Conversation'
 import { IngestModal } from './components/IngestModal'
@@ -20,6 +21,9 @@ export default function App() {
   const [asking, setAsking] = useState(false)
   const [ingestOpen, setIngestOpen] = useState(false)
   const [toast, setToast] = useState<{ kind: 'ok' | 'err'; msg: string } | null>(null)
+  // Set when the server rejects our key (or the absence of one). Every API call routes
+  // its 401 here, so an expired key mid-session re-prompts just like a cold load does.
+  const [needsKey, setNeedsKey] = useState(false)
 
   const refreshHealth = useCallback(() => {
     getHealth()
@@ -30,10 +34,20 @@ export default function App() {
   const refreshCorpus = useCallback(() => {
     getCorpus()
       .then(setCorpus)
-      .catch(() => {
-        /* /health surfaces Qdrant connectivity; leave corpus null */
+      .catch((e) => {
+        // A gated server answers the very first /corpus with 401 — that is the cold-load
+        // path into the key prompt. Anything else: /health surfaces Qdrant connectivity,
+        // so leave corpus null.
+        if (e instanceof UnauthorizedError) setNeedsKey(true)
       })
   }, [])
+
+  /** Retry the initial loads once a key has been entered. */
+  const onKeyEntered = useCallback(() => {
+    setNeedsKey(false)
+    refreshCorpus()
+    refreshHealth()
+  }, [refreshCorpus, refreshHealth])
 
   useEffect(() => {
     refreshCorpus()
@@ -57,6 +71,7 @@ export default function App() {
       )
       setViewer(res)
     } catch (e) {
+      if (e instanceof UnauthorizedError) setNeedsKey(true)
       const msg = e instanceof Error ? e.message : 'Query failed.'
       setTurns((prev) =>
         prev.map((t, i) => (i === prev.length - 1 ? { ...t, loading: false, error: msg } : t)),
@@ -84,6 +99,7 @@ export default function App() {
       setViewer((v) => (v?.pages.some((p) => p.pdf === pdf) ? null : v))
       refreshCorpus()
     } catch (e) {
+      if (e instanceof UnauthorizedError) setNeedsKey(true)
       setToast({ kind: 'err', msg: e instanceof Error ? e.message : 'Delete failed.' })
     }
   }, [refreshCorpus])
@@ -110,6 +126,8 @@ export default function App() {
       {ingestOpen && (
         <IngestModal onClose={() => setIngestOpen(false)} onDone={onIngestDone} />
       )}
+      {/* Last, so it stacks above the ingest modal if a key expires mid-upload. */}
+      {needsKey && <ApiKeyModal onSubmit={onKeyEntered} />}
       {toast && <div className={`toast ${toast.kind}`}>{toast.msg}</div>}
     </div>
   )

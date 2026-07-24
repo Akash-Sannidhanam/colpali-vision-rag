@@ -10,7 +10,14 @@ import type {
 
 // The backend builds absolute image URLs from its own base_url, so image srcs are
 // usually already absolute; BASE is the fallback for relative paths and the fetch root.
-const BASE = (import.meta.env.VITE_API_BASE ?? 'http://127.0.0.1:8000').replace(/\/$/, '')
+//
+// A production build defaults to '' — relative, same-origin — because the deployed
+// shape is FastAPI serving this bundle itself (see the Dockerfile). Only `vite dev`
+// needs an absolute target, since it runs on :5173 while the API is on :8000.
+// VITE_API_BASE overrides both, for pointing a dev UI at a remote backend.
+const BASE = (
+  import.meta.env.VITE_API_BASE ?? (import.meta.env.DEV ? 'http://127.0.0.1:8000' : '')
+).replace(/\/$/, '')
 
 /** Resolve an ImageRef to an <img src>: prefer the inline data-URI, else the URL. */
 export function imageSrc(ref: ImageRef | null | undefined): string | undefined {
@@ -20,6 +27,63 @@ export function imageSrc(ref: ImageRef | null | undefined): string | undefined {
   return undefined
 }
 
+// --- API key ---
+//
+// Held in sessionStorage, never baked into the bundle: this is static JS shipped to the
+// browser, so a build-time key would be readable by anyone who loads the page. The
+// operator pastes the key once per tab session.
+//
+// Image requests are deliberately NOT authenticated — <img src> cannot send a custom
+// header, which is why the backend leaves /images open (see src/auth.py).
+const KEY_STORAGE = 'visionrag.apiKey'
+
+/** The stored API key, or '' when none has been entered. */
+export function getApiKey(): string {
+  return sessionStorage.getItem(KEY_STORAGE) ?? ''
+}
+
+/** Remember the key for this tab session. */
+export function setApiKey(key: string): void {
+  sessionStorage.setItem(KEY_STORAGE, key)
+}
+
+/** Forget the key — called automatically when the server rejects it. */
+export function clearApiKey(): void {
+  sessionStorage.removeItem(KEY_STORAGE)
+}
+
+/** Thrown on a 401 so the UI can prompt for a key instead of showing a raw error. */
+export class UnauthorizedError extends Error {
+  constructor(message = 'This server requires an API key.') {
+    super(message)
+    this.name = 'UnauthorizedError'
+  }
+}
+
+/** Thrown on a 429 so the UI can say "slow down" rather than "request failed". */
+export class RateLimitedError extends Error {
+  constructor(
+    message: string,
+    readonly retryAfterSeconds: number | null,
+  ) {
+    super(message)
+    this.name = 'RateLimitedError'
+  }
+}
+
+/**
+ * fetch against the API base, carrying the stored key when there is one.
+ *
+ * Every call goes through here, so the header is attached in exactly one place and a
+ * new endpoint cannot forget it.
+ */
+function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const key = getApiKey()
+  const headers = new Headers(init.headers)
+  if (key) headers.set('X-API-Key', key)
+  return fetch(`${BASE}${path}`, { ...init, headers })
+}
+
 async function asJson<T>(res: Response): Promise<T> {
   if (!res.ok) {
     let detail = res.statusText
@@ -27,6 +91,16 @@ async function asJson<T>(res: Response): Promise<T> {
       detail = (await res.json()).detail ?? detail
     } catch {
       /* keep statusText */
+    }
+    if (res.status === 401) {
+      // The stored key is wrong or the server started requiring one; drop it so the
+      // next render prompts rather than retrying a key we know is rejected.
+      clearApiKey()
+      throw new UnauthorizedError(detail)
+    }
+    if (res.status === 429) {
+      const retry = Number(res.headers.get('Retry-After'))
+      throw new RateLimitedError(detail, Number.isFinite(retry) && retry > 0 ? retry : null)
     }
     throw new Error(`${res.status}: ${detail}`)
   }
@@ -38,7 +112,7 @@ export async function query(
   opts: { inline?: boolean } = {},
 ): Promise<QueryResponse> {
   const suffix = opts.inline ? '?inline=true' : ''
-  const res = await fetch(`${BASE}/query${suffix}`, {
+  const res = await apiFetch(`/query${suffix}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ question }),
@@ -53,7 +127,7 @@ export async function heatmap(
   pdf: string,
   pageNumber: number,
 ): Promise<HeatmapResponse> {
-  const res = await fetch(`${BASE}/heatmap`, {
+  const res = await apiFetch('/heatmap', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ question, pdf, page_number: pageNumber }),
@@ -61,26 +135,27 @@ export async function heatmap(
   return asJson<HeatmapResponse>(res)
 }
 
-/** /health returns 503 (not throw) when degraded; parse the body either way. */
+/** /health returns 503 (not throw) when degraded; parse the body either way. It is the
+ *  one endpoint the backend leaves ungated, so it answers before a key is entered. */
 export async function getHealth(): Promise<HealthResponse> {
-  const res = await fetch(`${BASE}/health`)
+  const res = await apiFetch('/health')
   return res.json() as Promise<HealthResponse>
 }
 
 export async function getCorpus(): Promise<CorpusResponse> {
-  return asJson<CorpusResponse>(await fetch(`${BASE}/corpus`))
+  return asJson<CorpusResponse>(await apiFetch('/corpus'))
 }
 
 /** Remove a document from the corpus: vectors, page images, crops, and the stored PDF. */
 export async function deleteDocument(pdf: string): Promise<DeleteResponse> {
-  const res = await fetch(`${BASE}/corpus/${encodeURIComponent(pdf)}`, { method: 'DELETE' })
+  const res = await apiFetch(`/corpus/${encodeURIComponent(pdf)}`, { method: 'DELETE' })
   return asJson<DeleteResponse>(res)
 }
 
 export async function ingest(file: File): Promise<IngestResponse> {
   const fd = new FormData()
   fd.append('file', file)
-  return asJson<IngestResponse>(await fetch(`${BASE}/ingest`, { method: 'POST', body: fd }))
+  return asJson<IngestResponse>(await apiFetch('/ingest', { method: 'POST', body: fd }))
 }
 
 // One progress event from POST /ingest/stream (mirrors src.ingest event dicts).
@@ -107,16 +182,12 @@ export async function ingestStream(
 ): Promise<void> {
   const fd = new FormData()
   fd.append('file', file)
-  const res = await fetch(`${BASE}/ingest/stream`, { method: 'POST', body: fd, signal })
-  if (!res.ok || !res.body) {
-    let detail = res.statusText
-    try {
-      detail = (await res.json()).detail ?? detail
-    } catch {
-      /* keep statusText */
-    }
-    throw new Error(`${res.status}: ${detail}`)
-  }
+  const res = await apiFetch('/ingest/stream', { method: 'POST', body: fd, signal })
+  // Route failures through asJson so a 401/429 raises the same typed error the JSON
+  // endpoints do (the endpoint validates the upload before it starts streaming).
+  // asJson always throws for a non-2xx, so control never returns from this branch.
+  if (!res.ok) await asJson<never>(res)
+  if (!res.body) throw new Error('The server returned no response body.')
 
   const reader = res.body.getReader()
   const decoder = new TextDecoder()

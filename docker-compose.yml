@@ -1,12 +1,13 @@
-# Qdrant + the Vision RAG API for the vision RAG index.
+# Qdrant + the Vision RAG app (API and UI in one container).
 #
 #   docker compose up -d qdrant   # Qdrant only; run the app on the host (keeps MPS/CUDA)
-#   GEMINI_API_KEY=... docker compose up   # full stack: Qdrant + the containerized API
+#   GEMINI_API_KEY=... API_KEY=... docker compose up   # full stack, then open :8000
 #   docker compose down           # stop; data persists in the qdrant_storage volume
 #
 # Running just Qdrant and the app on the host is the dev default (ColQwen2 keeps its
-# Apple MPS / NVIDIA GPU). The `app` service is for a container deployment; on a GPU
-# host, uncomment its `deploy.resources` block and install the NVIDIA container toolkit.
+# Apple MPS / NVIDIA GPU). The `app` service is the deployment shape: it serves the
+# built UI at / alongside the API, so http://localhost:8000 is the whole product. On a
+# GPU host, uncomment its `deploy.resources` block and install the NVIDIA container toolkit.
 services:
   qdrant:
     image: qdrant/qdrant:v1.18.3   # pinned; wire-compatible with qdrant-client 1.18.x
@@ -31,10 +32,17 @@ services:
     environment:
       # Reach Qdrant over the compose network (service name), not localhost.
       - QDRANT_URL=http://qdrant:6333
-      # Passed through from your shell / .env - never hard-code the key here.
+      # Passed through from your shell / .env - never hard-code secrets here.
       - GEMINI_API_KEY=${GEMINI_API_KEY:?set GEMINI_API_KEY in your env or .env}
-      # Let a browser UI on the host call the containerized API.
-      - CORS_ALLOW_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
+      # Shared secret gating every endpoint but /health and /images. Optional (unlike
+      # GEMINI_API_KEY) so `docker compose up` still works for a local trial - but the
+      # server logs a warning at boot when it is empty, and anything reachable beyond
+      # localhost wants it set.
+      - API_KEY=${API_KEY:-}
+      - RATE_LIMIT_PER_MINUTE=${RATE_LIMIT_PER_MINUTE:-30}
+      - RATE_LIMIT_INGEST_PER_HOUR=${RATE_LIMIT_INGEST_PER_HOUR:-10}
+      # No CORS_ALLOW_ORIGINS: the image serves the UI itself, so the browser calls the
+      # API from its own origin. Set it only if you point a separate frontend at this.
     volumes:
       - hf_cache:/home/appuser/.cache/huggingface   # persist the ~2B model download
     restart: unless-stopped
