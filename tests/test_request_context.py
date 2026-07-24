@@ -8,6 +8,7 @@ from src import request_context
 
 
 def test_begin_request_binds_id_and_end_restores_default():
+    """A scope binds a uuid4 hex id and restores the '-' default on exit."""
     assert request_context.current_request_id() == "-"
     scope = request_context.begin_request()
     rid = request_context.current_request_id()
@@ -17,6 +18,7 @@ def test_begin_request_binds_id_and_end_restores_default():
 
 
 def test_record_usage_accumulates_and_totals_sum():
+    """Repeated calls sum into the per-request token, cost, and call totals."""
     scope = request_context.begin_request()
     try:
         request_context.record_usage(prompt=1000, output=500, total=1500, cost=0.001)
@@ -33,6 +35,7 @@ def test_record_usage_accumulates_and_totals_sum():
 
 
 def test_fresh_request_resets_totals():
+    """A new scope starts from zero rather than inheriting the previous request's totals."""
     first = request_context.begin_request()
     request_context.record_usage(prompt=10, output=5, total=15, cost=0.0)
     request_context.end_request(first)
@@ -45,12 +48,14 @@ def test_fresh_request_resets_totals():
 
 
 def test_record_usage_outside_request_is_noop():
+    """Usage recorded with no active scope is dropped instead of raising."""
     # No active request -> no accumulator -> must not raise, totals stay empty.
     request_context.record_usage(prompt=1, output=1, total=2, cost=0.1)
     assert request_context.usage_totals() == {}
 
 
 def test_stage_breakdown_buckets_usage_by_current_stage():
+    """Each call lands in its stage bucket and in the request aggregate."""
     scope = request_context.begin_request()
     try:
         request_context.enter_stage("rerank")
@@ -74,6 +79,7 @@ def test_stage_breakdown_buckets_usage_by_current_stage():
 
 
 def test_usage_outside_a_stage_hits_the_aggregate_only():
+    """Usage with no active stage still counts toward the total but creates no bucket."""
     scope = request_context.begin_request()
     try:
         request_context.record_usage(prompt=10, output=5, total=15, cost=0.0)
@@ -87,6 +93,7 @@ def test_usage_outside_a_stage_hits_the_aggregate_only():
 
 
 def test_stage_helpers_are_noop_outside_a_request():
+    """The stage helpers are safe to call with no scope bound."""
     request_context.enter_stage("rerank")             # must not raise with no scope
     request_context.exit_stage("rerank", 1.0)
     assert request_context.stage_breakdown() == []

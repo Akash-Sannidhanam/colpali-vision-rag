@@ -33,6 +33,7 @@ def load_dataset(lines) -> list[dict]:
             raise ValueError(f"dataset line {lineno}: not valid JSON ({exc})") from exc
 
         def bad(reason: str):
+            """A ValueError naming the offending dataset line."""
             return ValueError(f"dataset line {lineno}: {reason}")
 
         if not isinstance(row, dict):
@@ -76,6 +77,7 @@ def load_dataset(lines) -> list[dict]:
 
 
 def _is_gold(hit: dict, gold: list[dict]) -> bool:
+    """True when a retrieved hit is one of the gold (pdf, page) pairs."""
     return any(
         hit.get("pdf") == g["pdf"] and hit.get("page_number") == g["page"] for g in gold
     )
@@ -119,6 +121,7 @@ def _rate(values: list) -> float | None:
 
 
 def _metrics(rows: list[dict], ks: tuple) -> dict:
+    """Aggregate one slice of rows into rates, computed over applicable rows only."""
     ranked = [r["gold_rank"] for r in rows if "gold_rank" in r]
     judges = [r["judge"] for r in rows if r.get("judge") is not None]
     latencies = [r["latency_ms"] for r in rows if r.get("latency_ms") is not None]
@@ -147,6 +150,7 @@ def aggregate(rows: list[dict], ks: tuple = (1, 3, 10)) -> dict:
 
 
 def _cell(value) -> str:
+    """Render one table cell: None as '-', bools as Y/N, everything else as str."""
     if value is None:
         return "-"
     if isinstance(value, bool):
@@ -178,6 +182,7 @@ def format_table(rows: list[dict], summary: dict) -> str:
     lines += ["  ".join(cell.ljust(w) for cell, w in zip(row, widths)) for row in body]
 
     def block(title: str, metrics: dict) -> list[str]:
+        """One `label: k=v  k=v` summary line, excluding the nested per-tag block."""
         pairs = [f"{k}={_cell(v)}" for k, v in metrics.items() if k != "per_tag"]
         return [f"{title}: " + "  ".join(pairs)]
 

@@ -32,6 +32,7 @@ def _stub_pipeline(monkeypatch, pages_per_pdf: int, indexed: dict | None = None)
 
 
 def _pdf(tmp_path, name: str = "doc.pdf", body: bytes = b"%PDF-1.4"):
+    """Write a stub PDF into tmp_path and return its path."""
     path = tmp_path / name
     path.write_bytes(body)
     return path
@@ -40,6 +41,7 @@ def _pdf(tmp_path, name: str = "doc.pdf", body: bytes = b"%PDF-1.4"):
 # --- progress events ---
 
 def test_run_ingest_emits_progress_per_step(monkeypatch, tmp_path):
+    """One render/pages/embed/stored event per step - the data the SSE endpoint streams."""
     _stub_pipeline(monkeypatch, pages_per_pdf=3)
     pdf = _pdf(tmp_path)
 
@@ -56,6 +58,7 @@ def test_run_ingest_emits_progress_per_step(monkeypatch, tmp_path):
 
 
 def test_run_ingest_defaults_to_printing(monkeypatch, tmp_path, capsys):
+    """With no callback, the CLI's inline print path still runs unchanged."""
     _stub_pipeline(monkeypatch, pages_per_pdf=1)
     ingest.run_ingest([_pdf(tmp_path)])   # no callback -> the CLI's inline print path
 
@@ -66,6 +69,7 @@ def test_run_ingest_defaults_to_printing(monkeypatch, tmp_path, capsys):
 # --- incremental sync: what gets re-embedded ---
 
 def test_sync_skips_a_document_whose_fingerprint_still_matches(monkeypatch, tmp_path):
+    """Matching content hash + embed version means zero pages embedded and no model call."""
     pdf = _pdf(tmp_path)
     indexed = {"doc.pdf": {"page_count": 3,
                            "content_hash": ingest._fingerprint(pdf),
@@ -81,6 +85,7 @@ def test_sync_skips_a_document_whose_fingerprint_still_matches(monkeypatch, tmp_
 
 
 def test_sync_re_embeds_when_the_content_hash_changes(monkeypatch, tmp_path):
+    """Edited PDF bytes invalidate the stored vectors and force a re-embed."""
     pdf = _pdf(tmp_path)
     indexed = {"doc.pdf": {"page_count": 3, "content_hash": "stale",
                            "embed_version": ingest.EMBED_VERSION}}
@@ -91,7 +96,9 @@ def test_sync_re_embeds_when_the_content_hash_changes(monkeypatch, tmp_path):
 
 
 def test_sync_re_embeds_when_the_embed_version_changes(monkeypatch, tmp_path):
+    """A rebuild writes hashes too, or the next sync would re-embed the whole corpus."""
     # Same PDF bytes, different model/DPI: a content hash alone would wrongly skip this.
+    """A model/DPI change re-embeds even though the bytes are identical."""
     pdf = _pdf(tmp_path)
     indexed = {"doc.pdf": {"page_count": 3,
                            "content_hash": ingest._fingerprint(pdf),
@@ -105,6 +112,7 @@ def test_sync_re_embeds_when_the_embed_version_changes(monkeypatch, tmp_path):
 def test_sync_deletes_before_re_embedding_a_changed_document(monkeypatch, tmp_path):
     # Point ids are stable per (pdf, page), so upserting a shorter revision would
     # overwrite pages 1..n and strand the rest. The delete is what prevents that.
+    """The delete precedes the render, so a shorter revision can't strand tail pages."""
     pdf = _pdf(tmp_path)
     indexed = {"doc.pdf": {"page_count": 9, "content_hash": "stale",
                            "embed_version": ingest.EMBED_VERSION}}
@@ -120,6 +128,7 @@ def test_sync_deletes_before_re_embedding_a_changed_document(monkeypatch, tmp_pa
 
 
 def test_sync_does_not_delete_a_document_it_has_never_seen(monkeypatch, tmp_path):
+    """A brand-new document is upserted directly, with no pointless delete first."""
     _stub_pipeline(monkeypatch, pages_per_pdf=1, indexed={})
     deletes: list[str] = []
     monkeypatch.setattr(ingest, "delete_document", lambda name: deletes.append(name))
@@ -130,6 +139,7 @@ def test_sync_does_not_delete_a_document_it_has_never_seen(monkeypatch, tmp_path
 
 
 def test_sync_writes_into_the_live_collection_not_a_new_version(monkeypatch, tmp_path):
+    """Sync upserts into the live alias and never starts a versioned rebuild."""
     _stub_pipeline(monkeypatch, pages_per_pdf=1)
     targets: list[str] = []
     monkeypatch.setattr(ingest, "upsert_pages",
@@ -143,6 +153,7 @@ def test_sync_writes_into_the_live_collection_not_a_new_version(monkeypatch, tmp
 
 
 def test_sync_embeds_only_the_changed_document_in_a_mixed_corpus(monkeypatch, tmp_path):
+    """Only the stale document is re-embedded; the current one is left alone."""
     fresh, stale = _pdf(tmp_path, "fresh.pdf"), _pdf(tmp_path, "stale.pdf", b"%PDF-x")
     indexed = {"fresh.pdf": {"page_count": 2,
                              "content_hash": ingest._fingerprint(fresh),
@@ -158,6 +169,7 @@ def test_sync_embeds_only_the_changed_document_in_a_mixed_corpus(monkeypatch, tm
 def test_sync_never_prunes_documents_missing_from_disk(monkeypatch, tmp_path):
     # A document that is indexed but no longer passed in is left alone: removal is
     # always explicit, never inferred from a file's absence.
+    """An indexed document absent from the run is left alone, never auto-deleted."""
     indexed = {"gone.pdf": {"page_count": 4, "content_hash": "h",
                             "embed_version": ingest.EMBED_VERSION}}
     _stub_pipeline(monkeypatch, pages_per_pdf=1, indexed=indexed)
@@ -172,6 +184,7 @@ def test_sync_never_prunes_documents_missing_from_disk(monkeypatch, tmp_path):
 # --- rebuild: the atomic escape hatch ---
 
 def test_rebuild_takes_the_atomic_path_and_ignores_fingerprints(monkeypatch, tmp_path):
+    """--rebuild re-embeds everything and publishes via the alias swap."""
     pdf = _pdf(tmp_path)
     indexed = {"doc.pdf": {"page_count": 3,
                            "content_hash": ingest._fingerprint(pdf),
@@ -188,6 +201,7 @@ def test_rebuild_takes_the_atomic_path_and_ignores_fingerprints(monkeypatch, tmp
 
 
 def test_rebuild_aborts_the_partial_on_failure(monkeypatch, tmp_path):
+    """A mid-build failure drops the partial so the previous index keeps serving."""
     _stub_pipeline(monkeypatch, pages_per_pdf=1)
     aborted: list[str] = []
     monkeypatch.setattr(ingest, "abort_ingest", lambda target: aborted.append(target))
@@ -200,8 +214,8 @@ def test_rebuild_aborts_the_partial_on_failure(monkeypatch, tmp_path):
 
 
 def test_rebuild_stores_fingerprints_so_the_next_sync_can_skip(monkeypatch, tmp_path):
-    # A rebuild that wrote empty fingerprints would make the very next sync re-embed
-    # the whole corpus again.
+    """A rebuild writes fingerprints too - empty ones would make the very next sync
+    re-embed the whole corpus again."""
     pdf = _pdf(tmp_path)
     _stub_pipeline(monkeypatch, pages_per_pdf=1)
     points: list[tuple] = []
@@ -218,6 +232,7 @@ def test_rebuild_stores_fingerprints_so_the_next_sync_can_skip(monkeypatch, tmp_
 # --- CLI wrapper ---
 
 def test_cli_reports_skipped_documents(monkeypatch, tmp_path, capsys):
+    """The CLI summary reports how many documents were already up to date."""
     pdf = _pdf(tmp_path)
     indexed = {"doc.pdf": {"page_count": 3,
                            "content_hash": ingest._fingerprint(pdf),
@@ -232,6 +247,7 @@ def test_cli_reports_skipped_documents(monkeypatch, tmp_path, capsys):
 
 
 def test_cli_rebuild_flag_is_not_treated_as_a_path(monkeypatch, tmp_path, capsys):
+    """--rebuild sets the flag and is stripped from the PDF path list."""
     _stub_pipeline(monkeypatch, pages_per_pdf=2)
     monkeypatch.setattr(ingest, "close_client", lambda: None)
     seen: dict = {}

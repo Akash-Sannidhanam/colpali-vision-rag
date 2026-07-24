@@ -38,6 +38,7 @@ class _Scope:
 
 
 def _fresh_usage() -> dict:
+    """A zeroed token/cost accumulator - the starting value for a request or a stage."""
     return {
         "prompt_tokens": 0,
         "output_tokens": 0,

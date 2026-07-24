@@ -39,10 +39,12 @@ CANDIDATES = [_hit(n) for n in range(1, 11)]
 
 
 def _rerank_response(indices: list) -> SimpleNamespace:
+    """A rerank SDK response carrying the given page indices."""
     return SimpleNamespace(parsed=SimpleNamespace(page_indices=indices), text="")
 
 
 def _answer_response(citation: Citation) -> SimpleNamespace:
+    """An answer SDK response carrying the given citation."""
     return SimpleNamespace(parsed=citation, text="")
 
 
@@ -57,10 +59,12 @@ def pipeline(monkeypatch):
     monkeypatch.setattr(answerer, "image_part", lambda path: f"img:{path}")
 
     def crop(path, box, index=0):
+        """Record the crop call and return a fixed path."""
         calls["cropped"].append((str(path), list(box)))
         return "crop.png"
 
     def annotate(path, boxes):
+        """Record the annotate call and return a fixed path."""
         calls["annotated"].append((str(path), [list(b) for b in boxes]))
         return "annotated.png"
 
@@ -71,6 +75,7 @@ def pipeline(monkeypatch):
 
 
 def test_happy_path_flows_rerank_order_into_answer_and_highlight(pipeline, monkeypatch):
+    """source_page indexes the reranked list, so the crop is cut from the rerank winner's image."""
     monkeypatch.setattr(reranker, "generate", lambda **kw: _rerank_response([3, 1]))
     cite = _cite("42", True, 1, [100, 100, 200, 200])
     monkeypatch.setattr(answerer, "generate", lambda **kw: _answer_response(cite))
@@ -89,6 +94,7 @@ def test_happy_path_flows_rerank_order_into_answer_and_highlight(pipeline, monke
 
 
 def test_candidates_holds_full_retrieval_and_survives_rerank(pipeline, monkeypatch):
+    """The pre-rerank top-k stays available for eval/UI even though rerank overwrites `retrieved`."""
     monkeypatch.setattr(reranker, "generate", lambda **kw: _rerank_response([3, 1]))
     cite = _cite("42", True, 1, [100, 100, 200, 200])
     monkeypatch.setattr(answerer, "generate", lambda **kw: _answer_response(cite))
@@ -103,7 +109,9 @@ def test_candidates_holds_full_retrieval_and_survives_rerank(pipeline, monkeypat
 
 
 def test_rerank_failure_falls_back_to_qdrant_top_k(pipeline, monkeypatch):
+    """A rerank outage degrades to Qdrant order and the pipeline still completes end to end."""
     def boom(**kw):
+        """Raise, to exercise a stage's degradation path."""
         raise RuntimeError("quota")
 
     monkeypatch.setattr(reranker, "generate", boom)
@@ -119,6 +127,7 @@ def test_rerank_failure_falls_back_to_qdrant_top_k(pipeline, monkeypatch):
 
 
 def test_rerank_garbage_indices_are_cleaned_before_answer(pipeline, monkeypatch):
+    """Out-of-range and duplicate indices are cleaned before the answer step sees them."""
     # 99 / 0 out of range, 3 duplicated -> _valid_order keeps 3, tops up with 1.
     monkeypatch.setattr(reranker, "generate", lambda **kw: _rerank_response([99, 0, 3, 3]))
     cite = _cite("ok", True, 2, [0, 0, 10, 10])
@@ -132,9 +141,11 @@ def test_rerank_garbage_indices_are_cleaned_before_answer(pipeline, monkeypatch)
 
 
 def test_answer_failure_degrades_to_not_found_and_skips_highlight(pipeline, monkeypatch):
+    """An answer outage yields a not-found citation and the highlight step skips cleanly."""
     monkeypatch.setattr(reranker, "generate", lambda **kw: _rerank_response([3, 1]))
 
     def boom(**kw):
+        """Raise, to exercise a stage's degradation path."""
         raise RuntimeError("api down")
 
     monkeypatch.setattr(answerer, "generate", boom)
@@ -149,6 +160,7 @@ def test_answer_failure_degrades_to_not_found_and_skips_highlight(pipeline, monk
 
 
 def test_malformed_answer_json_degrades_to_not_found(pipeline, monkeypatch):
+    """Unparseable answer JSON degrades the same way an outage does."""
     monkeypatch.setattr(reranker, "generate", lambda **kw: _rerank_response([3, 1]))
     monkeypatch.setattr(
         answerer, "generate",
@@ -162,11 +174,13 @@ def test_malformed_answer_json_degrades_to_not_found(pipeline, monkeypatch):
 
 
 def test_empty_retrieval_completes_cleanly(pipeline, monkeypatch):
+    """An empty index completes without a Gemini call and without a crop."""
     monkeypatch.setattr(graph, "search", lambda vec: [])
     not_found = _cite("No pages indexed.", False, 0, [])
     monkeypatch.setattr(answerer, "generate", lambda **kw: _answer_response(not_found))
     # rerank must pass [] through without a Gemini call; make one loud if attempted.
     def no_call(**kw):
+        """Fail loudly if the pipeline reaches Gemini when it shouldn't."""
         raise AssertionError("rerank should not call Gemini on empty retrieval")
 
     monkeypatch.setattr(reranker, "generate", no_call)

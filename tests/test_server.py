@@ -87,13 +87,16 @@ def warm(monkeypatch):
 # --- /health ---
 
 def test_health_ok(warm):
+    """A warm server with a reachable Qdrant reports ok."""
     resp = warm.get("/health")
     assert resp.status_code == 200
     assert resp.json() == {"status": "ok", "model_loaded": True, "qdrant": "ok"}
 
 
 def test_health_degraded_when_qdrant_unreachable(warm, monkeypatch):
+    """A Qdrant blip after boot reports 503 degraded, surfacing the reason."""
     def down():
+        """Simulate Qdrant being unreachable after a successful boot."""
         raise RuntimeError("Cannot reach Qdrant")
 
     monkeypatch.setattr(server, "ping", down)          # after startup, so boot still succeeded
@@ -107,6 +110,7 @@ def test_health_degraded_when_qdrant_unreachable(warm, monkeypatch):
 # --- /corpus ---
 
 def test_corpus_lists_documents_and_total(warm, monkeypatch):
+    """The rail's payload lists each document and the summed page count."""
     monkeypatch.setattr(server, "list_documents",
                         lambda: [{"pdf": "attention.pdf", "page_count": 15},
                                  {"pdf": "colpali.pdf", "page_count": 26}])
@@ -151,6 +155,7 @@ def corpus_files(monkeypatch, tmp_path):
 
 
 def test_delete_removes_vectors_and_every_file_for_that_document(warm, corpus_files, monkeypatch):
+    """Delete drops the vectors plus every page, crop, and the source PDF - and nothing belonging to another document."""
     dropped: list[str] = []
     monkeypatch.setattr(server, "delete_document", lambda name: dropped.append(name) or 2)
 
@@ -164,6 +169,7 @@ def test_delete_removes_vectors_and_every_file_for_that_document(warm, corpus_fi
 
 
 def test_delete_404s_for_an_unindexed_document_without_touching_disk(warm, corpus_files, monkeypatch):
+    """An unknown document 404s before any vector or file is touched."""
     dropped: list[str] = []
     monkeypatch.setattr(server, "delete_document", lambda name: dropped.append(name) or 0)
 
@@ -177,8 +183,8 @@ def test_delete_404s_for_an_unindexed_document_without_touching_disk(warm, corpu
 @pytest.mark.parametrize("target", ["..%2F..%2Fkeeper.pdf", "..%2F..%2Fetc%2Fpasswd",
                                     "%2Fetc%2Fpasswd"])
 def test_delete_path_traversal_never_reaches_the_handler(warm, corpus_files, monkeypatch, target):
-    # First line of defence: a `{pdf}` path parameter does not match `/`, so anything
-    # carrying a separator 404s in the router before any of our code runs.
+    """First line of defence: a `{pdf}` path parameter does not match `/`, so a name
+    carrying a separator 404s in the router before any of our code runs."""
     dropped: list[str] = []
     monkeypatch.setattr(server, "delete_document", lambda name: dropped.append(name) or 0)
 
@@ -191,6 +197,7 @@ def test_delete_path_traversal_never_reaches_the_handler(warm, corpus_files, mon
 
 
 def test_delete_only_ever_touches_an_indexed_document(warm, corpus_files, monkeypatch, tmp_path):
+    """A PDF in PDFS_DIR that was never ingested is not the API's to delete."""
     # Second line of defence, and the one that actually constrains the filesystem: the
     # normalized name must be in the index before anything is unlinked. A PDF sitting in
     # PDFS_DIR that was never ingested is not the API's to delete.
@@ -207,6 +214,7 @@ def test_delete_only_ever_touches_an_indexed_document(warm, corpus_files, monkey
 
 
 def test_delete_normalizes_the_name_before_looking_it_up(warm, corpus_files, monkeypatch):
+    """The name checked against the index is the same one that gets deleted."""
     # `Path(pdf).name` runs before the index lookup, so the name that is checked is the
     # same one that is deleted - a lookup on a raw string and an unlink on a normalized
     # one would be exactly the mismatch that lets something unintended through.
@@ -218,6 +226,7 @@ def test_delete_normalizes_the_name_before_looking_it_up(warm, corpus_files, mon
 
 
 def test_delete_survives_a_missing_file_on_disk(warm, corpus_files):
+    """File removal is best-effort: an already-missing page doesn't fail the request."""
     # Files are best-effort: a page image already gone must not fail the request after
     # the vectors have been removed.
     corpus_files["doomed.pdf"][0].unlink()
@@ -231,6 +240,7 @@ def test_delete_survives_a_missing_file_on_disk(warm, corpus_files):
 # --- /query ---
 
 def test_query_happy_path_shape(warm, monkeypatch):
+    """The full /query contract: enriched citation, per-region crops, candidate pages, and meta."""
     monkeypatch.setattr(server, "run_query", lambda q: _canned_result(found=True))
     resp = warm.post("/query", json={"question": "what was the Q4 revenue?"})
     assert resp.status_code == 200
@@ -266,6 +276,7 @@ def test_query_happy_path_shape(warm, monkeypatch):
 
 
 def test_query_not_found_has_no_crop(warm, monkeypatch):
+    """A not-found answer has no crop or regions but still surfaces the candidates."""
     monkeypatch.setattr(server, "run_query", lambda q: _canned_result(found=False))
     resp = warm.post("/query", json={"question": "unanswerable?"})
     assert resp.status_code == 200
@@ -280,9 +291,11 @@ def test_query_not_found_has_no_crop(warm, monkeypatch):
 
 
 def test_query_inline_populates_data_uri(warm, monkeypatch):
+    """?inline=true adds base64 data-URIs while keeping the static URLs."""
     monkeypatch.setattr(server, "run_query", lambda q: _canned_result(found=True))
 
     async def fake_encode(p):  # _encode_data_uri is async (off-loop file read)
+        """Stand in for the async data-URI encoder without touching disk."""
         return "data:image/png;base64,STUB"
 
     monkeypatch.setattr(server, "_encode_data_uri", fake_encode)
@@ -294,6 +307,7 @@ def test_query_inline_populates_data_uri(warm, monkeypatch):
 
 
 def test_query_empty_question_is_422(warm):
+    """An empty or missing question is rejected by validation."""
     assert warm.post("/query", json={"question": ""}).status_code == 422
     assert warm.post("/query", json={}).status_code == 422
 
@@ -301,6 +315,7 @@ def test_query_empty_question_is_422(warm):
 # --- /heatmap ---
 
 def test_heatmap_happy_path(warm, monkeypatch, tmp_path):
+    """The heatmap endpoint returns the patch grid with its n_x/n_y dimensions."""
     png = tmp_path / "attention_page_3.png"
     png.write_bytes(b"x")                                  # only existence is checked here
     monkeypatch.setattr(server, "page_image_path", lambda pdf, page: png)
@@ -316,10 +331,12 @@ def test_heatmap_happy_path(warm, monkeypatch, tmp_path):
 
 
 def test_heatmap_404_when_page_missing_never_runs_model(warm, monkeypatch, tmp_path):
+    """An unindexed page 404s before paying for the GPU forward passes."""
     monkeypatch.setattr(server, "page_image_path", lambda pdf, page: tmp_path / "nope.png")
     ran = {"model": False}
 
     def spy(q, path):
+        """Record whether the model was reached, and return an empty grid."""
         ran["model"] = True
         return ([], 0, 0)
 
@@ -330,6 +347,7 @@ def test_heatmap_404_when_page_missing_never_runs_model(warm, monkeypatch, tmp_p
 
 
 def test_heatmap_validates_request(warm):
+    """Blank questions, non-positive pages, and missing fields are rejected."""
     assert warm.post("/heatmap",
                      json={"question": "", "pdf": "a.pdf", "page_number": 1}).status_code == 422
     assert warm.post("/heatmap",
@@ -340,9 +358,11 @@ def test_heatmap_validates_request(warm):
 # --- /ingest ---
 
 def test_ingest_happy_path(warm, monkeypatch, tmp_path):
+    """An upload is saved under PDFS_DIR and handed to the ingest by path."""
     captured = {}
 
     def fake_run_ingest(paths):
+        """Record what the endpoint handed the ingest, and report a page count."""
         captured["paths"] = paths
         return 7
 
@@ -356,6 +376,7 @@ def test_ingest_happy_path(warm, monkeypatch, tmp_path):
 
 
 def test_ingest_does_not_re_embed_the_rest_of_the_corpus(warm, monkeypatch, tmp_path):
+    """Only the uploaded PDF is ingested - adding one document no longer re-embeds the corpus."""
     # An upload used to hand run_ingest every PDF in PDFS_DIR, so adding one document
     # re-rendered and re-embedded the whole corpus through the ~2B model.
     (tmp_path / "already_indexed.pdf").write_bytes(b"%PDF-1.4 old")
@@ -369,14 +390,17 @@ def test_ingest_does_not_re_embed_the_rest_of_the_corpus(warm, monkeypatch, tmp_
 
 
 def test_ingest_rejects_non_pdf(warm):
+    """A non-PDF upload is rejected before anything is written."""
     resp = warm.post("/ingest", files={"file": ("notes.txt", b"hello", "text/plain")})
     assert resp.status_code == 400
 
 
 def test_ingest_stream_emits_progress_and_done(warm, monkeypatch, tmp_path):
+    """The SSE endpoint streams per-page progress and a final done frame."""
     monkeypatch.setattr(server, "PDFS_DIR", tmp_path)
 
     def fake_run_ingest(paths, progress):
+        """Record what the endpoint handed the ingest, and report a page count."""
         progress({"phase": "render", "pdf": "doc.pdf"})
         progress({"phase": "embed", "pdf": "doc.pdf", "page": 1, "total": 1})
         return 1
@@ -394,12 +418,13 @@ def test_ingest_stream_emits_progress_and_done(warm, monkeypatch, tmp_path):
 
 
 def test_ingest_stream_rejects_non_pdf(warm):
-    # validation happens before the stream opens, so a bad upload is a plain 400
+    """Upload validation happens before the stream opens, so a bad upload is a plain 400."""
     resp = warm.post("/ingest/stream", files={"file": ("notes.txt", b"hi", "text/plain")})
     assert resp.status_code == 400
 
 
 def test_ingest_rejects_oversize(warm, monkeypatch):
+    """An upload over the size cap is rejected with 413."""
     monkeypatch.setattr(server, "MAX_UPLOAD_MB", 0)                    # anything non-empty is too big
     resp = warm.post("/ingest", files={"file": ("big.pdf", b"%PDF-1.4 xxxxxxxx", "application/pdf")})
     assert resp.status_code == 413
@@ -408,6 +433,7 @@ def test_ingest_rejects_oversize(warm, monkeypatch):
 # --- pure image helpers (no server) ---
 
 def test_to_url_maps_page_images_path(monkeypatch, tmp_path):
+    """A filesystem path under page_images/ maps to its /images/... URL."""
     monkeypatch.setattr(server, "PAGE_IMAGES_DIR", tmp_path)
     fs = tmp_path / "crops" / "sales_report_page_1_crop.png"
     fs.parent.mkdir(parents=True)
@@ -417,6 +443,7 @@ def test_to_url_maps_page_images_path(monkeypatch, tmp_path):
 
 
 def test_encode_data_uri_roundtrips(tmp_path):
+    """The data-URI encoder round-trips the exact file bytes."""
     fs = tmp_path / "p.png"
     payload = b"\x89PNG\r\n fake bytes"
     fs.write_bytes(payload)

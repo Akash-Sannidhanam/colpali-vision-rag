@@ -18,6 +18,7 @@ from eval.scoring import (
 
 
 def _hit(pdf: str, page: int) -> dict:
+    """One retrieval hit shaped like vector_store.search output."""
     return {"pdf": pdf, "page_number": page, "image_path": f"{pdf}_{page}.png", "score": 0.5}
 
 
@@ -27,72 +28,86 @@ GOLD_A2 = [{"pdf": "a.pdf", "page": 2}]
 # ---------------------------------------------------------------- gold_rank
 
 def test_gold_rank_is_1_based_first_match():
+    """Rank is 1-based and reports the first gold hit's position."""
     hits = [_hit("a.pdf", 1), _hit("a.pdf", 2), _hit("b.pdf", 1)]
     assert gold_rank(hits, GOLD_A2) == 2
 
 
 def test_gold_rank_requires_pdf_and_page_to_match():
+    """A right page in the wrong document is not a hit."""
     # Page 2 exists but in the wrong pdf; a.pdf is present at the wrong page.
     hits = [_hit("b.pdf", 2), _hit("a.pdf", 1)]
     assert gold_rank(hits, GOLD_A2) is None
 
 
 def test_gold_rank_multiple_gold_pages_returns_earliest_hit():
+    """With several gold pages, the earliest-ranked hit wins."""
     gold = [{"pdf": "a.pdf", "page": 5}, {"pdf": "a.pdf", "page": 1}]
     hits = [_hit("a.pdf", 1), _hit("a.pdf", 5)]
     assert gold_rank(hits, gold) == 1
 
 
 def test_gold_rank_empty_hits_is_none():
+    """No hits means no rank, not rank 0."""
     assert gold_rank([], GOLD_A2) is None
 
 
 # ---------------------------------------------------------- citation_correct
 
 def _citation(found=True, source_page=1) -> dict:
+    """A citation dict with the given found flag and 1-based source_page."""
     return {"answer": "x", "found": found, "source_page": source_page, "box": [0, 0, 1, 1]}
 
 
 def test_citation_correct_resolves_source_page_against_reranked_list():
+    """source_page indexes the reranked list, which is what the answer step saw."""
     reranked = [_hit("b.pdf", 9), _hit("a.pdf", 2)]
     assert citation_correct(_citation(source_page=2), reranked, GOLD_A2) is True
 
 
 def test_citation_wrong_page_is_incorrect():
+    """Citing a non-gold page is scored incorrect."""
     reranked = [_hit("b.pdf", 9), _hit("a.pdf", 2)]
     assert citation_correct(_citation(source_page=1), reranked, GOLD_A2) is False
 
 
 def test_citation_not_found_is_incorrect():
+    """A not-found citation never counts as a correct citation."""
     reranked = [_hit("a.pdf", 2)]
     assert citation_correct(_citation(found=False, source_page=0), reranked, GOLD_A2) is False
 
 
 def test_citation_source_page_out_of_range_is_incorrect():
+    """An out-of-range index is incorrect rather than an IndexError."""
     reranked = [_hit("a.pdf", 2)]
     assert citation_correct(_citation(source_page=2), reranked, GOLD_A2) is False
     assert citation_correct(_citation(source_page=0), reranked, GOLD_A2) is False
 
 
 def test_citation_none_is_incorrect():
+    """A missing citation scores incorrect instead of raising."""
     assert citation_correct(None, [_hit("a.pdf", 2)], GOLD_A2) is False
 
 
 # ---------------------------------------------------------- substring_match
 
 def test_substring_match_is_case_insensitive():
+    """Expected substrings match regardless of case."""
     assert substring_match("Total Revenue: $180M", ["revenue"]) is True
 
 
 def test_substring_match_any_of():
+    """Any one of the expected substrings is enough to match."""
     assert substring_match("about 180 units", ["units sold", "180"]) is True
 
 
 def test_substring_match_miss():
+    """No expected substring present scores False."""
     assert substring_match("no idea", ["180"]) is False
 
 
 def test_substring_match_without_expected_is_not_applicable():
+    """No expectation yields None (N/A), which aggregation excludes from denominators."""
     assert substring_match("anything", None) is None
     assert substring_match("anything", []) is None
 
@@ -106,6 +121,7 @@ VALID_ROW = (
 
 
 def test_load_dataset_parses_and_fills_defaults():
+    """Rows parse and optional fields take their documented defaults."""
     rows = load_dataset([
         VALID_ROW,
         '{"id": "q2", "question": "Who?", "gold": [{"pdf": "b.pdf", "page": 1}]}',
@@ -117,6 +133,7 @@ def test_load_dataset_parses_and_fills_defaults():
 
 
 def test_load_dataset_skips_blank_lines():
+    """Blank and whitespace-only lines are ignored, not treated as bad rows."""
     rows = load_dataset(["", VALID_ROW, "   "])
     assert len(rows) == 1
 
@@ -134,11 +151,13 @@ def test_load_dataset_skips_blank_lines():
     ],
 )
 def test_load_dataset_rejects_invalid_rows_naming_the_line(bad_line):
+    """A malformed row raises an error naming the offending line number."""
     with pytest.raises(ValueError, match="line 2"):
         load_dataset([VALID_ROW, bad_line])
 
 
 def test_load_dataset_rejects_duplicate_ids():
+    """Duplicate question ids are rejected, naming the repeated id."""
     with pytest.raises(ValueError, match="q1"):
         load_dataset([VALID_ROW, VALID_ROW])
 
@@ -146,6 +165,7 @@ def test_load_dataset_rejects_duplicate_ids():
 # ------------------------------------------------------------------ aggregate
 
 def test_aggregate_recall_at_ks_from_gold_rank():
+    """recall@k is derived from gold_rank across the requested cutoffs."""
     rows = [
         {"id": "a", "tags": [], "gold_rank": 1},
         {"id": "b", "tags": [], "gold_rank": 4},
@@ -160,6 +180,7 @@ def test_aggregate_recall_at_ks_from_gold_rank():
 
 
 def test_aggregate_excludes_not_applicable_rows_from_denominators():
+    """N/A and absent values are excluded, so rates are over applicable rows only."""
     rows = [
         {"id": "a", "tags": [], "gold_rank": 1, "substring_match": True},
         {"id": "b", "tags": [], "gold_rank": 1, "substring_match": None},
@@ -172,6 +193,7 @@ def test_aggregate_excludes_not_applicable_rows_from_denominators():
 
 
 def test_aggregate_metric_with_no_applicable_rows_is_none():
+    """A metric with nothing to score reports None rather than a misleading 0.0."""
     rows = [{"id": "a", "tags": [], "gold_rank": 1}]
     summary = aggregate(rows, ks=(1,))
     assert summary["rerank_recall"] is None
@@ -181,6 +203,7 @@ def test_aggregate_metric_with_no_applicable_rows_is_none():
 
 
 def test_aggregate_boolean_and_judge_metrics():
+    """Boolean metrics average as rates and judge scores average numerically."""
     rows = [
         {"id": "a", "tags": [], "gold_rank": 1, "rerank_hit": True,
          "citation_correct": True, "judge": {"correct": True, "score": 5}},
@@ -195,6 +218,7 @@ def test_aggregate_boolean_and_judge_metrics():
 
 
 def test_aggregate_per_tag_slices():
+    """Per-tag slices cover only tagged rows while the overall rate still counts them all."""
     rows = [
         {"id": "a", "tags": ["chart"], "gold_rank": 1},
         {"id": "b", "tags": ["chart", "table"], "gold_rank": None},
@@ -211,6 +235,7 @@ def test_aggregate_per_tag_slices():
 
 
 def test_aggregate_average_latency():
+    """avg_latency_ms is the mean over rows that reported a latency."""
     rows = [
         {"id": "a", "tags": [], "gold_rank": 1, "latency_ms": 100.0},
         {"id": "b", "tags": [], "gold_rank": 1, "latency_ms": 300.0},
@@ -221,6 +246,7 @@ def test_aggregate_average_latency():
 # --------------------------------------------------------------- format_table
 
 def test_format_table_smoke():
+    """The rendered table includes row ids, the recall columns, and dashes for N/A cells."""
     rows = [
         {"id": "sales-q4", "tags": ["chart"], "gold_rank": 1, "rerank_hit": True,
          "citation_correct": True, "substring_match": None, "latency_ms": 1234.5},

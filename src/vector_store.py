@@ -127,6 +127,7 @@ def ensure_collection(reset: bool = False) -> None:
 # --- Versioned physical collections + atomic alias swap (server path) ---
 
 def _physical_name(version: int) -> str:
+    """The physical collection name for a version number (`pdf_pages_<n>`)."""
     return f"{_PHYSICAL_PREFIX}{version}"
 
 def _list_physical_versions(client: QdrantClient) -> list[int]:

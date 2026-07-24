@@ -58,6 +58,8 @@ log = get_logger("server")
 # --- Response / request models (the contract the UI is built against) ---
 
 class QueryRequest(BaseModel):
+    """One question to answer; length-bounded so a runaway prompt can't reach Gemini."""
+
     question: str = Field(min_length=1, max_length=2000)
 
 
@@ -73,6 +75,8 @@ class ImageRef(BaseModel):
 
 
 class PageHit(BaseModel):
+    """One retrieved page: its 1-based rank, source, MaxSim score, and page image."""
+
     index: int          # 1-based; matches citation.source_page
     pdf: str
     page_number: int
@@ -91,6 +95,8 @@ class RegionOut(BaseModel):
 
 
 class CitationOut(BaseModel):
+    """Where the answer was read: the primary region plus every cited region."""
+
     found: bool
     source_page: int    # 1-based index into pages[]; 0 when not found (primary region)
     box: list[int]      # [ymin, xmin, ymax, xmax] on a 0-1000 scale; [] when not found
@@ -101,6 +107,8 @@ class CitationOut(BaseModel):
 
 
 class StageMeta(BaseModel):
+    """One pipeline node's latency and Gemini spend (retrieve/rerank/answer/highlight)."""
+
     node: str
     latency_ms: float
     prompt_tokens: int = 0
@@ -111,6 +119,8 @@ class StageMeta(BaseModel):
 
 
 class QueryMeta(BaseModel):
+    """Per-request observability: ids, latency, token/cost totals, and a stage breakdown."""
+
     request_id: str
     latency_ms: float
     prompt_tokens: int = 0
@@ -126,6 +136,8 @@ class QueryMeta(BaseModel):
 
 
 class QueryResponse(BaseModel):
+    """The full /query contract: answer, visual citation, candidates, and meta."""
+
     question: str
     answer: str
     citation: CitationOut
@@ -136,33 +148,45 @@ class QueryResponse(BaseModel):
 
 
 class DocumentInfo(BaseModel):
+    """One indexed document and how many pages of it are in the index."""
+
     pdf: str
     page_count: int
 
 
 class CorpusResponse(BaseModel):
+    """The corpus rail's view: indexed documents, total pages, Qdrant status."""
+
     documents: list[DocumentInfo]
     total_pages: int
     qdrant: str
 
 
 class HealthResponse(BaseModel):
+    """Liveness: whether the model is warm and whether Qdrant is reachable."""
+
     status: str
     model_loaded: bool
     qdrant: str
 
 
 class IngestResponse(BaseModel):
+    """Result of an ingest: the document and how many pages were embedded (0 if unchanged)."""
+
     pdf: str
     indexed_pages: int
 
 
 class DeleteResponse(BaseModel):
+    """Result of a delete: the document and how many indexed pages were removed."""
+
     pdf: str
     removed_pages: int
 
 
 class HeatmapRequest(BaseModel):
+    """A question plus the specific indexed page to compute patch similarities for."""
+
     question: str = Field(min_length=1, max_length=2000)
     pdf: str = Field(min_length=1)
     page_number: int = Field(ge=1)
@@ -487,9 +511,11 @@ async def ingest_stream(file: UploadFile = File(...)):
     done = object()
 
     def progress(event: dict) -> None:
+        """Hop one worker-thread progress event back onto the event loop's queue."""
         loop.call_soon_threadsafe(queue.put_nowait, event)   # called from the worker thread
 
     async def event_stream():
+        """Drain the progress queue into SSE frames until the build finishes or fails."""
         async with _gpu_lock:                                # hold the model lock for the build
             task = asyncio.create_task(asyncio.to_thread(run_ingest, all_pdfs, progress))
             task.add_done_callback(lambda _t: loop.call_soon_threadsafe(queue.put_nowait, done))

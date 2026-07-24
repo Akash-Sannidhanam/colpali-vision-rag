@@ -28,9 +28,11 @@ class _FakeGraph:
     """Stand-in compiled graph: records what it saw, simulates two Gemini calls."""
 
     def __init__(self, seen: dict):
+        """Hold the dict this fake graph records its observations into."""
         self._seen = seen
 
     def invoke(self, state, config=None):
+        """Record the ambient request id and config, then simulate two Gemini calls."""
         self._seen["request_id"] = request_context.current_request_id()
         self._seen["config"] = config
         # simulate the rerank + answer calls feeding the per-query accumulator
@@ -40,6 +42,7 @@ class _FakeGraph:
 
 
 def test_run_query_binds_request_id_and_logs_totals(monkeypatch):
+    """run_query binds a request id, threads it to the graph config, logs one summary, and unbinds on return."""
     seen: dict = {}
     monkeypatch.setattr(main, "get_graph", lambda: _FakeGraph(seen))
 

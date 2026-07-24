@@ -12,6 +12,7 @@ from src.heatmap import _grid_from_maps, _similarity_map
 
 
 def test_grid_shape_is_rows_y_cols_x():
+    """The grid is n_y rows of n_x columns, matching the JSON contract."""
     # sim: (q_tokens, n_x, n_y) = (2 tokens, 3 wide, 4 tall)
     grid, n_x, n_y = _grid_from_maps(torch.zeros(2, 3, 4), (3, 4))
     assert (n_x, n_y) == (3, 4)
@@ -20,6 +21,7 @@ def test_grid_shape_is_rows_y_cols_x():
 
 
 def test_orientation_hot_patch_lands_at_grid_y_x():
+    """A hot patch lands at grid[y][x], so the overlay isn't transposed."""
     # one query token; hot at x=0, y=2 (i.e. sim[token][x=0][y=2])
     sim = torch.zeros(1, 3, 4)
     sim[0, 0, 2] = 5.0
@@ -29,6 +31,7 @@ def test_orientation_hot_patch_lands_at_grid_y_x():
 
 
 def test_values_normalized_to_unit_range():
+    """Scores are rescaled to span exactly [0, 1]."""
     sim = torch.tensor([[[1.0, 3.0], [2.0, 5.0]]])  # (1 token, n_x=2, n_y=2)
     grid, _, _ = _grid_from_maps(sim, (2, 2))
     flat = [v for row in grid for v in row]
@@ -37,6 +40,7 @@ def test_values_normalized_to_unit_range():
 
 
 def test_max_over_query_tokens_lights_both_patches():
+    """Taking the max over query tokens lights every patch some token matched."""
     # two tokens, each hottest on a different patch -> both light up after amax(dim=0)
     sim = torch.zeros(2, 2, 2)
     sim[0, 0, 0] = 10.0          # token 0 hottest at (x0, y0)
@@ -48,12 +52,14 @@ def test_max_over_query_tokens_lights_both_patches():
 
 
 def test_flat_map_returns_all_zeros_no_spurious_hot():
+    """A uniform map yields all zeros rather than an arbitrary hot cell."""
     # a uniform map has no informative patch -> all zeros, never a divide-by-zero artifact
     grid, _, _ = _grid_from_maps(torch.full((3, 2, 2), 4.0), (2, 2))
     assert all(v == 0.0 for row in grid for v in row)
 
 
 def test_similarity_map_masks_reshapes_and_scores():
+    """Non-image tokens are masked out before the patch grid is reshaped and scored."""
     # 2x2 patch grid, dim=3. Image tokens are row-major (y outer, x inner): the flat token
     # order is (x0,y0),(x1,y0),(x0,y1),(x1,y1). Give each patch a distinct one-hot embedding.
     n_x, n_y, dim = 2, 2, 3
@@ -74,6 +80,7 @@ def test_similarity_map_masks_reshapes_and_scores():
 
 
 def test_similarity_map_raises_on_patch_count_mismatch():
+    """A patch count that doesn't fit the grid raises instead of silently reshaping."""
     image_embeddings = torch.zeros(1, 3, 4)           # 3 tokens, all "image"
     image_mask = torch.tensor([[True, True, True]])
     query_embeddings = torch.zeros(1, 1, 4)

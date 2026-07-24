@@ -16,6 +16,13 @@ from src.vector_store import search
 log = get_logger("graph")
 
 class RAGState(TypedDict):
+    """The state threaded through retrieve -> rerank -> answer -> highlight.
+
+    Each node returns a partial dict that LangGraph merges in, so a key is only
+    populated once the node that owns it has run. `retrieved` is overwritten by the
+    rerank step (which is why `candidates` keeps the untrimmed top-k for the eval).
+    """
+
     question: str
     retrieved: list[dict]
     candidates: list[dict]
@@ -94,6 +101,7 @@ def _timed(name: str, fn):
     """
 
     def wrapped(state: RAGState) -> dict:
+        """Run the wrapped node inside a timed, stage-scoped logging block."""
         request_context.enter_stage(name)
         log.info("node start", extra={"node": name})
         start = time.perf_counter()
