@@ -91,6 +91,27 @@ CORS_ALLOW_ORIGINS = [
 # Reject PDF uploads to POST /ingest larger than this (megabytes).
 MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "50"))
 
+# Built Vite bundle (ui/). When present, the server mounts it at "/" so the API and
+# the UI are one origin - the deployment shape (see Dockerfile). Absent in a dev
+# checkout that has never run `npm run build`, which is why the mount is guarded.
+UI_DIST_DIR = ROOT_DIR / "ui" / "dist"
+
+# --- API auth + rate limiting (see src/auth.py, src/ratelimit.py) ---
+# Shared secret required in the X-API-Key header on every endpoint except /health and
+# the /images static mount. EMPTY DISABLES AUTH - the default, so local dev and the
+# test suite need no setup. Set it for anything reachable beyond localhost: /ingest
+# spends GPU + Gemini budget and DELETE /corpus/{pdf} destroys data.
+API_KEY = os.getenv("API_KEY", "")
+# Per-client-IP request caps. The server is single-worker by construction (one warm
+# GPU model behind an asyncio.Lock), so an in-process counter is exact, not an
+# approximation. 0 disables either limit.
+RATE_LIMIT_PER_MINUTE = int(os.getenv("RATE_LIMIT_PER_MINUTE", "30"))
+RATE_LIMIT_INGEST_PER_HOUR = int(os.getenv("RATE_LIMIT_INGEST_PER_HOUR", "10"))
+# Read the client IP from X-Forwarded-For instead of the socket peer. Only enable when
+# a trusted reverse proxy sets that header - otherwise any client can forge it and get
+# a fresh rate-limit bucket per request.
+TRUST_PROXY_HEADERS = os.getenv("TRUST_PROXY_HEADERS", "false").strip().lower() in ("1", "true", "yes")
+
 
 def validate() -> None:
     """Fail fast on missing required configuration.
