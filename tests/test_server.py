@@ -18,6 +18,8 @@ import base64
 from types import SimpleNamespace
 
 import pytest
+from fastapi import FastAPI
+from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
 from src import server
@@ -450,3 +452,70 @@ def test_encode_data_uri_roundtrips(tmp_path):
     uri = asyncio.run(server._encode_data_uri(str(fs)))  # helper is async
     assert uri.startswith("data:image/png;base64,")
     assert base64.b64decode(uri.split(",", 1)[1]) == payload
+
+
+# --- serving the built UI (ui/dist) ---
+#
+# ui/dist is gitignored, so CI only ever sees the not-built case. `_mount_ui` takes the
+# app to mount onto precisely so both branches are reachable from a test: point
+# UI_DIST_DIR at a tmp_path and mount onto a throwaway app.
+
+@pytest.fixture
+def built_dist(monkeypatch, tmp_path):
+    """A minimal ui/dist: index.html plus one hashed asset."""
+    (tmp_path / "assets").mkdir()
+    (tmp_path / "index.html").write_text("<!doctype html><title>Vision RAG</title>")
+    (tmp_path / "assets" / "index-abc123.js").write_text("console.log(1)")
+    monkeypatch.setattr(server, "UI_DIST_DIR", tmp_path)
+    return tmp_path
+
+
+def test_ui_is_not_mounted_when_it_has_not_been_built(monkeypatch, tmp_path):
+    """A dev checkout that never ran `npm run build` must still serve the API.
+
+    StaticFiles raises on a missing directory, so an unguarded mount would take the
+    whole API down over a frontend that was never built.
+    """
+    monkeypatch.setattr(server, "UI_DIST_DIR", tmp_path / "never-built")
+    fresh = FastAPI()
+    assert server._mount_ui(fresh) is False
+    assert [r.path for r in fresh.routes if isinstance(r, APIRoute)] == []
+
+
+def test_an_interrupted_build_counts_as_not_built(monkeypatch, tmp_path):
+    """An empty ui/dist (interrupted build) is not a servable UI - index.html decides."""
+    (tmp_path / "assets").mkdir()
+    monkeypatch.setattr(server, "UI_DIST_DIR", tmp_path)          # no index.html
+    assert server._mount_ui(FastAPI()) is False
+
+
+def test_built_ui_is_served_at_the_root(built_dist):
+    """The deployed shape: the UI and the API share one origin."""
+    fresh = FastAPI()
+    assert server._mount_ui(fresh) is True
+    with TestClient(fresh) as client:
+        index = client.get("/")
+        assert index.status_code == 200
+        assert "Vision RAG" in index.text
+        assert client.get("/assets/index-abc123.js").status_code == 200
+
+
+def test_serving_the_ui_does_not_shadow_the_api(built_dist, warm):
+    """The reason this is an explicit GET route and not `mount("/", html=True)`.
+
+    A catch-all mount matches every path before the method is considered, which turns
+    an unrouted DELETE into StaticFiles' 405 - and the path-traversal guard on
+    DELETE /corpus/{pdf} depends on getting the router's 404 instead.
+    """
+    # Snapshot/restore rather than filtering by route name: ui/dist exists on a dev box
+    # (so the import-time mount is already there) but not in CI, and only restoring the
+    # exact prior list leaves server.app - a module global - untouched either way.
+    original_routes = list(server.app.router.routes)
+    try:
+        server._mount_ui(server.app)                    # mount onto the *live* app
+        assert warm.delete("/corpus/..%2F..%2Fetc%2Fpasswd").status_code == 404
+        assert warm.get("/health").status_code == 200
+        assert warm.get("/images/nope.png").status_code == 404
+        assert warm.get("/").status_code == 200         # and the UI still serves
+    finally:
+        server.app.router.routes = original_routes

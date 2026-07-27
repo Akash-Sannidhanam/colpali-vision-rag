@@ -1,18 +1,35 @@
-# Backend serving image for the Vision RAG API (src/server.py).
+# Serving image for the Vision RAG API *and* its UI (src/server.py + ui/).
 #
-# The UI (ui/) is a separate Vite app and is NOT built into this image - it talks to
-# this API over HTTP. On Linux `uv sync` pulls the CUDA 12.8 torch wheels (they bundle
-# their own CUDA libs), so the image is GPU-capable with `docker run --gpus all` and
-# auto-falls back to CPU when no GPU is present (embedder._device_and_dtype).
+# The React app is compiled by the ui-builder stage below and served by FastAPI itself,
+# so a deployment is one container on one origin - no separate web server, and no CORS
+# in the deployed shape. On Linux `uv sync` pulls the CUDA 12.8 torch wheels (they
+# bundle their own CUDA libs), so the image is GPU-capable with `docker run --gpus all`
+# and auto-falls back to CPU when no GPU is present (embedder._device_and_dtype).
 #
 #   docker build -t vision-rag .
 #   docker run --rm -p 8000:8000 \
 #     -e GEMINI_API_KEY=... -e QDRANT_URL=http://host.docker.internal:6333 \
-#     -v vision-rag-hf:/home/appuser/.cache/huggingface \   # persist the model download
+#     -e API_KEY=...   \                                  # gate the API; see src/auth.py
+#     -v vision-rag-hf:/home/appuser/.cache/huggingface \ # persist the model download
 #     [--gpus all] vision-rag
 #
 # First boot downloads the ~2B ColQwen2 model from HuggingFace into the mounted cache;
 # subsequent boots are warm. Qdrant must be reachable at QDRANT_URL.
+
+# ---- ui builder: compile the React app to static assets ---------------------------
+FROM node:22-slim AS ui-builder
+
+WORKDIR /ui
+
+# Manifests first, so editing a component doesn't re-resolve the npm tree.
+COPY ui/package.json ui/package-lock.json ./
+RUN npm ci
+
+COPY ui/ ./
+# `npm run build` is `tsc && vite build`, so a type error fails the image build rather
+# than shipping a broken bundle. No VITE_API_BASE is set: a production build defaults
+# to same-origin relative URLs, which is exactly what serving from FastAPI needs.
+RUN npm run build
 
 # ---- builder: resolve + install runtime deps into a venv --------------------------
 FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim AS builder
@@ -52,6 +69,9 @@ WORKDIR /app
 # instead re-copy the multi-GB venv into a new layer, doubling the image size.
 COPY --chown=appuser:appuser --from=builder /app/.venv /app/.venv
 COPY --chown=appuser:appuser src/ ./src/
+# The compiled UI, at the path config.UI_DIST_DIR expects (ROOT_DIR/ui/dist). Its
+# presence is what makes server._mount_ui serve the app at "/".
+COPY --chown=appuser:appuser --from=ui-builder /ui/dist ./ui/dist
 # StaticFiles mounts page_images/ at startup, so the dir must exist even before ingest.
 RUN mkdir -p /app/page_images/crops /app/pdfs \
     && chown appuser:appuser /app /app/page_images /app/page_images/crops /app/pdfs

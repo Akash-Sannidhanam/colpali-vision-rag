@@ -39,3 +39,22 @@ jobs:
       - run: uv sync --frozen --group lint
       - run: uv run mypy src eval
       - run: uv run pytest
+
+  # The frontend, checked with the same scripts the Dockerfile's ui-builder stage runs -
+  # so a type error or a broken bundle fails the PR rather than the image build. No npm
+  # dependency install beyond ui/package-lock.json; nothing here needs the ML stack.
+  ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22            # matches the Dockerfile's node:22-slim stage
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - run: npm ci --prefix ui
+      - run: npm run typecheck --prefix ui
+      - run: npm run test --prefix ui
+      # Last, because `tsc && vite build` is the slowest step and the two above localize
+      # a failure better: a type error reads as a type error, not as a build error.
+      - run: npm run build --prefix ui

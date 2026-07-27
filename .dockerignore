@@ -10,8 +10,11 @@ qdrant_data/
 page_images/
 eval/reports/
 
-# The UI is built and served separately, not baked into the backend image
-ui/
+# The UI *is* baked in now (the ui-builder stage compiles it and the API serves the
+# result), so ui/ has to reach the build context - but its generated directories do
+# not: npm ci and vite rebuild them, and node_modules would dwarf the rest of it.
+ui/node_modules/
+ui/dist/
 
 # Local-only and secrets
 .env

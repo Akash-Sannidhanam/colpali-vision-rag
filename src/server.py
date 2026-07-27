@@ -13,6 +13,12 @@ Endpoints:
   POST /ingest  (multipart PDF)     -> render/embed/index a PDF (blocking, holds the lock)
   DELETE /corpus/{pdf}              -> drop a document's vectors, page images, crops, PDF
   /images/...                       -> static page/crop/annotated PNGs
+  /...                              -> the built UI (ui/dist), when it has been built
+
+Everything above except `/health`, `/images` and the UI lives on the `api` router, which
+carries the `require_api_key` + `rate_limit` dependencies. Add new endpoints to that
+router, not to `app`, so they are gated by default - see src/auth.py for why those two
+are exempt.
 
 The pipeline seam is `main.run_query` (never the CLI `run()`, which closes the Qdrant
 client); the ingest seam is `ingest.run_ingest` (never `main()`, same reason). The server
@@ -26,13 +32,14 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import urljoin
 
-from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
+from fastapi import APIRouter, Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from src.answerer import Confidence
+from src.auth import auth_enabled, require_api_key
 from src.config import (
     CORS_ALLOW_ORIGINS,
     MAX_UPLOAD_MB,
@@ -41,6 +48,7 @@ from src.config import (
     RETRIEVE_K,
     SERVER_HOST,
     SERVER_PORT,
+    UI_DIST_DIR,
     validate,
 )
 from src.embedder import is_loaded, load_model
@@ -50,6 +58,7 @@ from src.ingest import run_ingest
 from src.logging_setup import get_logger
 from src.main import run_query
 from src.pdf_render import crop_images_for, page_image_path, page_images_for
+from src.ratelimit import rate_limit, rate_limit_ingest
 from src.vector_store import close_client, delete_document, document_index, list_documents, ping
 
 log = get_logger("server")
@@ -218,7 +227,11 @@ async def lifespan(app: FastAPI):
     load_model()                                 # pay the ~2B cold start here, once
     ping()                                        # lazily opens + verifies the Qdrant client
     get_graph()                                  # compile the LangGraph once
-    log.info("server warm", extra={"model_loaded": is_loaded()})
+    # Surface the auth posture at boot: an operator should never have to guess whether
+    # the deployment they just started is open to the world.
+    if not auth_enabled():
+        log.warning("API_KEY is unset - every endpoint is open, including DELETE /corpus")
+    log.info("server warm", extra={"model_loaded": is_loaded(), "auth": auth_enabled()})
     yield
     close_client()                               # the one place the server closes Qdrant
 
@@ -232,6 +245,16 @@ app.add_middleware(
 )
 PAGE_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/images", StaticFiles(directory=PAGE_IMAGES_DIR), name="images")
+
+# Every real endpoint hangs off this router, so auth + rate limiting are structural
+# rather than per-route opt-ins. `/health` stays on `app` (orchestrators probe it
+# without the secret) and so does the `/images` mount (`<img src>` can't send headers).
+#
+# rate_limit is listed FIRST deliberately. FastAPI solves dependencies in order, so
+# auth-first would let a caller with no key burn unlimited 401s - the throttle would
+# only ever apply to requests that had already passed the gate, leaving key guessing
+# and unauthenticated floods unbounded. Limiting first throttles both.
+api = APIRouter(dependencies=[Depends(rate_limit), Depends(require_api_key)])
 
 _gpu_lock = asyncio.Lock()     # serialize the single GPU-resident model across requests
 
@@ -367,7 +390,7 @@ async def health():
     return HealthResponse(status="ok", model_loaded=is_loaded(), qdrant="ok")
 
 
-@app.get("/corpus", response_model=CorpusResponse)
+@api.get("/corpus", response_model=CorpusResponse)
 async def corpus():
     """Indexed documents + page counts, for the corpus rail. 503 if Qdrant is down."""
     try:
@@ -404,7 +427,7 @@ def _remove_document(name: str) -> int:
     return removed
 
 
-@app.delete("/corpus/{pdf}", response_model=DeleteResponse)
+@api.delete("/corpus/{pdf}", response_model=DeleteResponse)
 async def delete_corpus_document(pdf: str):
     """Remove one document from the corpus entirely: vectors, page images, crops, and
     the stored PDF. 404 when it isn't indexed.
@@ -427,7 +450,7 @@ async def delete_corpus_document(pdf: str):
     return DeleteResponse(pdf=name, removed_pages=removed)
 
 
-@app.post("/query", response_model=QueryResponse)
+@api.post("/query", response_model=QueryResponse)
 async def query(req: QueryRequest, request: Request, inline: bool = Query(default=False)):
     """Answer one question. Serializes on the model lock; base64 reads happen outside it."""
     async with _gpu_lock:
@@ -435,7 +458,7 @@ async def query(req: QueryRequest, request: Request, inline: bool = Query(defaul
     return await _build_query_response(request, result, inline)
 
 
-@app.post("/heatmap", response_model=HeatmapResponse)
+@api.post("/heatmap", response_model=HeatmapResponse)
 async def heatmap(req: HeatmapRequest):
     """Per-patch MaxSim heatmap for one page - which patches the query lit up ("why this
     page?"). On-demand (the UI's toggle), not folded into /query, because it costs two
@@ -485,17 +508,20 @@ def _sse(event: dict) -> str:
     return f"data: {json.dumps(event)}\n\n"
 
 
-@app.post("/ingest", response_model=IngestResponse)
+@api.post("/ingest", response_model=IngestResponse, dependencies=[Depends(rate_limit_ingest)])
 async def ingest(file: UploadFile = File(...)):
     """Upload and index a single PDF. Blocking and long-running - it holds the model
-    lock for the whole render/embed/upsert build, so queries wait while it runs."""
+    lock for the whole render/embed/upsert build, so queries wait while it runs.
+
+    Carries the hourly ingest limit on top of the router's per-minute one, because a
+    single upload costs minutes of exclusive GPU time rather than one forward pass."""
     name, all_pdfs = await _save_upload(file)
     async with _gpu_lock:
         indexed = await asyncio.to_thread(run_ingest, all_pdfs)
     return IngestResponse(pdf=name, indexed_pages=indexed)
 
 
-@app.post("/ingest/stream")
+@api.post("/ingest/stream", dependencies=[Depends(rate_limit_ingest)])
 async def ingest_stream(file: UploadFile = File(...)):
     """Same as /ingest, but streams per-page progress as Server-Sent Events.
 
@@ -545,6 +571,55 @@ async def _runtime_error_handler(request: Request, exc: RuntimeError):
     """Surface our actionable RuntimeErrors (e.g. Qdrant unreachable) as 503, not 500."""
     log.warning("request failed", exc_info=exc, extra={"path": request.url.path})
     return JSONResponse(status_code=503, content={"detail": str(exc)})
+
+
+# --- The UI, served from the same origin as the API ---
+
+# Registered here, after every route function above has been attached to it.
+app.include_router(api)
+
+# The built Vite bundle (see the Dockerfile's node stage), served alongside the API so
+# a deployment is one container on one origin and CORS never enters the picture.
+#
+# Deliberately NOT `mount("/", StaticFiles(html=True))`. A mount at "/" matches every
+# path *before* the method is considered, so it turns a DELETE to an unrouted path into
+# StaticFiles' 405 instead of the router's 404 - which is exactly what the path-traversal
+# guard on DELETE /corpus/{pdf} relies on. Mounting only /assets and serving index.html
+# from an explicit GET shadows nothing.
+#
+# This works because the UI has no client-side router: "/" is the only HTML entry point,
+# so there are no deep links needing an index.html fallback. If react-router is ever
+# added, that fallback becomes a catch-all `@app.get("/{path:path}")` - a GET-only route,
+# so unrouted non-GET requests still 404 correctly.
+#
+# Guarded on existence: a dev checkout has no ui/dist until `npm run build` runs, and
+# StaticFiles raises on a missing directory - the API must not refuse to boot just
+# because the frontend was never built.
+#
+# A function rather than a bare `if` so both branches stay testable: ui/dist is
+# gitignored, so CI only ever sees the not-built case, and a test can drive either by
+# pointing UI_DIST_DIR at a tmp_path and mounting onto a throwaway app.
+def _mount_ui(target: FastAPI) -> bool:
+    """Attach the built UI to `target`; return whether ui/dist was there to attach."""
+    index = UI_DIST_DIR / "index.html"
+    assets = UI_DIST_DIR / "assets"
+    # index.html, not the directory, is the signal that a build actually completed -
+    # an empty ui/dist is left behind by an interrupted one.
+    if not index.is_file() or not assets.is_dir():
+        log.info("ui/dist not built - serving the API only", extra={"path": str(UI_DIST_DIR)})
+        return False
+
+    target.mount("/assets", StaticFiles(directory=assets), name="ui-assets")
+
+    @target.get("/", include_in_schema=False)
+    async def ui_index():
+        """Serve the built UI's entry point."""
+        return FileResponse(index)
+
+    return True
+
+
+_mount_ui(app)
 
 
 if __name__ == "__main__":
