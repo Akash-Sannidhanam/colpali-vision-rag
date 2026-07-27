@@ -364,3 +364,80 @@ every recall@1 miss, so raw-recall tuning has no downstream effect. The recall@1
 genuine ColQwen2 ranking, not quantization loss. Real gains would need a larger/harder
 corpus (distractor docs, which stress `RERANK_K`) or a bigger GPU for the colqwen2.5
 upgrade — both deliberately out of this pass's scope.
+
+---
+
+## Eval de-saturation ✅ DONE (the guard can now fail)
+
+**The problem.** Phase 4 shipped a regression guard that could not detect a regression.
+`recall@10`, `rerank_recall`, `citation_accuracy`, `substring_accuracy` and
+`judge_accuracy` all scored exactly 1.0 — not because the pipeline was perfect but
+because `RETRIEVE_K=10` over a 43-page corpus returned 23% of the index per query, so
+the gold page could not fail to be in the candidate set and every downstream stage
+inherited the ceiling. `--fail-under-recall` existed with nothing to guard. Two gaps
+compounded it: `load_dataset` structurally forbade an unanswerable question (`gold` had
+to be non-empty), so the hallucination rate was unmeasurable; and all 10 multi-gold rows
+lived inside one PDF, so `RERANK_K=2` was never asked to span documents.
+
+**The prediction this pass tested — and half-falsified.** The retrieval-quality pass
+concluded that "real gains would need a larger/harder corpus (distractor docs, which
+stress `RERANK_K`)". Half of that was wrong. 16 papers / 320 pages of deliberately
+confusable material (ColBERT and ColBERTv2 with the same late-interaction prose, BEIR
+with the same nDCG tables, PaliGemma which *is* ColPali's base model) took the index
+from 43 → 363 pages, and on the **identical 53 questions** moved recall@1, recall@3 and
+recall@10 by **exactly zero**. `recall@10` and `rerank_recall` are still 1.0. ColQwen2's
+ranking is far more robust to a bigger haystack than the corpus-size hypothesis assumed.
+
+What *did* de-saturate the eval was the **question types**, at ~15 minutes of labeling
+against ~3 hours of fetching and ingesting. Recorded here because the cheap lever was
+not the one the plan led with.
+
+**The finding that justifies the pass.** `gold_doc_coverage` turns out not to measure
+retrieval — it catches **answers that are correct but ungrounded in the retrieved
+pages**. On `xdoc-ndcg-cutoffs` the pipeline answered *"ColPali reports nDCG@5… BEIR is
+scored using nDCG@10"*, scored correct on citation, substring **and** the judge, while
+`beir.pdf` was never in the reranked set: the BEIR half came from parametric knowledge,
+not a page it was shown. For a system built on "here is the box where I read this,"
+that is the failure that matters, and nothing in the old eval could see it. Under the
+same `RERANK_K` starvation the pipeline sometimes does the right thing instead —
+`xdoc-colbert-vs-colpali-dim` explicitly declined on the half it couldn't see — and
+`gold_coverage_avg` is the only metric that distinguishes the two.
+
+- **`eval/scoring.py`** — `unanswerable: true` rows (explicit flag, not inferred from an
+  empty `gold`, so a row that lost its label stays a validation error);
+  `abstention_correct`; `gold_doc_coverage` (N/A unless gold spans 2+ PDFs, so
+  cross-document questions need no schema flag); confidence calibration
+  (`confidence_separation` plus citation accuracy bucketed by the model's self-report);
+  `substring_match` normalizes thousands separators.
+- **`eval/run_eval.py`** — `run_full` gives unanswerable rows a deliberately different
+  row shape (abstention only, judge skipped) so a correct refusal can never read as a
+  retrieval miss; `run_retrieval_only` keeps the row but omits `gold_rank`. `--gate
+  METRIC:MIN` is repeatable and reports every breach, since one `--judge` run costs ~25
+  minutes of GPU.
+- **`eval/corpus_manifest.json` + `scripts/fetch_eval_corpus.py`** *(new)* — 16 papers
+  pinned by sha256, fetched not committed, failing loudly on a hash mismatch because a
+  silently-revised paper would invalidate every stored report.
+- **`eval/dataset.jsonl`** — 53 → 69 questions.
+
+**Measurement errors caught and fixed along the way** (4 of the first run's 6 non-1.0
+data points were the instrument, not the pipeline): three under-labeled gold lists
+surfaced by the per-row `top1`/`cited` fields, a reference that listed only half a
+two-part answer so the judge rejected a correct one, and `37,000` scored as a miss
+against the label `37000`. Deliberately *not* fixed: the judge rejecting `$150,000` for
+a chart labeled "Thousands" showing 150 — that is the judge's noise floor, and tuning it
+away would flatter the number rather than measure it.
+
+**Baseline:** `eval/reports/baseline_desaturated.json` (committed; the rest of
+`eval/reports/` stays gitignored). recall@1 0.7627, recall@3 0.9322, recall@10 1.0,
+rerank_recall 1.0, citation_accuracy 0.9661, substring 1.0, judge 0.9831,
+**gold_coverage_avg 0.6667**, **abstention_accuracy 1.0** (10/10, zero hallucinations),
+**confidence_separation 0.0317**.
+**Verify:** `uv run python scripts/fetch_eval_corpus.py --verify` → exit 0;
+`PYTHONPATH=. uv run python eval/run_eval.py --judge --gate recall@1:0.70 --gate
+recall@3:0.88 --gate citation_accuracy:0.91 --gate gold_coverage_avg:0.55 --gate
+abstention_accuracy:0.90` → exit 0 at baseline, exit 1 on any breach.
+
+**Still open, deliberately:** `recall@10` and `rerank_recall` remain 1.0 and are not
+gated — on this pipeline the retrieval stage genuinely is not the bottleneck at k=10,
+and pretending otherwise would guard nothing. The obvious follow-up is raising
+`RERANK_K` for multi-document questions, which `gold_coverage_avg` now makes measurable.

@@ -384,9 +384,15 @@ PYTHONPATH=. uv run python eval/run_eval.py
 # …plus LLM-as-judge scoring of each answer against the reference (EVAL_JUDGE_MODEL)
 PYTHONPATH=. uv run python eval/run_eval.py --judge
 
-# CI gate: exit 1 if the chosen metric drops below a threshold
-PYTHONPATH=. uv run python eval/run_eval.py --fail-metric citation_accuracy --fail-under-recall 0.85
+# CI gate: exit 1 if any watched metric drops below its floor (repeatable, one run)
+PYTHONPATH=. uv run python eval/run_eval.py --judge \
+  --gate recall@1:0.70 --gate recall@3:0.88 --gate citation_accuracy:0.91 \
+  --gate gold_coverage_avg:0.55 --gate abstention_accuracy:0.90
 ```
+
+Those floors sit ~3 questions below the pinned baseline. Note what is *not* gated:
+`recall@10` and `rerank_recall` are both still 1.0 and gating them would guard
+nothing — see below.
 
 Reports land in `eval/reports/` (gitignored, except the pinned
 `baseline_desaturated.json`). Metrics:
@@ -406,6 +412,41 @@ only* — an unanswerable question carries no gold page, so it scores abstention
 entering a recall denominator. The scoring logic (`eval/scoring.py`) is pure and
 unit-tested; the full run reuses `main.run_query`, so it also reports per-question
 latency/token/cost for free.
+
+### Baseline
+
+`eval/reports/baseline_desaturated.json` is committed as the thing to diff against.
+
+| metric | 53 questions / 43 pages | 69 questions / 363 pages |
+| --- | --- | --- |
+| recall@1 | 0.8302 | 0.7627 |
+| recall@3 | 0.9623 | 0.9322 |
+| recall@10 | 1.0000 | 1.0000 |
+| rerank_recall | 1.0000 | 1.0000 |
+| citation_accuracy | 1.0000 | 0.9661 |
+| substring_accuracy | 1.0000 | 1.0000 |
+| judge_accuracy | 1.0000 | 0.9831 |
+| **gold_coverage_avg** | — | **0.6667** |
+| **abstention_accuracy** | — | **1.0000** (10/10) |
+| **confidence_separation** | — | **0.0317** |
+
+**What the de-saturation actually found.** Not more retrieval headroom — on the
+*identical* 53 questions the 8× bigger corpus moved recall@1/@3/@10 by exactly zero,
+and `recall@10` and `rerank_recall` are still pinned at 1.0. What it found is that
+`gold_doc_coverage` catches **answers that are correct but not grounded in the
+retrieved pages**. On `xdoc-ndcg-cutoffs` the pipeline answered *"ColPali reports
+nDCG@5… BEIR is scored using nDCG@10"* — right on both halves, scored correct by
+citation, substring *and* the judge — while `beir.pdf` was never in the reranked set at
+all. The BEIR half came from the model's parametric knowledge, not from a page it was
+shown. For a system whose premise is *"here is the box where I read this,"* that is the
+failure mode that matters, and `gold_coverage_avg` is the only metric that sees it.
+Four of six cross-document questions score 0.5 for the same reason: `RERANK_K=2` spent
+both slots inside one document.
+
+Two smaller results worth knowing: the model self-reported `high` confidence on all 59
+answerable questions (a degenerate signal), and the deterministic retrieval confidence
+separates correct from wrong citations by only 0.032 — both are surfaced in the UI and
+neither currently carries much information.
 
 ## Notes
 

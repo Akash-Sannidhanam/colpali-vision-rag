@@ -78,3 +78,24 @@ the reader) is complete, tested, and shipped. Captured here so they are not lost
   (added so the eval harness can score recall@k), so the data is already threaded
   through `run_query`'s result and the `/query` response. What's left is purely
   presentational: have the CLI / UI show "retrieved 10, used 2" from it.
+- **De-saturate the eval.** _(✅ done — see PRODUCTION_HARDENING.md.)_ The harness
+  scored 1.0 on five metric families at once and so could not fail. Fixed by adding
+  abstention, cross-document coverage and confidence-calibration scoring, 16 new
+  questions (53 → 69), and a 320-page pinned distractor corpus. Two results worth
+  carrying forward: growing the corpus 8× moved retrieval recall by **exactly zero** on
+  the unchanged questions, so corpus size was the wrong lever — new *question types*
+  were the cheap one; and `gold_coverage_avg` (0.667) catches answers that are correct
+  but ungrounded in the retrieved pages, which no other metric here can see.
+- **Raise `RERANK_K` for multi-document questions.** _(new, and now measurable.)_ Four
+  of six cross-document questions score `gold_doc_coverage` 0.5 — `RERANK_K=2` spends
+  both slots inside one document, and in at least one case the answer step then filled
+  the missing half from parametric knowledge rather than a retrieved page. A fixed
+  `RERANK_K=3` costs a full-resolution image per answer call; an adaptive "widen only
+  when the candidate set spans documents" rule would be cheaper. Either way
+  `gold_coverage_avg` is now the metric that decides it, and `RERANK_ADAPTIVE` above is
+  the knob to reach for first.
+- **The confidence signals carry almost no information.** _(new, measured.)_ The model
+  self-reported `high` on all 59 answerable questions — zero variance — and the
+  deterministic retrieval confidence separates correct from wrong citations by only
+  0.032. Both are surfaced in the UI. Either calibrate them or stop showing them as if
+  they mean something; the eval now reports `confidence_separation` to tell.
