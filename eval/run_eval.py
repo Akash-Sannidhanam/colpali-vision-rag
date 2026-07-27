@@ -16,6 +16,7 @@ Exit codes: 0 = ran and report written; 1 = --fail-under-recall breached;
 
 import argparse
 import json
+import math
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -177,7 +178,9 @@ def run_full(dataset: list[dict], use_judge: bool) -> list[dict]:
                 "citation_correct": citation_correct(citation, reranked, item["gold"]),
                 "gold_doc_coverage": gold_doc_coverage(reranked, item["gold"]),
                 "cited": cited,  # which page was actually cited - makes gold-label gaps auditable
-                "substring_match": substring_match(answer, item["answer_contains"]),
+                "substring_match": substring_match(
+                    answer, item["answer_contains"], item["answer_contains_all"]
+                ),
                 # Both confidence signals ride along on the result already (main.run_query),
                 # so calibration costs no extra call - only the scoring in eval.scoring.
                 "retrieval_confidence": meta.get("retrieval_confidence"),
@@ -196,11 +199,23 @@ def run_full(dataset: list[dict], use_judge: bool) -> list[dict]:
     return rows
 
 
+def _repo_relative(path: str) -> str:
+    """Path relative to the repo root when it lives inside it, else unchanged.
+
+    The default dataset path is absolute, so storing it verbatim baked the operator's
+    home directory into the *committed* baseline report and made snapshots differ per
+    machine for no reason.
+    """
+    resolved = Path(path).resolve()
+    root = Path(__file__).resolve().parent.parent
+    return str(resolved.relative_to(root)) if resolved.is_relative_to(root) else str(resolved)
+
+
 def _config_snapshot(mode: str, dataset_path: str, use_judge: bool) -> dict:
     """The knob values this run used, embedded in the report so runs diff cleanly."""
     return {
         "mode": mode,
-        "dataset": dataset_path,
+        "dataset": _repo_relative(dataset_path),
         "retrieve_k": RETRIEVE_K,
         "rerank_k": RERANK_K,
         "rerank_adaptive": config.RERANK_ADAPTIVE,
@@ -246,9 +261,15 @@ def parse_gates(
         if not sep or not metric.strip():
             raise ValueError(f"--gate {spec!r} must look like METRIC:MIN, e.g. recall@1:0.70")
         try:
-            gates.append((metric.strip(), float(raw)))
+            minimum = float(raw)
         except ValueError as exc:
             raise ValueError(f"--gate {spec!r}: {raw!r} is not a number") from exc
+        # float() happily parses "nan", and `value < nan` is always False - a gate that
+        # can never fire, which is worse than no gate at all given this one is the whole
+        # point of the fail-closed design.
+        if not math.isfinite(minimum):
+            raise ValueError(f"--gate {spec!r}: {raw!r} is not a finite threshold")
+        gates.append((metric.strip(), minimum))
     if fail_under is not None:
         gates.append((fail_metric, fail_under))
     return gates

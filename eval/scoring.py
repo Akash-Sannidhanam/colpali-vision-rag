@@ -25,8 +25,8 @@ def load_dataset(lines) -> list[dict]:
 
     Each non-blank line must be a JSON object with a unique `id`, a non-empty
     `question`, and a non-empty `gold` list of {pdf, page>=1}; `answer_contains`
-    (list of substrings) and `tags` are optional. Raises ValueError naming the
-    1-based line number of the first bad row.
+    (any-of substrings), `answer_contains_all` (all-of substrings) and `tags` are
+    optional. Raises ValueError naming the 1-based line number of the first bad row.
 
     Setting `unanswerable: true` inverts the gold rules: the question has no answer
     anywhere in the corpus, so `gold` must be absent or empty and `answer_contains`
@@ -76,13 +76,15 @@ def load_dataset(lines) -> list[dict]:
             if not isinstance(page, int) or isinstance(page, bool) or page < 1:
                 raise bad("each gold entry needs an integer `page` >= 1")
         expected = row.get("answer_contains")
-        if expected is not None and (
-            not isinstance(expected, list)
-            or not all(isinstance(s, str) and s for s in expected)
-        ):
-            raise bad("`answer_contains` must be a list of non-empty strings")
-        if unanswerable and expected:
-            raise bad("an `unanswerable` row must not set `answer_contains`")
+        expected_all = row.get("answer_contains_all")
+        for field, value in (("answer_contains", expected), ("answer_contains_all", expected_all)):
+            if value is not None and (
+                not isinstance(value, list)
+                or not all(isinstance(s, str) and s for s in value)
+            ):
+                raise bad(f"`{field}` must be a list of non-empty strings")
+            if unanswerable and value:
+                raise bad(f"an `unanswerable` row must not set `{field}`")
         tags = row.get("tags", [])
         if not isinstance(tags, list) or not all(isinstance(t, str) for t in tags):
             raise bad("`tags` must be a list of strings")
@@ -93,6 +95,7 @@ def load_dataset(lines) -> list[dict]:
             "question": question,
             "gold": gold,
             "answer_contains": expected or None,
+            "answer_contains_all": expected_all or None,
             "tags": tags,
             "unanswerable": unanswerable,
         })
@@ -166,17 +169,28 @@ def _comparable(text: str) -> str:
     return _THOUSANDS_SEPARATOR.sub("", (text or "").lower())
 
 
-def substring_match(answer: str, expected: list[str] | None) -> bool | None:
-    """Case-insensitive any-of substring check; None (N/A) when nothing is expected.
+def substring_match(
+    answer: str, expected: list[str] | None, expected_all: list[str] | None = None
+) -> bool | None:
+    """Substring scoring: `expected` is any-of, `expected_all` is all-of; both must hold.
 
-    Digit grouping is normalized away on both sides (see `_comparable`). Normalizing
-    can only make the check more permissive, so it cannot turn a previously-passing
-    row into a failure.
+    None (N/A) when neither is given. Digit grouping is normalized away on both sides
+    (see `_comparable`).
+
+    The all-of form exists because any-of cannot score a question with two required
+    facts. A cross-document row labelled `["128"]` passed on an answer that gave
+    ColPali's dimension and then said it could not determine ColBERT's - so
+    substring_accuracy read 1.0 on precisely the question type added to de-saturate it.
+    Where both halves share a value and no substring can tell a whole answer from a
+    half one, the row carries no expectation at all and scores N/A rather than a
+    misleading pass; the judge is what covers it.
     """
-    if not expected:
+    if not expected and not expected_all:
         return None
     lowered = _comparable(answer)
-    return any(_comparable(s) in lowered for s in expected)
+    if expected and not any(_comparable(s) in lowered for s in expected):
+        return False
+    return all(_comparable(s) in lowered for s in (expected_all or []))
 
 
 def _rate(values: list) -> float | None:
