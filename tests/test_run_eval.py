@@ -1,9 +1,11 @@
 """Tests for run_eval's judge call and corpus preflight (eval.run_eval).
 
 Stubs the module's name-as-imported seams (`run_eval.generate`,
-`run_eval.list_documents`) per the repo convention - no network, key, or Qdrant.
-The run_retrieval_only / run_full orchestration is exercised live in Phase 4's
-verification runs, not here.
+`run_eval.list_documents`) and the pipeline entry points the run_* functions import
+lazily (`src.main.run_query`, `src.embedder.embed_query`, `src.vector_store.search`)
+per the repo convention - no network, key, or Qdrant. The orchestration tests cover
+the answerable-vs-unanswerable *row shapes*, which is where a scoring bug would hide;
+the live numbers still come from a real eval run.
 """
 
 from types import SimpleNamespace
@@ -11,8 +13,37 @@ from types import SimpleNamespace
 import pytest
 
 from eval import run_eval
-from eval.run_eval import EvalSetupError, JudgeVerdict, check_corpus, gate_status, judge_answer
+from eval.run_eval import (
+    DEFAULT_DATASET,
+    EvalSetupError,
+    JudgeVerdict,
+    check_corpus,
+    gate_status,
+    judge_answer,
+)
+from eval.scoring import load_dataset
 from src.config import EVAL_JUDGE_MODEL
+
+# --- the shipped dataset itself ---
+
+def test_shipped_dataset_parses_and_holds_its_invariants():
+    """The real eval/dataset.jsonl is valid and still covers every question kind.
+
+    Reading one tracked file is worth the exception to the no-I/O convention: a
+    malformed row otherwise surfaces only as exit 2 partway through a live eval run,
+    after the models are loaded.
+    """
+    rows = load_dataset(DEFAULT_DATASET.read_text().splitlines())
+    assert len(rows) >= 69
+
+    negatives = [r for r in rows if r["unanswerable"]]
+    cross_doc = [r for r in rows if len({g["pdf"] for g in r["gold"]}) > 1]
+    assert len(negatives) >= 10, "no abstention rows left - hallucination rate goes unmeasured"
+    assert len(cross_doc) >= 6, "no cross-document rows left - RERANK_K goes unpressured"
+
+    # An answerable row without an expected substring scores nothing but recall.
+    assert all(r["answer_contains"] for r in rows if not r["unanswerable"])
+    assert all("unanswerable" in r["tags"] for r in negatives)
 
 
 def test_judge_answer_routes_through_client_with_judge_model(monkeypatch):
