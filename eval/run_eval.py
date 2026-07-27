@@ -187,8 +187,14 @@ def run_full(dataset: list[dict], use_judge: bool) -> list[dict]:
                 "self_confidence": (citation or {}).get("confidence"),
             }
             if use_judge:
+                # Both label kinds are reference facts. Passing only `answer_contains`
+                # handed the judge an empty reference for every row labelled purely
+                # all-of, silently downgrading it to a faithfulness-only grade on
+                # exactly the cross-document rows that need the strictest one.
                 row["judge"] = judge_answer(
-                    item["question"], answer, item["answer_contains"], item["gold"]
+                    item["question"], answer,
+                    (item["answer_contains"] or []) + (item["answer_contains_all"] or []),
+                    item["gold"],
                 )
         # The report keeps the answer + full meta for debugging; the table doesn't show them.
         rows.append({**row, "answer": answer, "meta": meta})

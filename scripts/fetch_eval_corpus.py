@@ -139,7 +139,10 @@ def fetch_all(entries: list[dict], *, verify_only: bool, update_hashes: bool) ->
             problems += 1
             continue
         if verify_only:
-            print(f"MISSING  {name}", file=sys.stderr)
+            if state == "unpinned":
+                print(f"UNPINNED {name}: no sha256 in manifest (re-pin with --update-hashes)", file=sys.stderr)
+            else:
+                print(f"MISSING  {name}", file=sys.stderr)
             problems += 1
             continue
 
