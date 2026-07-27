@@ -1,0 +1,114 @@
+[
+  {
+    "name": "bert.pdf",
+    "title": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding",
+    "url": "https://arxiv.org/pdf/1810.04805",
+    "sha256": "5692a5514787a8c6727b4ff3b726a3385798bc68e12138d1d4af83947e2acf6e",
+    "pages": 16
+  },
+  {
+    "name": "transformer_xl.pdf",
+    "title": "Transformer-XL: Attentive Language Models Beyond a Fixed-Length Context",
+    "url": "https://arxiv.org/pdf/1901.02860",
+    "sha256": "6aa192b22820267309e8e7c501c514a3a3055256d9c8691b106c7f53f9098671",
+    "pages": 20
+  },
+  {
+    "name": "albert.pdf",
+    "title": "ALBERT: A Lite BERT for Self-supervised Learning of Language Representations",
+    "url": "https://arxiv.org/pdf/1909.11942",
+    "sha256": "d631c30f3f41684862e854ad1cb379e9dbf9b1c1fa1510ab618f45b8dfc07e2c",
+    "pages": 17
+  },
+  {
+    "name": "vit.pdf",
+    "title": "An Image is Worth 16x16 Words: Transformers for Image Recognition at Scale",
+    "url": "https://arxiv.org/pdf/2010.11929",
+    "sha256": "8ce7b83971a14508ca711a27c875c9b6914c4f6767cf3150fb1ca6c07aa056d6",
+    "pages": 22
+  },
+  {
+    "name": "siglip.pdf",
+    "title": "Sigmoid Loss for Language Image Pre-Training",
+    "url": "https://arxiv.org/pdf/2303.15343",
+    "sha256": "2efade8de3baeffe9eba759aab9f510ea8f8ac3c365f02f0da75d9baf9ffa2db",
+    "pages": 17
+  },
+  {
+    "name": "layoutlm.pdf",
+    "title": "LayoutLM: Pre-training of Text and Layout for Document Image Understanding",
+    "url": "https://arxiv.org/pdf/1912.13318",
+    "sha256": "5bec7f495a9ea91616a73200b3e13b97f42bbf7d0bf5162749a98831d4c0de5b",
+    "pages": 9
+  },
+  {
+    "name": "donut.pdf",
+    "title": "OCR-free Document Understanding Transformer",
+    "url": "https://arxiv.org/pdf/2111.15664",
+    "sha256": "ad9c20523c37f53fc6d31ccb4c63dcc7b916c7340d6bb16033c9924ce70c7668",
+    "pages": 29
+  },
+  {
+    "name": "paligemma.pdf",
+    "title": "PaliGemma: A versatile 3B VLM for transfer",
+    "url": "https://arxiv.org/pdf/2407.07726",
+    "sha256": "aec6edd6b712597647d5e6e10850039d6415620163f45bb64f71d89718e6bb2f",
+    "pages": 59
+  },
+  {
+    "name": "docvqa.pdf",
+    "title": "DocVQA: A Dataset for VQA on Document Images",
+    "url": "https://arxiv.org/pdf/2007.00398",
+    "sha256": "ead7ea62e5a2dfbb937e66f6dd6c035ba761928c37c86fc7fdbba18c6313803c",
+    "pages": 23
+  },
+  {
+    "name": "dpr.pdf",
+    "title": "Dense Passage Retrieval for Open-Domain Question Answering",
+    "url": "https://arxiv.org/pdf/2004.04906",
+    "sha256": "3e67fc1a9977715acf722d85f0b7d124b03715e975f6310a4d6c12094190912f",
+    "pages": 13
+  },
+  {
+    "name": "colbert.pdf",
+    "title": "ColBERT: Efficient and Effective Passage Search via Contextualized Late Interaction over BERT",
+    "url": "https://arxiv.org/pdf/2004.12832",
+    "sha256": "2e487d9b96e3c2e5e286d843e98a066adc0442faa3a6e8ddbd1771221bf9ae14",
+    "pages": 10
+  },
+  {
+    "name": "colbertv2.pdf",
+    "title": "ColBERTv2: Effective and Efficient Retrieval via Lightweight Late Interaction",
+    "url": "https://arxiv.org/pdf/2112.01488",
+    "sha256": "46e0a2712eabf9e0b9486120356a2110f65516fa7e0d75c35e9ee3eef9ea78c0",
+    "pages": 20
+  },
+  {
+    "name": "rag.pdf",
+    "title": "Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks",
+    "url": "https://arxiv.org/pdf/2005.11401",
+    "sha256": "23e3249e9a1e75418d82efecab0ea8c4d033b89c93742f63208d47ce01f21233",
+    "pages": 19
+  },
+  {
+    "name": "splade.pdf",
+    "title": "SPLADE: Sparse Lexical and Expansion Model for First Stage Ranking",
+    "url": "https://arxiv.org/pdf/2107.05720",
+    "sha256": "e791451960e47e69b0241d7656c6c61ce40b7c3beff92c944e163e5c3bc54c1a",
+    "pages": 5
+  },
+  {
+    "name": "beir.pdf",
+    "title": "BEIR: A Heterogenous Benchmark for Zero-shot Evaluation of Information Retrieval Models",
+    "url": "https://arxiv.org/pdf/2104.08663",
+    "sha256": "1925755aeb627123d1a63c66f02e5aa2432f7e92751a02bea7c8c3b6bbb6ec33",
+    "pages": 24
+  },
+  {
+    "name": "e5.pdf",
+    "title": "Text Embeddings by Weakly-Supervised Contrastive Pre-training",
+    "url": "https://arxiv.org/pdf/2212.03533",
+    "sha256": "2963a8af050d983f287edef210a525a69b7071847978451399ccaa3ac584be70",
+    "pages": 17
+  }
+]

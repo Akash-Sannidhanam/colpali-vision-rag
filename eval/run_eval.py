@@ -16,6 +16,7 @@ Exit codes: 0 = ran and report written; 1 = --fail-under-recall breached;
 
 import argparse
 import json
+import math
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -23,9 +24,11 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from eval.scoring import (
+    abstention_correct,
     aggregate,
     citation_correct,
     format_table,
+    gold_doc_coverage,
     gold_rank,
     load_dataset,
     substring_match,
@@ -115,6 +118,14 @@ def run_retrieval_only(dataset: list[dict]) -> list[dict]:
 
     rows = []
     for item in dataset:
+        if item["unanswerable"]:
+            # Nothing here is scorable without the answer step: there is no gold page to
+            # rank, and abstention is a property of the citation. Keep the row so `n`
+            # still matches the dataset, but omit `gold_rank` - which is what excludes it
+            # from every recall denominator. Scoring it as rank=None would count a
+            # correctly-unanswerable question as a retrieval miss.
+            rows.append({"id": item["id"], "tags": item["tags"], "unanswerable": True})
+            continue
         hits = search(embed_query(item["question"]))
         rank = gold_rank(hits, item["gold"])
         # The retrieval top-1 makes a recall@1 miss auditable: it shows *which* page
@@ -128,7 +139,13 @@ def run_retrieval_only(dataset: list[dict]) -> list[dict]:
 
 
 def run_full(dataset: list[dict], use_judge: bool) -> list[dict]:
-    """Full pipeline per question via the run_query seam; scores all metric families."""
+    """Full pipeline per question via the run_query seam; scores all metric families.
+
+    Answerable and unanswerable questions produce deliberately different row shapes.
+    An unanswerable row carries only `abstention_correct`, omitting gold_rank /
+    rerank_hit / citation_correct / substring_match entirely, so it can never enter a
+    denominator where "no gold page was retrieved" would read as a failure.
+    """
     from src.main import run_query
 
     rows = []
@@ -137,37 +154,63 @@ def run_full(dataset: list[dict], use_judge: bool) -> list[dict]:
         reranked = result.get("retrieved", [])
         citation = result.get("citation")
         answer = result.get("answer", "")
-        source_page = (citation or {}).get("source_page", 0)
-        cited = (
-            {"pdf": reranked[source_page - 1]["pdf"], "page": reranked[source_page - 1]["page_number"]}
-            if 1 <= source_page <= len(reranked) else None
-        )
+        meta = result.get("meta", {})
         row = {
             "id": item["id"],
             "tags": item["tags"],
-            "gold_rank": gold_rank(result.get("candidates", []), item["gold"]),
-            "rerank_hit": gold_rank(reranked, item["gold"]) is not None,
-            "citation_correct": citation_correct(citation, reranked, item["gold"]),
-            "cited": cited,  # which page was actually cited - makes gold-label gaps auditable
             "found": bool(citation and citation.get("found")),
-            "substring_match": substring_match(answer, item["answer_contains"]),
-            "latency_ms": result.get("meta", {}).get("latency_ms"),
+            "latency_ms": meta.get("latency_ms"),
         }
-        if use_judge:
-            row["judge"] = judge_answer(item["question"], answer, item["answer_contains"], item["gold"])
+        if item["unanswerable"]:
+            # The only correct behaviour is declining; the judge is skipped because its
+            # prompt assumes a reference fact exists.
+            row["abstention_correct"] = abstention_correct(citation)
+        else:
+            source_page = (citation or {}).get("source_page", 0)
+            cited = (
+                {"pdf": reranked[source_page - 1]["pdf"],
+                 "page": reranked[source_page - 1]["page_number"]}
+                if 1 <= source_page <= len(reranked) else None
+            )
+            row |= {
+                "gold_rank": gold_rank(result.get("candidates", []), item["gold"]),
+                "rerank_hit": gold_rank(reranked, item["gold"]) is not None,
+                "citation_correct": citation_correct(citation, reranked, item["gold"]),
+                "gold_doc_coverage": gold_doc_coverage(reranked, item["gold"]),
+                "cited": cited,  # which page was actually cited - makes gold-label gaps auditable
+                "substring_match": substring_match(answer, item["answer_contains"], item.get("answer_contains_all")),
+                # Both confidence signals ride along on the result already (main.run_query),
+                # so calibration costs no extra call - only the scoring in eval.scoring.
+                "retrieval_confidence": meta.get("retrieval_confidence"),
+                "self_confidence": (citation or {}).get("confidence"),
+            }
+            if use_judge:
+                row["judge"] = judge_answer(
+                    item["question"], answer, item["answer_contains"] or item.get("answer_contains_all"), item["gold"]
+                )
         # The report keeps the answer + full meta for debugging; the table doesn't show them.
-        rows.append({**row, "answer": answer, "meta": result.get("meta")})
+        rows.append({**row, "answer": answer, "meta": meta})
         log.info("eval question scored", extra={"eval_id": item["id"],
-                                                "gold_rank": row["gold_rank"],
-                                                "citation_correct": row["citation_correct"]})
+                                                "gold_rank": row.get("gold_rank"),
+                                                "citation_correct": row.get("citation_correct"),
+                                                "abstention_correct": row.get("abstention_correct")})
     return rows
 
 
 def _config_snapshot(mode: str, dataset_path: str, use_judge: bool) -> dict:
     """The knob values this run used, embedded in the report so runs diff cleanly."""
+    # Store dataset path relative to repo root if it's under the repo, to avoid
+    # operator-specific home directories in the config snapshot.
+    repo_root = Path(__file__).resolve().parent.parent
+    try:
+        dataset_rel = Path(dataset_path).resolve().relative_to(repo_root)
+        dataset_stored = str(dataset_rel)
+    except (ValueError, OSError):
+        # Not under repo root or path resolution failed; keep as-is
+        dataset_stored = dataset_path
     return {
         "mode": mode,
-        "dataset": dataset_path,
+        "dataset": dataset_stored,
         "retrieve_k": RETRIEVE_K,
         "rerank_k": RERANK_K,
         "rerank_adaptive": config.RERANK_ADAPTIVE,
@@ -182,7 +225,7 @@ def _config_snapshot(mode: str, dataset_path: str, use_judge: bool) -> dict:
 
 
 def gate_status(summary: dict, metric: str, threshold: float | None) -> tuple[bool, object]:
-    """Evaluate the --fail-under-recall gate against a chosen summary metric.
+    """Evaluate one gate against a chosen summary metric.
 
     Returns (failed, value). `failed` is False when no threshold is set. A metric
     absent from the summary (unknown name, or N/A for the run) has value None and
@@ -196,6 +239,34 @@ def gate_status(summary: dict, metric: str, threshold: float | None) -> tuple[bo
     return failed, value
 
 
+def parse_gates(
+    specs: list[str] | None, fail_metric: str, fail_under: float | None
+) -> list[tuple[str, float]]:
+    """Build the (metric, minimum) list from repeated --gate plus the legacy flag pair.
+
+    One run costs minutes of GPU and a few hundred model calls, so a guard that can
+    only watch a single metric per run isn't much of a guard - the metrics with real
+    headroom (gold_coverage_avg, recall@1, citation_accuracy) need watching together.
+    Raises ValueError naming the bad spec, so a typo fails at parse time rather than
+    after the whole eval has run.
+    """
+    gates: list[tuple[str, float]] = []
+    for spec in specs or []:
+        metric, sep, raw = spec.rpartition(":")
+        if not sep or not metric.strip():
+            raise ValueError(f"--gate {spec!r} must look like METRIC:MIN, e.g. recall@1:0.70")
+        try:
+            threshold = float(raw)
+        except ValueError as exc:
+            raise ValueError(f"--gate {spec!r}: {raw!r} is not a number") from exc
+        if not math.isfinite(threshold):
+            raise ValueError(f"--gate {spec!r}: threshold must be finite (got {threshold})")
+        gates.append((metric.strip(), threshold))
+    if fail_under is not None:
+        gates.append((fail_metric, fail_under))
+    return gates
+
+
 def main(argv: list[str] | None = None) -> int:
     """Parse args, run the requested eval mode, write the report; return the exit code."""
     parser = argparse.ArgumentParser(description="Score the RAG pipeline against the labeled dataset.")
@@ -205,6 +276,9 @@ def main(argv: list[str] | None = None) -> int:
                         help="recall@k only - no Gemini calls, runs without GEMINI_API_KEY")
     parser.add_argument("--judge", action="store_true",
                         help="also score answers with the LLM judge (EVAL_JUDGE_MODEL)")
+    parser.add_argument("--gate", action="append", metavar="METRIC:MIN",
+                        help="exit 1 if METRIC falls below MIN; repeatable, e.g. "
+                             "--gate recall@1:0.70 --gate gold_coverage_avg:0.60")
     parser.add_argument("--fail-under-recall", type=float, default=None, metavar="RATE",
                         help="exit 1 if the gate metric (see --fail-metric) falls below RATE")
     parser.add_argument("--fail-metric", default=f"recall@{RETRIEVE_K}", metavar="METRIC",
@@ -214,6 +288,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.retrieval_only and args.judge:
         parser.error("--judge needs the full pipeline; drop --retrieval-only")
+    try:
+        gates = parse_gates(args.gate, args.fail_metric, args.fail_under_recall)
+    except ValueError as exc:
+        parser.error(str(exc))  # bad spec now, not after a multi-minute run
 
     mode = "retrieval-only" if args.retrieval_only else "full"
     try:
@@ -251,12 +329,14 @@ def main(argv: list[str] | None = None) -> int:
     print(format_table(rows, {**summary, "per_tag": per_tag}))
     print(f"\nreport: {output}")
 
-    failed, value = gate_status(summary, args.fail_metric, args.fail_under_recall)
-    if failed:
-        print(f"FAIL: {args.fail_metric}={value} below threshold {args.fail_under_recall}",
-              file=sys.stderr)
-        return 1
-    return 0
+    # Report every breached gate, not just the first: one run is expensive enough that
+    # finding out about the second regression should not cost another one.
+    breaches = [(metric, threshold, gate_status(summary, metric, threshold)[1])
+                for metric, threshold in gates
+                if gate_status(summary, metric, threshold)[0]]
+    for metric, threshold, value in breaches:
+        print(f"FAIL: {metric}={value} below threshold {threshold}", file=sys.stderr)
+    return 1 if breaches else 0
 
 
 if __name__ == "__main__":

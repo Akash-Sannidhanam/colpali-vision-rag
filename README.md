@@ -51,21 +51,31 @@ the embedded on-disk store instead — handy for quick local runs.
 # 1. Generate the sample PDF (a bar chart + a sales table, pure pixels, no text layer)
 uv run python scripts/make_sample_pdf.py
 
-# 2. Ingest: render pages → embed with ColQwen2 → store in Qdrant
+# 2. (optional) Fetch the eval corpus — 16 arXiv papers pinned by sha256, ~320 pages
+uv run python scripts/fetch_eval_corpus.py          # needed only to run eval/
+
+# 3. Ingest: render pages → embed with ColQwen2 → store in Qdrant
 PYTHONPATH=. uv run python src/ingest.py            # indexes everything in pdfs/
 #   or point at specific files:  ... src/ingest.py path/to/doc.pdf
 #   ingest is incremental — re-running only embeds documents whose bytes (or the
 #   model / render DPI that produced them) changed, so an unchanged corpus is a no-op
 PYTHONPATH=. uv run python src/ingest.py --rebuild   # force a full atomic re-index
 
-# 3. Ask a question
+# 4. Ask a question
 PYTHONPATH=. uv run python src/main.py "What was the Q4 revenue in the chart?"
 ```
 
 The repo ships a small starter corpus in `pdfs/` — the generated sales report plus
 two arXiv papers (*Attention Is All You Need* and *ColPali*, ~43 pages total) — so
 the rerank step has a real 10-candidate pool to narrow out of the box. Drop your own
-PDFs into `pdfs/` and re-run step 2 to index them too.
+PDFs into `pdfs/` and re-run the ingest to index them too.
+
+Step 2 is only needed to run the eval. It adds 16 more papers (~320 pages) chosen to
+be *confusable* with the two gold documents, because a 43-page corpus is too small to
+measure retrieval on at all: `RETRIEVE_K=10` over 43 pages returns a quarter of the
+index every query, so recall@10 cannot be anything but 1.0. See
+[Evaluation](#evaluation). Those PDFs are not committed — `eval/corpus_manifest.json`
+pins each by sha256 and the fetch script verifies them.
 
 ### Example output
 
@@ -266,10 +276,12 @@ src/
   main.py          # query CLI (run_query seam + CLI wrapper)
   server.py        # warm FastAPI service: /query /health /corpus /ingest /heatmap + images
 scripts/
-  make_sample_pdf.py   # generates the text-layer-free sample PDF
+  make_sample_pdf.py     # generates the text-layer-free sample PDF
+  fetch_eval_corpus.py   # downloads + sha256-verifies the distractor corpus into pdfs/
 eval/
   dataset.jsonl        # labeled questions: gold {pdf, page} + expected substrings
-  scoring.py           # pure scoring logic (recall@k, citation, substring, aggregate)
+  corpus_manifest.json # the distractor corpus, pinned by sha256 (PDFs not committed)
+  scoring.py           # pure scoring logic (recall@k, citation, abstention, coverage, calibration)
   run_eval.py          # eval CLI: retrieval-only / full / judge, JSON report + table
 ui/                   # React + Vite UI: three-column workspace with visual citations
 docker-compose.yml    # Qdrant vector database service
@@ -345,11 +357,22 @@ uv run mypy src eval              # type-check
 
 ## Evaluation
 
-A small labeled set (`eval/dataset.jsonl`, ~22 questions over the sample corpus with
-gold `{pdf, page}` labels and expected-answer substrings) plus a scoring harness make
-regressions visible: re-run after changing `RENDER_DPI`, `RERANK_K`, or a model and
-diff the JSON reports to *prove* nothing regressed. Each report carries a `config`
-snapshot so the two runs are comparable at a glance.
+A labeled set (`eval/dataset.jsonl`, 69 questions: 59 answerable with gold `{pdf, page}`
+labels and expected-answer substrings, plus 10 unanswerable questions without gold pages)
+plus a scoring harness make regressions visible: re-run after changing `RENDER_DPI`,
+`RERANK_K`, or a model and diff the JSON reports to *prove* nothing regressed. Each
+report carries a `config` snapshot so the two runs are comparable at a glance.
+
+**The corpus is part of the instrument.** An earlier version of this eval scored 1.0
+on recall@10, rerank recall, citation accuracy, substring match *and* the judge — not
+because the pipeline was perfect but because the corpus was 43 pages, so a 10-candidate
+retrieval returned 23% of the index and the gold page could not fail to be in it. Every
+downstream metric inherited that ceiling, which made the harness useless as a guard: a
+real regression had nowhere to show up. `scripts/fetch_eval_corpus.py` fixes it
+structurally by adding 320 pages of deliberately confusable papers — the retrieval
+family (ColBERT, ColBERTv2, DPR, BEIR, SPLADE, E5, RAG) carries the same
+late-interaction prose and nDCG tables the ColPali questions turn on, and PaliGemma is
+ColPali's own base model.
 
 ```bash
 # Retrieval only — recall@k against the index, no Gemini calls (runs without a key)
@@ -361,17 +384,69 @@ PYTHONPATH=. uv run python eval/run_eval.py
 # …plus LLM-as-judge scoring of each answer against the reference (EVAL_JUDGE_MODEL)
 PYTHONPATH=. uv run python eval/run_eval.py --judge
 
-# CI gate: exit 1 if retrieval recall@RETRIEVE_K drops below a threshold
-PYTHONPATH=. uv run python eval/run_eval.py --retrieval-only --fail-under-recall 0.9
+# CI gate: exit 1 if any watched metric drops below its floor (repeatable, one run)
+PYTHONPATH=. uv run python eval/run_eval.py --judge \
+  --gate recall@1:0.70 --gate recall@3:0.88 --gate citation_accuracy:0.91 \
+  --gate gold_coverage_avg:0.55 --gate abstention_accuracy:0.90
 ```
 
-Reports land in `eval/reports/` (gitignored). Metrics: **recall@k** (is the gold page
-in Qdrant's top-`RETRIEVE_K`, and within the reranked top-`RERANK_K`?), **citation
-correctness** (did the answer's `source_page` resolve to the gold page?), **answer
-quality** (substring match, plus the optional judge), each also sliced by tag
-(`chart` / `table` / `figure` / `formula` / `text`). The scoring logic
-(`eval/scoring.py`) is pure and unit-tested; the full run reuses `main.run_query`, so
-it also reports per-question latency/token/cost for free.
+Those floors sit ~3 questions below the pinned baseline. Note what is *not* gated:
+`recall@10` and `rerank_recall` are both still 1.0 and gating them would guard
+nothing — see below.
+
+Reports land in `eval/reports/` (gitignored, except the pinned
+`baseline_desaturated.json`). Metrics:
+
+| family | question it answers |
+| --- | --- |
+| **recall@k** | is the gold page in Qdrant's top-`RETRIEVE_K`, and in the reranked top-`RERANK_K`? |
+| **citation accuracy** | did the answer's `source_page` resolve to the gold page? |
+| **answer quality** | substring match, plus the optional LLM judge |
+| **abstention accuracy** | on the 10 questions the corpus *cannot* answer, did it decline instead of inventing one? Its complement is the hallucination rate. |
+| **gold-document coverage** | on the 6 questions whose gold spans two PDFs, did rerank spend a slot on each? The only metric that puts `RERANK_K` under pressure. |
+| **confidence separation** | is confidence higher on correct citations than wrong ones? ~0 means the signal is noise. |
+
+Each is also sliced by tag (`chart` / `table` / `figure` / `formula` / `text` /
+`cross-doc` / `unanswerable`), and every metric is computed over *applicable rows
+only* — an unanswerable question carries no gold page, so it scores abstention without
+entering a recall denominator. The scoring logic (`eval/scoring.py`) is pure and
+unit-tested; the full run reuses `main.run_query`, so it also reports per-question
+latency/token/cost for free.
+
+### Baseline
+
+`eval/reports/baseline_desaturated.json` is committed as the thing to diff against.
+
+| metric | 53 questions / 43 pages | 69 questions / 363 pages |
+| --- | --- | --- |
+| recall@1 | 0.8302 | 0.7627 |
+| recall@3 | 0.9623 | 0.9322 |
+| recall@10 | 1.0000 | 1.0000 |
+| rerank_recall | 1.0000 | 1.0000 |
+| citation_accuracy | 1.0000 | 0.9661 |
+| substring_accuracy | 1.0000 | 1.0000 |
+| judge_accuracy | 1.0000 | 0.9831 |
+| **gold_coverage_avg** | — | **0.6667** |
+| **abstention_accuracy** | — | **1.0000** (10/10) |
+| **confidence_separation** | — | **0.0317** |
+
+**What the de-saturation actually found.** Not more retrieval headroom — on the
+*identical* 53 questions the 8× bigger corpus moved recall@1/@3/@10 by exactly zero,
+and `recall@10` and `rerank_recall` are still pinned at 1.0. What it found is that
+`gold_doc_coverage` catches **answers that are correct but not grounded in the
+retrieved pages**. On `xdoc-ndcg-cutoffs` the pipeline answered *"ColPali reports
+nDCG@5… BEIR is scored using nDCG@10"* — right on both halves, scored correct by
+citation, substring *and* the judge — while `beir.pdf` was never in the reranked set at
+all. The BEIR half came from the model's parametric knowledge, not from a page it was
+shown. For a system whose premise is *"here is the box where I read this,"* that is the
+failure mode that matters, and `gold_coverage_avg` is the only metric that sees it.
+Four of six cross-document questions score 0.5 for the same reason: `RERANK_K=2` spent
+both slots inside one document.
+
+Two smaller results worth knowing: the model self-reported `high` confidence on all 59
+answerable questions (a degenerate signal), and the deterministic retrieval confidence
+separates correct from wrong citations by only 0.032 — both are surfaced in the UI and
+neither currently carries much information.
 
 ## Notes
 
