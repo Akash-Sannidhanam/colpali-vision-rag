@@ -7,20 +7,6 @@
     "pages": 16
   },
   {
-    "name": "roberta.pdf",
-    "title": "RoBERTa: A Robustly Optimized BERT Pretraining Approach",
-    "url": "https://arxiv.org/pdf/1907.11692",
-    "sha256": "76a3872d244793563a5b000b818cbaf0ca8972ab1145d32be474c05b2a8f3070",
-    "pages": 13
-  },
-  {
-    "name": "t5.pdf",
-    "title": "Exploring the Limits of Transfer Learning with a Unified Text-to-Text Transformer",
-    "url": "https://arxiv.org/pdf/1910.10683",
-    "sha256": "ad07e47cedf437a4156419ce5d3076e08a3e59bbfd6dac7cc53df1009cdcbe7f",
-    "pages": 67
-  },
-  {
     "name": "transformer_xl.pdf",
     "title": "Transformer-XL: Attentive Language Models Beyond a Fixed-Length Context",
     "url": "https://arxiv.org/pdf/1901.02860",
@@ -35,46 +21,11 @@
     "pages": 17
   },
   {
-    "name": "electra.pdf",
-    "title": "ELECTRA: Pre-training Text Encoders as Discriminators Rather Than Generators",
-    "url": "https://arxiv.org/pdf/2003.10555",
-    "sha256": "6219a802dca3be0027fc88bb2ecd56806e6610ebfe4d083a4c18dd896f45b9ae",
-    "pages": 18
-  },
-  {
-    "name": "longformer.pdf",
-    "title": "Longformer: The Long-Document Transformer",
-    "url": "https://arxiv.org/pdf/2004.05150",
-    "sha256": "053756b54e2d3462d4690b3aed489c962f17df7c3531865e47374c4a651f526c",
-    "pages": 17
-  },
-  {
-    "name": "reformer.pdf",
-    "title": "Reformer: The Efficient Transformer",
-    "url": "https://arxiv.org/pdf/2001.04451",
-    "sha256": "f86f29116ea4a04321f4ab8727283096c544255bd31f7efbc10e56390a8b5e8b",
-    "pages": 12
-  },
-  {
-    "name": "scaling_laws.pdf",
-    "title": "Scaling Laws for Neural Language Models",
-    "url": "https://arxiv.org/pdf/2001.08361",
-    "sha256": "a41bd7877fd1a6bcbba096b2619618bd2f90e02488f2365644903eb2f7c6a494",
-    "pages": 30
-  },
-  {
     "name": "vit.pdf",
     "title": "An Image is Worth 16x16 Words: Transformers for Image Recognition at Scale",
     "url": "https://arxiv.org/pdf/2010.11929",
     "sha256": "8ce7b83971a14508ca711a27c875c9b6914c4f6767cf3150fb1ca6c07aa056d6",
     "pages": 22
-  },
-  {
-    "name": "clip.pdf",
-    "title": "Learning Transferable Visual Models From Natural Language Supervision",
-    "url": "https://arxiv.org/pdf/2103.00020",
-    "sha256": "6478b6e571a7d6fcd846d8ef77bfd60c285f1986abb8f475eedc43de403074f5",
-    "pages": 48
   },
   {
     "name": "siglip.pdf",
@@ -91,53 +42,11 @@
     "pages": 9
   },
   {
-    "name": "layoutlmv2.pdf",
-    "title": "LayoutLMv2: Multi-modal Pre-training for Visually-Rich Document Understanding",
-    "url": "https://arxiv.org/pdf/2012.14740",
-    "sha256": "a213f3284720784d6ea91a5fa026072c8ece4a72a2b7799c81e603ca911e7213",
-    "pages": 13
-  },
-  {
-    "name": "layoutlmv3.pdf",
-    "title": "LayoutLMv3: Pre-training for Document AI with Unified Text and Image Masking",
-    "url": "https://arxiv.org/pdf/2204.08387",
-    "sha256": "bd5395610755a49e6419c406e651906e688e7a0cfe155b3c43566469dfd641fe",
-    "pages": 10
-  },
-  {
     "name": "donut.pdf",
     "title": "OCR-free Document Understanding Transformer",
     "url": "https://arxiv.org/pdf/2111.15664",
     "sha256": "ad9c20523c37f53fc6d31ccb4c63dcc7b916c7340d6bb16033c9924ce70c7668",
     "pages": 29
-  },
-  {
-    "name": "pix2struct.pdf",
-    "title": "Pix2Struct: Screenshot Parsing as Pretraining for Visual Language Understanding",
-    "url": "https://arxiv.org/pdf/2210.03347",
-    "sha256": "0ab4bdae1dedc8e0972e2053b24c252e19dd7305f41108a6819d44d4535c1ad3",
-    "pages": 20
-  },
-  {
-    "name": "trocr.pdf",
-    "title": "TrOCR: Transformer-based Optical Character Recognition with Pre-trained Models",
-    "url": "https://arxiv.org/pdf/2109.10282",
-    "sha256": "46baf09c8757a7358b02ceb9e521457d44e4133a7e1cde33b24071455e2dfa19",
-    "pages": 10
-  },
-  {
-    "name": "blip2.pdf",
-    "title": "BLIP-2: Bootstrapping Language-Image Pre-training with Frozen Image Encoders and Large Language Models",
-    "url": "https://arxiv.org/pdf/2301.12597",
-    "sha256": "6bc5d399d6127a64ace5167a2f0c00112a49725d2475d80322dbf0083f139e80",
-    "pages": 13
-  },
-  {
-    "name": "qwen_vl.pdf",
-    "title": "Qwen-VL: A Versatile Vision-Language Model for Understanding, Localization, Text Reading, and Beyond",
-    "url": "https://arxiv.org/pdf/2308.12966",
-    "sha256": "b4eca60ae9d3c1548242da02ece0e2f35ce23d3a983255830d98212aa92e3167",
-    "pages": 24
   },
   {
     "name": "paligemma.pdf",
