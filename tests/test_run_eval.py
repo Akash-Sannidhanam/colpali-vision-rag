@@ -20,6 +20,7 @@ from eval.run_eval import (
     check_corpus,
     gate_status,
     judge_answer,
+    parse_gates,
 )
 from eval.scoring import load_dataset
 from src.config import EVAL_JUDGE_MODEL
@@ -208,3 +209,34 @@ def test_gate_fails_on_unknown_or_na_metric():
     # A typo'd or N/A metric can't silently pass the gate.
     failed, value = gate_status(_SUMMARY, "recall@2", 0.5)
     assert failed is True and value is None
+
+
+# --- --gate METRIC:MIN parsing ---
+
+def test_parse_gates_collects_repeated_specs():
+    """Several --gate flags become several (metric, minimum) pairs."""
+    gates = parse_gates(["recall@1:0.70", "gold_coverage_avg:0.60"], "recall@10", None)
+    assert gates == [("recall@1", 0.7), ("gold_coverage_avg", 0.6)]
+
+
+def test_parse_gates_splits_on_the_last_colon():
+    """Metric names contain no colon, but splitting from the right is the safe choice."""
+    assert parse_gates(["recall@1:0.7"], "recall@10", None) == [("recall@1", 0.7)]
+
+
+def test_parse_gates_appends_the_legacy_flag_pair():
+    """--fail-metric/--fail-under-recall still work, alongside any --gate flags."""
+    gates = parse_gates(["recall@1:0.70"], "citation_accuracy", 0.9)
+    assert gates == [("recall@1", 0.7), ("citation_accuracy", 0.9)]
+
+
+def test_parse_gates_without_any_threshold_is_empty():
+    """No gate flags means nothing to fail on."""
+    assert parse_gates(None, "recall@10", None) == []
+
+
+@pytest.mark.parametrize("spec", ["recall@1", "recall@1:high", ":0.7"])
+def test_parse_gates_rejects_a_malformed_spec(spec):
+    """A typo fails at parse time, not after a multi-minute run has already burned."""
+    with pytest.raises(ValueError, match="gate"):
+        parse_gates([spec], "recall@10", None)

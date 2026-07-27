@@ -215,7 +215,7 @@ def _config_snapshot(mode: str, dataset_path: str, use_judge: bool) -> dict:
 
 
 def gate_status(summary: dict, metric: str, threshold: float | None) -> tuple[bool, object]:
-    """Evaluate the --fail-under-recall gate against a chosen summary metric.
+    """Evaluate one gate against a chosen summary metric.
 
     Returns (failed, value). `failed` is False when no threshold is set. A metric
     absent from the summary (unknown name, or N/A for the run) has value None and
@@ -229,6 +229,31 @@ def gate_status(summary: dict, metric: str, threshold: float | None) -> tuple[bo
     return failed, value
 
 
+def parse_gates(
+    specs: list[str] | None, fail_metric: str, fail_under: float | None
+) -> list[tuple[str, float]]:
+    """Build the (metric, minimum) list from repeated --gate plus the legacy flag pair.
+
+    One run costs minutes of GPU and a few hundred model calls, so a guard that can
+    only watch a single metric per run isn't much of a guard - the metrics with real
+    headroom (gold_coverage_avg, recall@1, citation_accuracy) need watching together.
+    Raises ValueError naming the bad spec, so a typo fails at parse time rather than
+    after the whole eval has run.
+    """
+    gates: list[tuple[str, float]] = []
+    for spec in specs or []:
+        metric, sep, raw = spec.rpartition(":")
+        if not sep or not metric.strip():
+            raise ValueError(f"--gate {spec!r} must look like METRIC:MIN, e.g. recall@1:0.70")
+        try:
+            gates.append((metric.strip(), float(raw)))
+        except ValueError as exc:
+            raise ValueError(f"--gate {spec!r}: {raw!r} is not a number") from exc
+    if fail_under is not None:
+        gates.append((fail_metric, fail_under))
+    return gates
+
+
 def main(argv: list[str] | None = None) -> int:
     """Parse args, run the requested eval mode, write the report; return the exit code."""
     parser = argparse.ArgumentParser(description="Score the RAG pipeline against the labeled dataset.")
@@ -238,6 +263,9 @@ def main(argv: list[str] | None = None) -> int:
                         help="recall@k only - no Gemini calls, runs without GEMINI_API_KEY")
     parser.add_argument("--judge", action="store_true",
                         help="also score answers with the LLM judge (EVAL_JUDGE_MODEL)")
+    parser.add_argument("--gate", action="append", metavar="METRIC:MIN",
+                        help="exit 1 if METRIC falls below MIN; repeatable, e.g. "
+                             "--gate recall@1:0.70 --gate gold_coverage_avg:0.60")
     parser.add_argument("--fail-under-recall", type=float, default=None, metavar="RATE",
                         help="exit 1 if the gate metric (see --fail-metric) falls below RATE")
     parser.add_argument("--fail-metric", default=f"recall@{RETRIEVE_K}", metavar="METRIC",
@@ -247,6 +275,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.retrieval_only and args.judge:
         parser.error("--judge needs the full pipeline; drop --retrieval-only")
+    try:
+        gates = parse_gates(args.gate, args.fail_metric, args.fail_under_recall)
+    except ValueError as exc:
+        parser.error(str(exc))  # bad spec now, not after a multi-minute run
 
     mode = "retrieval-only" if args.retrieval_only else "full"
     try:
@@ -284,12 +316,14 @@ def main(argv: list[str] | None = None) -> int:
     print(format_table(rows, {**summary, "per_tag": per_tag}))
     print(f"\nreport: {output}")
 
-    failed, value = gate_status(summary, args.fail_metric, args.fail_under_recall)
-    if failed:
-        print(f"FAIL: {args.fail_metric}={value} below threshold {args.fail_under_recall}",
-              file=sys.stderr)
-        return 1
-    return 0
+    # Report every breached gate, not just the first: one run is expensive enough that
+    # finding out about the second regression should not cost another one.
+    breaches = [(metric, threshold, gate_status(summary, metric, threshold)[1])
+                for metric, threshold in gates
+                if gate_status(summary, metric, threshold)[0]]
+    for metric, threshold, value in breaches:
+        print(f"FAIL: {metric}={value} below threshold {threshold}", file=sys.stderr)
+    return 1 if breaches else 0
 
 
 if __name__ == "__main__":
