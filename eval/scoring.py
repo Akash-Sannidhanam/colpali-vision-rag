@@ -11,6 +11,9 @@ excluded from that metric's denominator):
     substring_match, abstention_correct, retrieval_confidence, self_confidence,
     judge {correct, score}, latency_ms
 
+Dataset rows support `answer_contains` (any-of substrings) and `answer_contains_all`
+(all-of substrings); both are optional and can coexist.
+
 Every metric is computed over applicable rows only, which is what lets one dataset
 hold questions of different kinds: an unanswerable row carries `abstention_correct`
 and no `gold_rank`, so it scores the hallucination rate without polluting recall.
@@ -25,15 +28,15 @@ def load_dataset(lines) -> list[dict]:
 
     Each non-blank line must be a JSON object with a unique `id`, a non-empty
     `question`, and a non-empty `gold` list of {pdf, page>=1}; `answer_contains`
-    (list of substrings) and `tags` are optional. Raises ValueError naming the
-    1-based line number of the first bad row.
+    (any-of substrings), `answer_contains_all` (all-of substrings), and `tags` are
+    optional. Raises ValueError naming the 1-based line number of the first bad row.
 
     Setting `unanswerable: true` inverts the gold rules: the question has no answer
     anywhere in the corpus, so `gold` must be absent or empty and `answer_contains`
-    must be absent - the only correct behaviour is to decline. The flag is explicit
-    rather than inferred from an empty `gold` so that a row which *meant* to name a
-    gold page but lost it stays a validation error instead of silently becoming a
-    negative question.
+    / `answer_contains_all` must be absent - the only correct behaviour is to decline.
+    The flag is explicit rather than inferred from an empty `gold` so that a row which
+    *meant* to name a gold page but lost it stays a validation error instead of silently
+    becoming a negative question.
     """
     rows: list[dict] = []
     seen_ids: set[str] = set()
@@ -83,6 +86,14 @@ def load_dataset(lines) -> list[dict]:
             raise bad("`answer_contains` must be a list of non-empty strings")
         if unanswerable and expected:
             raise bad("an `unanswerable` row must not set `answer_contains`")
+        expected_all = row.get("answer_contains_all")
+        if expected_all is not None and (
+            not isinstance(expected_all, list)
+            or not all(isinstance(s, str) and s for s in expected_all)
+        ):
+            raise bad("`answer_contains_all` must be a list of non-empty strings")
+        if unanswerable and expected_all:
+            raise bad("an `unanswerable` row must not set `answer_contains_all`")
         tags = row.get("tags", [])
         if not isinstance(tags, list) or not all(isinstance(t, str) for t in tags):
             raise bad("`tags` must be a list of strings")
@@ -93,6 +104,7 @@ def load_dataset(lines) -> list[dict]:
             "question": question,
             "gold": gold,
             "answer_contains": expected or None,
+            "answer_contains_all": expected_all or None,
             "tags": tags,
             "unanswerable": unanswerable,
         })
@@ -166,17 +178,23 @@ def _comparable(text: str) -> str:
     return _THOUSANDS_SEPARATOR.sub("", (text or "").lower())
 
 
-def substring_match(answer: str, expected: list[str] | None) -> bool | None:
-    """Case-insensitive any-of substring check; None (N/A) when nothing is expected.
+def substring_match(answer: str, expected: list[str] | None, expected_all: list[str] | None = None) -> bool | None:
+    """Case-insensitive substring check; None (N/A) when nothing is expected.
+
+    `expected` is an any-of list: at least one substring must be present.
+    `expected_all` is an all-of list: every substring must be present.
+    If both are given, both conditions must hold.
 
     Digit grouping is normalized away on both sides (see `_comparable`). Normalizing
     can only make the check more permissive, so it cannot turn a previously-passing
     row into a failure.
     """
-    if not expected:
+    if not expected and not expected_all:
         return None
     lowered = _comparable(answer)
-    return any(_comparable(s) in lowered for s in expected)
+    any_pass = any(_comparable(s) in lowered for s in expected) if expected else True
+    all_pass = all(_comparable(s) in lowered for s in expected_all) if expected_all else True
+    return any_pass and all_pass
 
 
 def _rate(values: list) -> float | None:

@@ -2,7 +2,7 @@
   "generated_at": "2026-07-27T21:16:05+00:00",
   "config": {
     "mode": "full",
-    "dataset": "/Users/akashsannidhanam/colpali-vision-rag/eval/dataset.jsonl",
+    "dataset": "eval/dataset.jsonl",
     "retrieve_k": 10,
     "rerank_k": 2,
     "rerank_adaptive": false,

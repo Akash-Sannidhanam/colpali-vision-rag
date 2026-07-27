@@ -357,11 +357,11 @@ uv run mypy src eval              # type-check
 
 ## Evaluation
 
-A labeled set (`eval/dataset.jsonl`, 69 questions with gold `{pdf, page}` labels and
-expected-answer substrings) plus a scoring harness make regressions visible: re-run
-after changing `RENDER_DPI`, `RERANK_K`, or a model and diff the JSON reports to
-*prove* nothing regressed. Each report carries a `config` snapshot so the two runs are
-comparable at a glance.
+A labeled set (`eval/dataset.jsonl`, 69 questions: 59 answerable with gold `{pdf, page}`
+labels and expected-answer substrings, plus 10 unanswerable questions without gold pages)
+plus a scoring harness make regressions visible: re-run after changing `RENDER_DPI`,
+`RERANK_K`, or a model and diff the JSON reports to *prove* nothing regressed. Each
+report carries a `config` snapshot so the two runs are comparable at a glance.
 
 **The corpus is part of the instrument.** An earlier version of this eval scored 1.0
 on recall@10, rerank recall, citation accuracy, substring match *and* the judge — not

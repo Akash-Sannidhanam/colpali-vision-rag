@@ -43,7 +43,7 @@ def test_shipped_dataset_parses_and_holds_its_invariants():
     assert len(cross_doc) >= 6, "no cross-document rows left - RERANK_K goes unpressured"
 
     # An answerable row without an expected substring scores nothing but recall.
-    assert all(r["answer_contains"] for r in rows if not r["unanswerable"])
+    assert all(r["answer_contains"] or r["answer_contains_all"] for r in rows if not r["unanswerable"])
     assert all("unanswerable" in r["tags"] for r in negatives)
 
 
@@ -81,13 +81,13 @@ def test_judge_answer_failure_returns_none_not_raise(monkeypatch):
 def _dataset_row(pdf="a.pdf", page=3, row_id="q1"):
     """One labeled dataset row pointing at a single gold page."""
     return {"id": row_id, "question": "q", "gold": [{"pdf": pdf, "page": page}],
-            "answer_contains": None, "tags": [], "unanswerable": False}
+            "answer_contains": None, "answer_contains_all": None, "tags": [], "unanswerable": False}
 
 
 def _unanswerable_row(row_id="n1"):
     """One dataset row whose answer is nowhere in the corpus."""
     return {"id": row_id, "question": "q", "gold": [], "answer_contains": None,
-            "tags": ["unanswerable"], "unanswerable": True}
+            "answer_contains_all": None, "tags": ["unanswerable"], "unanswerable": True}
 
 
 def test_check_corpus_passes_when_gold_pages_indexed(monkeypatch):
