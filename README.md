@@ -425,10 +425,10 @@ latency/token/cost for free.
 | rerank_recall | 1.0000 | 1.0000 |
 | citation_accuracy | 1.0000 | 0.9661 |
 | substring_accuracy | 1.0000 | 1.0000 |
-| judge_accuracy | 1.0000 | 0.9831 |
+| judge_accuracy | 1.0000 | 0.9661 |
 | **gold_coverage_avg** | — | **0.6667** |
 | **abstention_accuracy** | — | **1.0000** (10/10) |
-| **confidence_separation** | — | **0.0317** |
+| **confidence_separation** | — | **0.0312** |
 
 **What the de-saturation actually found.** Not more retrieval headroom — on the
 *identical* 53 questions the 8× bigger corpus moved recall@1/@3/@10 by exactly zero,
@@ -442,6 +442,11 @@ shown. For a system whose premise is *"here is the box where I read this,"* that
 failure mode that matters, and `gold_coverage_avg` is the only metric that sees it.
 Four of six cross-document questions score 0.5 for the same reason: `RERANK_K=2` spent
 both slots inside one document.
+
+`judge_accuracy` has a ~1-question noise floor (±0.017 on this denominator). One row —
+`sales-q2-revenue`, where the judge rejects `$150,000` for a chart labeled "Thousands"
+showing 150 — has flipped miss/pass/miss across three identical runs. Treat a single
+question's movement in that metric as noise, which is why it is not gated.
 
 Two smaller results worth knowing: the model self-reported `high` confidence on all 59
 answerable questions (a degenerate signal), and the deterministic retrieval confidence
