@@ -49,7 +49,13 @@ def test_judge_answer_failure_returns_none_not_raise(monkeypatch):
 def _dataset_row(pdf="a.pdf", page=3, row_id="q1"):
     """One labeled dataset row pointing at a single gold page."""
     return {"id": row_id, "question": "q", "gold": [{"pdf": pdf, "page": page}],
-            "answer_contains": None, "tags": []}
+            "answer_contains": None, "tags": [], "unanswerable": False}
+
+
+def _unanswerable_row(row_id="n1"):
+    """One dataset row whose answer is nowhere in the corpus."""
+    return {"id": row_id, "question": "q", "gold": [], "answer_contains": None,
+            "tags": ["unanswerable"], "unanswerable": True}
 
 
 def test_check_corpus_passes_when_gold_pages_indexed(monkeypatch):
@@ -70,6 +76,78 @@ def test_check_corpus_rejects_gold_page_beyond_page_count(monkeypatch):
     monkeypatch.setattr(run_eval, "list_documents", lambda: [{"pdf": "a.pdf", "page_count": 5}])
     with pytest.raises(EvalSetupError, match="page 9"):
         check_corpus([_dataset_row(page=9)])
+
+
+def test_check_corpus_ignores_unanswerable_rows(monkeypatch):
+    """A row with no gold page has nothing to preflight and must not trip the check."""
+    monkeypatch.setattr(run_eval, "list_documents", lambda: [{"pdf": "a.pdf", "page_count": 5}])
+    check_corpus([_unanswerable_row()])  # no raise
+
+
+# --- row shapes: answerable vs unanswerable questions ---
+
+def test_run_retrieval_only_does_not_score_unanswerable_rows(monkeypatch):
+    """A negative question is kept in `n` but carries no gold_rank to be missed on.
+
+    Retrieval-only mode has no citation, so there is nothing to score; emitting
+    gold_rank=None would count a correctly-unanswerable question as a recall miss.
+    """
+    searched = []
+    monkeypatch.setattr("src.embedder.embed_query", lambda q: [[0.1]])
+    monkeypatch.setattr("src.vector_store.search", lambda mv: searched.append(mv) or [
+        {"pdf": "a.pdf", "page_number": 3, "image_path": "p3.png", "score": 0.9},
+    ])
+
+    rows = run_eval.run_retrieval_only([_dataset_row(), _unanswerable_row()])
+
+    assert [r["id"] for r in rows] == ["q1", "n1"]
+    assert rows[0]["gold_rank"] == 1
+    assert "gold_rank" not in rows[1]
+    assert len(searched) == 1  # the negative row never reached the retriever
+
+
+def _stub_run_query(monkeypatch, *, found: bool, confidence: str = "high"):
+    """Stub main.run_query with one reranked page and a citation pointing at it."""
+    reranked = [{"pdf": "a.pdf", "page_number": 3, "image_path": "p3.png", "score": 0.9}]
+    citation = {"answer": "180", "found": found, "confidence": confidence,
+                "source_page": 1 if found else 0, "box": []}
+    monkeypatch.setattr("src.main.run_query", lambda q: {
+        "answer": "180", "citation": citation, "retrieved": reranked, "candidates": reranked,
+        "meta": {"latency_ms": 12.0, "retrieval_confidence": 0.81},
+    })
+
+
+def test_run_full_scores_an_unanswerable_row_on_abstention_alone(monkeypatch):
+    """Negative rows omit every retrieval/citation key so they can't enter a denominator."""
+    _stub_run_query(monkeypatch, found=False)
+    monkeypatch.setattr(run_eval, "judge_answer", lambda *a: pytest.fail("judge ran on a negative"))
+
+    (row,) = run_eval.run_full([_unanswerable_row()], use_judge=True)
+
+    assert row["abstention_correct"] is True
+    assert row["found"] is False
+    for absent in ("gold_rank", "rerank_hit", "citation_correct", "substring_match", "judge"):
+        assert absent not in row
+
+
+def test_run_full_counts_an_answered_unanswerable_question_as_a_hallucination(monkeypatch):
+    """Answering a question the corpus can't support is the failure this metric exists for."""
+    _stub_run_query(monkeypatch, found=True)
+    (row,) = run_eval.run_full([_unanswerable_row()], use_judge=False)
+    assert row["abstention_correct"] is False
+
+
+def test_run_full_carries_coverage_and_both_confidence_signals(monkeypatch):
+    """Answerable rows pick up gold_doc_coverage plus the two confidence values."""
+    _stub_run_query(monkeypatch, found=True, confidence="medium")
+
+    (row,) = run_eval.run_full([_dataset_row()], use_judge=False)
+
+    assert row["citation_correct"] is True
+    assert row["gold_doc_coverage"] is None       # single-document gold: N/A
+    assert row["retrieval_confidence"] == 0.81
+    assert row["self_confidence"] == "medium"
+    assert "abstention_correct" not in row
 
 
 # --- the --fail-metric / --fail-under-recall gate ---

@@ -23,9 +23,11 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from eval.scoring import (
+    abstention_correct,
     aggregate,
     citation_correct,
     format_table,
+    gold_doc_coverage,
     gold_rank,
     load_dataset,
     substring_match,
@@ -115,6 +117,14 @@ def run_retrieval_only(dataset: list[dict]) -> list[dict]:
 
     rows = []
     for item in dataset:
+        if item["unanswerable"]:
+            # Nothing here is scorable without the answer step: there is no gold page to
+            # rank, and abstention is a property of the citation. Keep the row so `n`
+            # still matches the dataset, but omit `gold_rank` - which is what excludes it
+            # from every recall denominator. Scoring it as rank=None would count a
+            # correctly-unanswerable question as a retrieval miss.
+            rows.append({"id": item["id"], "tags": item["tags"], "unanswerable": True})
+            continue
         hits = search(embed_query(item["question"]))
         rank = gold_rank(hits, item["gold"])
         # The retrieval top-1 makes a recall@1 miss auditable: it shows *which* page
@@ -128,7 +138,13 @@ def run_retrieval_only(dataset: list[dict]) -> list[dict]:
 
 
 def run_full(dataset: list[dict], use_judge: bool) -> list[dict]:
-    """Full pipeline per question via the run_query seam; scores all metric families."""
+    """Full pipeline per question via the run_query seam; scores all metric families.
+
+    Answerable and unanswerable questions produce deliberately different row shapes.
+    An unanswerable row carries only `abstention_correct`, omitting gold_rank /
+    rerank_hit / citation_correct / substring_match entirely, so it can never enter a
+    denominator where "no gold page was retrieved" would read as a failure.
+    """
     from src.main import run_query
 
     rows = []
@@ -137,29 +153,46 @@ def run_full(dataset: list[dict], use_judge: bool) -> list[dict]:
         reranked = result.get("retrieved", [])
         citation = result.get("citation")
         answer = result.get("answer", "")
-        source_page = (citation or {}).get("source_page", 0)
-        cited = (
-            {"pdf": reranked[source_page - 1]["pdf"], "page": reranked[source_page - 1]["page_number"]}
-            if 1 <= source_page <= len(reranked) else None
-        )
+        meta = result.get("meta", {})
         row = {
             "id": item["id"],
             "tags": item["tags"],
-            "gold_rank": gold_rank(result.get("candidates", []), item["gold"]),
-            "rerank_hit": gold_rank(reranked, item["gold"]) is not None,
-            "citation_correct": citation_correct(citation, reranked, item["gold"]),
-            "cited": cited,  # which page was actually cited - makes gold-label gaps auditable
             "found": bool(citation and citation.get("found")),
-            "substring_match": substring_match(answer, item["answer_contains"]),
-            "latency_ms": result.get("meta", {}).get("latency_ms"),
+            "latency_ms": meta.get("latency_ms"),
         }
-        if use_judge:
-            row["judge"] = judge_answer(item["question"], answer, item["answer_contains"], item["gold"])
+        if item["unanswerable"]:
+            # The only correct behaviour is declining; the judge is skipped because its
+            # prompt assumes a reference fact exists.
+            row["abstention_correct"] = abstention_correct(citation)
+        else:
+            source_page = (citation or {}).get("source_page", 0)
+            cited = (
+                {"pdf": reranked[source_page - 1]["pdf"],
+                 "page": reranked[source_page - 1]["page_number"]}
+                if 1 <= source_page <= len(reranked) else None
+            )
+            row |= {
+                "gold_rank": gold_rank(result.get("candidates", []), item["gold"]),
+                "rerank_hit": gold_rank(reranked, item["gold"]) is not None,
+                "citation_correct": citation_correct(citation, reranked, item["gold"]),
+                "gold_doc_coverage": gold_doc_coverage(reranked, item["gold"]),
+                "cited": cited,  # which page was actually cited - makes gold-label gaps auditable
+                "substring_match": substring_match(answer, item["answer_contains"]),
+                # Both confidence signals ride along on the result already (main.run_query),
+                # so calibration costs no extra call - only the scoring in eval.scoring.
+                "retrieval_confidence": meta.get("retrieval_confidence"),
+                "self_confidence": (citation or {}).get("confidence"),
+            }
+            if use_judge:
+                row["judge"] = judge_answer(
+                    item["question"], answer, item["answer_contains"], item["gold"]
+                )
         # The report keeps the answer + full meta for debugging; the table doesn't show them.
-        rows.append({**row, "answer": answer, "meta": result.get("meta")})
+        rows.append({**row, "answer": answer, "meta": meta})
         log.info("eval question scored", extra={"eval_id": item["id"],
-                                                "gold_rank": row["gold_rank"],
-                                                "citation_correct": row["citation_correct"]})
+                                                "gold_rank": row.get("gold_rank"),
+                                                "citation_correct": row.get("citation_correct"),
+                                                "abstention_correct": row.get("abstention_correct")})
     return rows
 
 
