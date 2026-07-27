@@ -106,6 +106,11 @@ def client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
+def _sanitize_for_log(value: str) -> str:
+    """Remove control characters from request-derived values before logging."""
+    return "".join(c for c in value if c.isprintable() or c.isspace() and c == " ")
+
+
 def _enforce(request: Request, window: _Window, limit: int) -> None:
     """Raise 429 with a `Retry-After` when `request` exceeds `window`'s limit."""
     client = client_ip(request)
@@ -113,7 +118,9 @@ def _enforce(request: Request, window: _Window, limit: int) -> None:
     if retry_after is None:
         return
     log.warning("rate limit exceeded",
-                extra={"client": client, "path": request.url.path, "limit": limit})
+                extra={"client": _sanitize_for_log(client),
+                       "path": _sanitize_for_log(request.url.path),
+                       "limit": limit})
     raise HTTPException(
         status_code=429,
         detail=f"Rate limit exceeded ({limit} requests per {window.unit}).",

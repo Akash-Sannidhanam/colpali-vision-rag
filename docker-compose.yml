@@ -41,6 +41,7 @@ services:
       - API_KEY=${API_KEY:-}
       - RATE_LIMIT_PER_MINUTE=${RATE_LIMIT_PER_MINUTE:-30}
       - RATE_LIMIT_INGEST_PER_HOUR=${RATE_LIMIT_INGEST_PER_HOUR:-10}
+      - TRUST_PROXY_HEADERS=${TRUST_PROXY_HEADERS:-false}
       # No CORS_ALLOW_ORIGINS: the image serves the UI itself, so the browser calls the
       # API from its own origin. Set it only if you point a separate frontend at this.
     volumes:
