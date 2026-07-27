@@ -1,0 +1,205 @@
+[
+  {
+    "name": "bert.pdf",
+    "title": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding",
+    "url": "https://arxiv.org/pdf/1810.04805",
+    "sha256": "5692a5514787a8c6727b4ff3b726a3385798bc68e12138d1d4af83947e2acf6e",
+    "pages": 16
+  },
+  {
+    "name": "roberta.pdf",
+    "title": "RoBERTa: A Robustly Optimized BERT Pretraining Approach",
+    "url": "https://arxiv.org/pdf/1907.11692",
+    "sha256": "76a3872d244793563a5b000b818cbaf0ca8972ab1145d32be474c05b2a8f3070",
+    "pages": 13
+  },
+  {
+    "name": "t5.pdf",
+    "title": "Exploring the Limits of Transfer Learning with a Unified Text-to-Text Transformer",
+    "url": "https://arxiv.org/pdf/1910.10683",
+    "sha256": "ad07e47cedf437a4156419ce5d3076e08a3e59bbfd6dac7cc53df1009cdcbe7f",
+    "pages": 67
+  },
+  {
+    "name": "transformer_xl.pdf",
+    "title": "Transformer-XL: Attentive Language Models Beyond a Fixed-Length Context",
+    "url": "https://arxiv.org/pdf/1901.02860",
+    "sha256": "6aa192b22820267309e8e7c501c514a3a3055256d9c8691b106c7f53f9098671",
+    "pages": 20
+  },
+  {
+    "name": "albert.pdf",
+    "title": "ALBERT: A Lite BERT for Self-supervised Learning of Language Representations",
+    "url": "https://arxiv.org/pdf/1909.11942",
+    "sha256": "d631c30f3f41684862e854ad1cb379e9dbf9b1c1fa1510ab618f45b8dfc07e2c",
+    "pages": 17
+  },
+  {
+    "name": "electra.pdf",
+    "title": "ELECTRA: Pre-training Text Encoders as Discriminators Rather Than Generators",
+    "url": "https://arxiv.org/pdf/2003.10555",
+    "sha256": "6219a802dca3be0027fc88bb2ecd56806e6610ebfe4d083a4c18dd896f45b9ae",
+    "pages": 18
+  },
+  {
+    "name": "longformer.pdf",
+    "title": "Longformer: The Long-Document Transformer",
+    "url": "https://arxiv.org/pdf/2004.05150",
+    "sha256": "053756b54e2d3462d4690b3aed489c962f17df7c3531865e47374c4a651f526c",
+    "pages": 17
+  },
+  {
+    "name": "reformer.pdf",
+    "title": "Reformer: The Efficient Transformer",
+    "url": "https://arxiv.org/pdf/2001.04451",
+    "sha256": "f86f29116ea4a04321f4ab8727283096c544255bd31f7efbc10e56390a8b5e8b",
+    "pages": 12
+  },
+  {
+    "name": "scaling_laws.pdf",
+    "title": "Scaling Laws for Neural Language Models",
+    "url": "https://arxiv.org/pdf/2001.08361",
+    "sha256": "a41bd7877fd1a6bcbba096b2619618bd2f90e02488f2365644903eb2f7c6a494",
+    "pages": 30
+  },
+  {
+    "name": "vit.pdf",
+    "title": "An Image is Worth 16x16 Words: Transformers for Image Recognition at Scale",
+    "url": "https://arxiv.org/pdf/2010.11929",
+    "sha256": "8ce7b83971a14508ca711a27c875c9b6914c4f6767cf3150fb1ca6c07aa056d6",
+    "pages": 22
+  },
+  {
+    "name": "clip.pdf",
+    "title": "Learning Transferable Visual Models From Natural Language Supervision",
+    "url": "https://arxiv.org/pdf/2103.00020",
+    "sha256": "6478b6e571a7d6fcd846d8ef77bfd60c285f1986abb8f475eedc43de403074f5",
+    "pages": 48
+  },
+  {
+    "name": "siglip.pdf",
+    "title": "Sigmoid Loss for Language Image Pre-Training",
+    "url": "https://arxiv.org/pdf/2303.15343",
+    "sha256": "2efade8de3baeffe9eba759aab9f510ea8f8ac3c365f02f0da75d9baf9ffa2db",
+    "pages": 17
+  },
+  {
+    "name": "layoutlm.pdf",
+    "title": "LayoutLM: Pre-training of Text and Layout for Document Image Understanding",
+    "url": "https://arxiv.org/pdf/1912.13318",
+    "sha256": "5bec7f495a9ea91616a73200b3e13b97f42bbf7d0bf5162749a98831d4c0de5b",
+    "pages": 9
+  },
+  {
+    "name": "layoutlmv2.pdf",
+    "title": "LayoutLMv2: Multi-modal Pre-training for Visually-Rich Document Understanding",
+    "url": "https://arxiv.org/pdf/2012.14740",
+    "sha256": "a213f3284720784d6ea91a5fa026072c8ece4a72a2b7799c81e603ca911e7213",
+    "pages": 13
+  },
+  {
+    "name": "layoutlmv3.pdf",
+    "title": "LayoutLMv3: Pre-training for Document AI with Unified Text and Image Masking",
+    "url": "https://arxiv.org/pdf/2204.08387",
+    "sha256": "bd5395610755a49e6419c406e651906e688e7a0cfe155b3c43566469dfd641fe",
+    "pages": 10
+  },
+  {
+    "name": "donut.pdf",
+    "title": "OCR-free Document Understanding Transformer",
+    "url": "https://arxiv.org/pdf/2111.15664",
+    "sha256": "ad9c20523c37f53fc6d31ccb4c63dcc7b916c7340d6bb16033c9924ce70c7668",
+    "pages": 29
+  },
+  {
+    "name": "pix2struct.pdf",
+    "title": "Pix2Struct: Screenshot Parsing as Pretraining for Visual Language Understanding",
+    "url": "https://arxiv.org/pdf/2210.03347",
+    "sha256": "0ab4bdae1dedc8e0972e2053b24c252e19dd7305f41108a6819d44d4535c1ad3",
+    "pages": 20
+  },
+  {
+    "name": "trocr.pdf",
+    "title": "TrOCR: Transformer-based Optical Character Recognition with Pre-trained Models",
+    "url": "https://arxiv.org/pdf/2109.10282",
+    "sha256": "46baf09c8757a7358b02ceb9e521457d44e4133a7e1cde33b24071455e2dfa19",
+    "pages": 10
+  },
+  {
+    "name": "blip2.pdf",
+    "title": "BLIP-2: Bootstrapping Language-Image Pre-training with Frozen Image Encoders and Large Language Models",
+    "url": "https://arxiv.org/pdf/2301.12597",
+    "sha256": "6bc5d399d6127a64ace5167a2f0c00112a49725d2475d80322dbf0083f139e80",
+    "pages": 13
+  },
+  {
+    "name": "qwen_vl.pdf",
+    "title": "Qwen-VL: A Versatile Vision-Language Model for Understanding, Localization, Text Reading, and Beyond",
+    "url": "https://arxiv.org/pdf/2308.12966",
+    "sha256": "b4eca60ae9d3c1548242da02ece0e2f35ce23d3a983255830d98212aa92e3167",
+    "pages": 24
+  },
+  {
+    "name": "paligemma.pdf",
+    "title": "PaliGemma: A versatile 3B VLM for transfer",
+    "url": "https://arxiv.org/pdf/2407.07726",
+    "sha256": "aec6edd6b712597647d5e6e10850039d6415620163f45bb64f71d89718e6bb2f",
+    "pages": 59
+  },
+  {
+    "name": "docvqa.pdf",
+    "title": "DocVQA: A Dataset for VQA on Document Images",
+    "url": "https://arxiv.org/pdf/2007.00398",
+    "sha256": "ead7ea62e5a2dfbb937e66f6dd6c035ba761928c37c86fc7fdbba18c6313803c",
+    "pages": 23
+  },
+  {
+    "name": "dpr.pdf",
+    "title": "Dense Passage Retrieval for Open-Domain Question Answering",
+    "url": "https://arxiv.org/pdf/2004.04906",
+    "sha256": "3e67fc1a9977715acf722d85f0b7d124b03715e975f6310a4d6c12094190912f",
+    "pages": 13
+  },
+  {
+    "name": "colbert.pdf",
+    "title": "ColBERT: Efficient and Effective Passage Search via Contextualized Late Interaction over BERT",
+    "url": "https://arxiv.org/pdf/2004.12832",
+    "sha256": "2e487d9b96e3c2e5e286d843e98a066adc0442faa3a6e8ddbd1771221bf9ae14",
+    "pages": 10
+  },
+  {
+    "name": "colbertv2.pdf",
+    "title": "ColBERTv2: Effective and Efficient Retrieval via Lightweight Late Interaction",
+    "url": "https://arxiv.org/pdf/2112.01488",
+    "sha256": "46e0a2712eabf9e0b9486120356a2110f65516fa7e0d75c35e9ee3eef9ea78c0",
+    "pages": 20
+  },
+  {
+    "name": "rag.pdf",
+    "title": "Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks",
+    "url": "https://arxiv.org/pdf/2005.11401",
+    "sha256": "23e3249e9a1e75418d82efecab0ea8c4d033b89c93742f63208d47ce01f21233",
+    "pages": 19
+  },
+  {
+    "name": "splade.pdf",
+    "title": "SPLADE: Sparse Lexical and Expansion Model for First Stage Ranking",
+    "url": "https://arxiv.org/pdf/2107.05720",
+    "sha256": "e791451960e47e69b0241d7656c6c61ce40b7c3beff92c944e163e5c3bc54c1a",
+    "pages": 5
+  },
+  {
+    "name": "beir.pdf",
+    "title": "BEIR: A Heterogenous Benchmark for Zero-shot Evaluation of Information Retrieval Models",
+    "url": "https://arxiv.org/pdf/2104.08663",
+    "sha256": "1925755aeb627123d1a63c66f02e5aa2432f7e92751a02bea7c8c3b6bbb6ec33",
+    "pages": 24
+  },
+  {
+    "name": "e5.pdf",
+    "title": "Text Embeddings by Weakly-Supervised Contrastive Pre-training",
+    "url": "https://arxiv.org/pdf/2212.03533",
+    "sha256": "2963a8af050d983f287edef210a525a69b7071847978451399ccaa3ac584be70",
+    "pages": 17
+  }
+]

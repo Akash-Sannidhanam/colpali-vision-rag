@@ -19,5 +19,17 @@ CLAUDE.md
 qdrant_data/
 page_images/
 
-# Eval reports (regenerate via eval/run_eval.py; the dataset is tracked)
-eval/reports/
+# Fetched eval-corpus PDFs (regenerate: scripts/fetch_eval_corpus.py). The three demo
+# documents stay tracked; everything else in pdfs/ is the distractor haystack, pinned by
+# sha256 in eval/corpus_manifest.json rather than committed (~200 MB of papers).
+pdfs/*.pdf
+!pdfs/sales_report.pdf
+!pdfs/attention.pdf
+!pdfs/colpali.pdf
+
+# Eval reports (regenerate via eval/run_eval.py; the dataset is tracked). The pinned
+# baseline is the exception - a regression guard needs a committed thing to diff against.
+# Note `reports/*`, not `reports/`: git never descends into an excluded *directory*, so
+# the trailing-slash form would make the negation below unreachable.
+eval/reports/*
+!eval/reports/baseline_desaturated.json
