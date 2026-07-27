@@ -17,6 +17,7 @@ and no `gold_rank`, so it scores the hallucination rate without polluting recall
 """
 
 import json
+import re
 
 
 def load_dataset(lines) -> list[dict]:
@@ -154,12 +155,28 @@ def gold_doc_coverage(reranked: list[dict], gold: list[dict]) -> float | None:
     return round(len(covered) / len(gold_pdfs), 4)
 
 
+# A comma grouping thousands, e.g. the one in "37,000". Removed from both sides of a
+# substring check so a purely typographic difference isn't scored as a wrong answer:
+# the model answered "37,000" where the label said "37000", which is the same fact.
+_THOUSANDS_SEPARATOR = re.compile(r"(?<=\d),(?=\d{3}(?!\d))")
+
+
+def _comparable(text: str) -> str:
+    """Lowercase and drop thousands separators, so "37,000" and "37000" compare equal."""
+    return _THOUSANDS_SEPARATOR.sub("", (text or "").lower())
+
+
 def substring_match(answer: str, expected: list[str] | None) -> bool | None:
-    """Case-insensitive any-of substring check; None (N/A) when nothing is expected."""
+    """Case-insensitive any-of substring check; None (N/A) when nothing is expected.
+
+    Digit grouping is normalized away on both sides (see `_comparable`). Normalizing
+    can only make the check more permissive, so it cannot turn a previously-passing
+    row into a failure.
+    """
     if not expected:
         return None
-    lowered = (answer or "").lower()
-    return any(s.lower() in lowered for s in expected)
+    lowered = _comparable(answer)
+    return any(_comparable(s) in lowered for s in expected)
 
 
 def _rate(values: list) -> float | None:

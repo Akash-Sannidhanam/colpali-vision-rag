@@ -1,0 +1,5128 @@
+{
+  "generated_at": "2026-07-27T20:18:03+00:00",
+  "config": {
+    "mode": "full",
+    "dataset": "/Users/akashsannidhanam/colpali-vision-rag/eval/dataset.jsonl",
+    "retrieve_k": 10,
+    "rerank_k": 2,
+    "rerank_adaptive": false,
+    "rescore_oversampling": 2.0,
+    "gemini_model": "gemini-3.5-flash",
+    "rerank_model": "gemini-3.5-flash",
+    "eval_judge_model": "gemini-3.5-flash",
+    "render_dpi": 150,
+    "colpali_model": "vidore/colqwen2-v1.0",
+    "qdrant_mode": "server"
+  },
+  "summary": {
+    "n": 69,
+    "recall@1": 0.7627,
+    "recall@3": 0.9322,
+    "recall@10": 1.0,
+    "rerank_recall": 1.0,
+    "citation_accuracy": 0.9661,
+    "substring_accuracy": 0.9831,
+    "abstention_accuracy": 1.0,
+    "gold_coverage_avg": 0.6667,
+    "judge_accuracy": 0.9492,
+    "judge_score_avg": 4.85,
+    "retrieval_conf_correct_avg": 0.133,
+    "retrieval_conf_wrong_avg": 0.0998,
+    "confidence_separation": 0.0332,
+    "self_conf_high_acc": 0.9828,
+    "self_conf_medium_acc": 0.0,
+    "self_conf_low_acc": null,
+    "avg_latency_ms": 14609.9
+  },
+  "per_tag": {
+    "chart": {
+      "n": 5,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@10": 1.0,
+      "rerank_recall": 1.0,
+      "citation_accuracy": 1.0,
+      "substring_accuracy": 1.0,
+      "abstention_accuracy": null,
+      "gold_coverage_avg": null,
+      "judge_accuracy": 0.8,
+      "judge_score_avg": 4.4,
+      "retrieval_conf_correct_avg": 0.148,
+      "retrieval_conf_wrong_avg": null,
+      "confidence_separation": null,
+      "self_conf_high_acc": 1.0,
+      "self_conf_medium_acc": null,
+      "self_conf_low_acc": null,
+      "avg_latency_ms": 15802.1
+    },
+    "cross-doc": {
+      "n": 6,
+      "recall@1": 0.1667,
+      "recall@3": 0.6667,
+      "recall@10": 1.0,
+      "rerank_recall": 1.0,
+      "citation_accuracy": 0.8333,
+      "substring_accuracy": 1.0,
+      "abstention_accuracy": null,
+      "gold_coverage_avg": 0.6667,
+      "judge_accuracy": 0.6667,
+      "judge_score_avg": 4.0,
+      "retrieval_conf_correct_avg": 0.0993,
+      "retrieval_conf_wrong_avg": 0.1018,
+      "confidence_separation": -0.0025,
+      "self_conf_high_acc": 0.8333,
+      "self_conf_medium_acc": null,
+      "self_conf_low_acc": null,
+      "avg_latency_ms": 16394.9
+    },
+    "figure": {
+      "n": 4,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@10": 1.0,
+      "rerank_recall": 1.0,
+      "citation_accuracy": 1.0,
+      "substring_accuracy": 1.0,
+      "abstention_accuracy": null,
+      "gold_coverage_avg": null,
+      "judge_accuracy": 1.0,
+      "judge_score_avg": 5.0,
+      "retrieval_conf_correct_avg": 0.1239,
+      "retrieval_conf_wrong_avg": null,
+      "confidence_separation": null,
+      "self_conf_high_acc": 1.0,
+      "self_conf_medium_acc": null,
+      "self_conf_low_acc": null,
+      "avg_latency_ms": 12859.8
+    },
+    "formula": {
+      "n": 3,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@10": 1.0,
+      "rerank_recall": 1.0,
+      "citation_accuracy": 1.0,
+      "substring_accuracy": 1.0,
+      "abstention_accuracy": null,
+      "gold_coverage_avg": null,
+      "judge_accuracy": 1.0,
+      "judge_score_avg": 5.0,
+      "retrieval_conf_correct_avg": 0.1297,
+      "retrieval_conf_wrong_avg": null,
+      "confidence_separation": null,
+      "self_conf_high_acc": 1.0,
+      "self_conf_medium_acc": null,
+      "self_conf_low_acc": null,
+      "avg_latency_ms": 12936.0
+    },
+    "hard": {
+      "n": 29,
+      "recall@1": 0.8621,
+      "recall@3": 0.9655,
+      "recall@10": 1.0,
+      "rerank_recall": 1.0,
+      "citation_accuracy": 1.0,
+      "substring_accuracy": 0.9655,
+      "abstention_accuracy": null,
+      "gold_coverage_avg": null,
+      "judge_accuracy": 0.9655,
+      "judge_score_avg": 4.9,
+      "retrieval_conf_correct_avg": 0.1343,
+      "retrieval_conf_wrong_avg": null,
+      "confidence_separation": null,
+      "self_conf_high_acc": 1.0,
+      "self_conf_medium_acc": null,
+      "self_conf_low_acc": null,
+      "avg_latency_ms": 15345.7
+    },
+    "table": {
+      "n": 28,
+      "recall@1": 0.8214,
+      "recall@3": 0.9286,
+      "recall@10": 1.0,
+      "rerank_recall": 1.0,
+      "citation_accuracy": 1.0,
+      "substring_accuracy": 1.0,
+      "abstention_accuracy": null,
+      "gold_coverage_avg": 1.0,
+      "judge_accuracy": 1.0,
+      "judge_score_avg": 5.0,
+      "retrieval_conf_correct_avg": 0.1428,
+      "retrieval_conf_wrong_avg": null,
+      "confidence_separation": null,
+      "self_conf_high_acc": 1.0,
+      "self_conf_medium_acc": null,
+      "self_conf_low_acc": null,
+      "avg_latency_ms": 13494.7
+    },
+    "text": {
+      "n": 24,
+      "recall@1": 0.625,
+      "recall@3": 0.9167,
+      "recall@10": 1.0,
+      "rerank_recall": 1.0,
+      "citation_accuracy": 0.9167,
+      "substring_accuracy": 0.9583,
+      "abstention_accuracy": null,
+      "gold_coverage_avg": 0.6,
+      "judge_accuracy": 0.9167,
+      "judge_score_avg": 4.75,
+      "retrieval_conf_correct_avg": 0.1156,
+      "retrieval_conf_wrong_avg": 0.0998,
+      "confidence_separation": 0.0158,
+      "self_conf_high_acc": 0.9565,
+      "self_conf_medium_acc": 0.0,
+      "self_conf_low_acc": null,
+      "avg_latency_ms": 16160.2
+    },
+    "unanswerable": {
+      "n": 10,
+      "recall@1": null,
+      "recall@3": null,
+      "recall@10": null,
+      "rerank_recall": null,
+      "citation_accuracy": null,
+      "substring_accuracy": null,
+      "abstention_accuracy": 1.0,
+      "gold_coverage_avg": null,
+      "judge_accuracy": null,
+      "judge_score_avg": null,
+      "retrieval_conf_correct_avg": null,
+      "retrieval_conf_wrong_avg": null,
+      "confidence_separation": null,
+      "self_conf_high_acc": null,
+      "self_conf_medium_acc": null,
+      "self_conf_low_acc": null,
+      "avg_latency_ms": 13698.4
+    }
+  },
+  "rows": [
+    {
+      "id": "sales-q4-revenue",
+      "tags": [
+        "chart"
+      ],
+      "found": true,
+      "latency_ms": 29456.7,
+      "gold_rank": 1,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "sales_report.pdf",
+        "page": 1
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.15454462866092145,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The system answer correctly represents the reference fact '180' as '$180,000', accounting for standard financial unit formatting."
+      },
+      "answer": "$180,000",
+      "meta": {
+        "request_id": "92e6e99fab34490c91e034bb52a0a3a6",
+        "latency_ms": 29456.7,
+        "prompt_tokens": 13756,
+        "output_tokens": 151,
+        "total_tokens": 15259,
+        "est_cost_usd": 0.004504,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.15454462866092145,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 15840.4,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 7175.7,
+            "prompt_tokens": 11250,
+            "output_tokens": 17,
+            "total_tokens": 11820,
+            "est_cost_usd": 0.003417,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 6030.2,
+            "prompt_tokens": 2506,
+            "output_tokens": 134,
+            "total_tokens": 3439,
+            "est_cost_usd": 0.001087,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 401.0,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "sales-best-quarter",
+      "tags": [
+        "chart"
+      ],
+      "found": true,
+      "latency_ms": 10994.9,
+      "gold_rank": 1,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "sales_report.pdf",
+        "page": 1
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.17225433675266433,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The system answer correctly identifies Q3 as the quarter with the highest revenue, matching the reference fact perfectly."
+      },
+      "answer": "Q3",
+      "meta": {
+        "request_id": "3b7edff992f040a6ac2482f857fbd1a5",
+        "latency_ms": 10994.9,
+        "prompt_tokens": 13754,
+        "output_tokens": 101,
+        "total_tokens": 14709,
+        "est_cost_usd": 0.004379,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.17225433675266433,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 892.6,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 4270.5,
+            "prompt_tokens": 11248,
+            "output_tokens": 17,
+            "total_tokens": 11489,
+            "est_cost_usd": 0.003417,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 5436.8,
+            "prompt_tokens": 2506,
+            "output_tokens": 84,
+            "total_tokens": 3220,
+            "est_cost_usd": 0.000962,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 390.7,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "sales-south-growth",
+      "tags": [
+        "table"
+      ],
+      "found": true,
+      "latency_ms": 13366.1,
+      "gold_rank": 1,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "sales_report.pdf",
+        "page": 2
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.19306896204138552,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The answer correctly states the reference fact of 310 and provides helpful context about the unit scale."
+      },
+      "answer": "310 (which represents 310,000 since the table is in thousands)",
+      "meta": {
+        "request_id": "ba6c1c68b0994a739991ab20f0140b61",
+        "latency_ms": 13366.1,
+        "prompt_tokens": 13743,
+        "output_tokens": 212,
+        "total_tokens": 15622,
+        "est_cost_usd": 0.004653,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.19306896204138552,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 1250.5,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 4389.1,
+            "prompt_tokens": 11229,
+            "output_tokens": 17,
+            "total_tokens": 11514,
+            "est_cost_usd": 0.003411,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 7515.9,
+            "prompt_tokens": 2514,
+            "output_tokens": 195,
+            "total_tokens": 4108,
+            "est_cost_usd": 0.001242,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 202.8,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "sales-lowest-revenue-pct",
+      "tags": [
+        "table"
+      ],
+      "found": true,
+      "latency_ms": 11744.1,
+      "gold_rank": 1,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "sales_report.pdf",
+        "page": 2
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.24222303962288602,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The system answer correctly identifies the East region as having the lowest revenue percentage, matching the reference fact."
+      },
+      "answer": "East",
+      "meta": {
+        "request_id": "33e299421c584abb84c9d52b06a58676",
+        "latency_ms": 11744.1,
+        "prompt_tokens": 13748,
+        "output_tokens": 147,
+        "total_tokens": 15243,
+        "est_cost_usd": 0.004492,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.24222303962288602,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 457.7,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 5763.7,
+            "prompt_tokens": 11232,
+            "output_tokens": 17,
+            "total_tokens": 11736,
+            "est_cost_usd": 0.003412,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 5336.0,
+            "prompt_tokens": 2516,
+            "output_tokens": 130,
+            "total_tokens": 3507,
+            "est_cost_usd": 0.00108,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 182.2,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "sales-west-revenue-pct",
+      "tags": [
+        "table"
+      ],
+      "found": true,
+      "latency_ms": 13834.8,
+      "gold_rank": 1,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "sales_report.pdf",
+        "page": 2
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.22629856932501677,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The system answer correctly states the percentage as 15%, matching the reference fact."
+      },
+      "answer": "15%",
+      "meta": {
+        "request_id": "042b8e4cd5ba4b2cb48a99c2a7a8062b",
+        "latency_ms": 13834.8,
+        "prompt_tokens": 13765,
+        "output_tokens": 148,
+        "total_tokens": 15242,
+        "est_cost_usd": 0.004499,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.22629856932501677,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 984.3,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 5334.1,
+            "prompt_tokens": 11252,
+            "output_tokens": 17,
+            "total_tokens": 11601,
+            "est_cost_usd": 0.003418,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 7229.8,
+            "prompt_tokens": 2513,
+            "output_tokens": 131,
+            "total_tokens": 3641,
+            "est_cost_usd": 0.001081,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 281.8,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "attn-bleu-en-de",
+      "tags": [
+        "table"
+      ],
+      "found": true,
+      "latency_ms": 13319.3,
+      "gold_rank": 1,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "attention.pdf",
+        "page": 8
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.12798384898025048,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The system answer correctly identifies the exact BLEU score of 28.4."
+      },
+      "answer": "28.4",
+      "meta": {
+        "request_id": "e3a17da091374d8ba0180688e96b5802",
+        "latency_ms": 13319.3,
+        "prompt_tokens": 13765,
+        "output_tokens": 203,
+        "total_tokens": 15440,
+        "est_cost_usd": 0.004637,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.12798384898025048,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 945.7,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 6444.7,
+            "prompt_tokens": 11235,
+            "output_tokens": 21,
+            "total_tokens": 11831,
+            "est_cost_usd": 0.003423,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 5831.8,
+            "prompt_tokens": 2530,
+            "output_tokens": 182,
+            "total_tokens": 3609,
+            "est_cost_usd": 0.001214,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 92.8,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "attn-bleu-en-fr",
+      "tags": [
+        "table"
+      ],
+      "found": true,
+      "latency_ms": 17268.5,
+      "gold_rank": 1,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "attention.pdf",
+        "page": 8
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.13247844323875202,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The system answer correctly identifies the exact BLEU score of 41.8 as stated in the reference facts."
+      },
+      "answer": "41.8",
+      "meta": {
+        "request_id": "7a95d80d80034f6d8c1267f50a56c336",
+        "latency_ms": 17268.5,
+        "prompt_tokens": 13762,
+        "output_tokens": 203,
+        "total_tokens": 16688,
+        "est_cost_usd": 0.004636,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.13247844323875202,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 590.1,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 7798.7,
+            "prompt_tokens": 11234,
+            "output_tokens": 21,
+            "total_tokens": 12181,
+            "est_cost_usd": 0.003423,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 8717.5,
+            "prompt_tokens": 2528,
+            "output_tokens": 182,
+            "total_tokens": 4507,
+            "est_cost_usd": 0.001213,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 157.3,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "attn-num-heads",
+      "tags": [
+        "text",
+        "table"
+      ],
+      "found": true,
+      "latency_ms": 14443.4,
+      "gold_rank": 1,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "attention.pdf",
+        "page": 5
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.1150711205049571,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The system answer correctly and concisely states that the base Transformer employs 8 parallel attention heads."
+      },
+      "answer": "8",
+      "meta": {
+        "request_id": "0f4a343d900b4cffa58b748bb61f317b",
+        "latency_ms": 14443.4,
+        "prompt_tokens": 13748,
+        "output_tokens": 152,
+        "total_tokens": 15952,
+        "est_cost_usd": 0.004505,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.1150711205049571,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 1060.2,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 6375.1,
+            "prompt_tokens": 11234,
+            "output_tokens": 21,
+            "total_tokens": 11918,
+            "est_cost_usd": 0.003423,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 6876.5,
+            "prompt_tokens": 2514,
+            "output_tokens": 131,
+            "total_tokens": 4034,
+            "est_cost_usd": 0.001082,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 128.1,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "attn-dff",
+      "tags": [
+        "text",
+        "table"
+      ],
+      "found": true,
+      "latency_ms": 12893.4,
+      "gold_rank": 1,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "attention.pdf",
+        "page": 5
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.12764909476546177,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The system answer correctly identifies the inner-layer dimensionality as 2048, which perfectly matches the reference fact."
+      },
+      "answer": "2048",
+      "meta": {
+        "request_id": "24edba6a782c431b90e2b5872106472d",
+        "latency_ms": 12893.4,
+        "prompt_tokens": 13787,
+        "output_tokens": 107,
+        "total_tokens": 15512,
+        "est_cost_usd": 0.004404,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.12764909476546177,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 989.4,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 7127.2,
+            "prompt_tokens": 11264,
+            "output_tokens": 21,
+            "total_tokens": 11994,
+            "est_cost_usd": 0.003432,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 4708.4,
+            "prompt_tokens": 2523,
+            "output_tokens": 86,
+            "total_tokens": 3518,
+            "est_cost_usd": 0.000972,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 63.6,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "attn-encoder-layers",
+      "tags": [
+        "text"
+      ],
+      "found": true,
+      "latency_ms": 13434.8,
+      "gold_rank": 1,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "attention.pdf",
+        "page": 3
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.12179825987176263,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The system answer correctly and concisely identifies the number of layers as 6, matching the reference fact."
+      },
+      "answer": "6",
+      "meta": {
+        "request_id": "865d9424617e4bcdb805476cbd9feaf6",
+        "latency_ms": 13434.8,
+        "prompt_tokens": 13741,
+        "output_tokens": 97,
+        "total_tokens": 14987,
+        "est_cost_usd": 0.004365,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.12179825987176263,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 1022.7,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 9015.3,
+            "prompt_tokens": 11225,
+            "output_tokens": 21,
+            "total_tokens": 11995,
+            "est_cost_usd": 0.00342,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 3322.0,
+            "prompt_tokens": 2516,
+            "output_tokens": 76,
+            "total_tokens": 2992,
+            "est_cost_usd": 0.000945,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 70.6,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "attn-big-params",
+      "tags": [
+        "table"
+      ],
+      "found": true,
+      "latency_ms": 10811.3,
+      "gold_rank": 2,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "attention.pdf",
+        "page": 9
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.11009434353605459,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The system answer correctly identifies the number of parameters as 213 million, which matches the reference fact of 213."
+      },
+      "answer": "213 million (213 \u00d7 10^6)",
+      "meta": {
+        "request_id": "f64c53e11113436aa0d3ffcc1d61be1d",
+        "latency_ms": 10811.3,
+        "prompt_tokens": 13716,
+        "output_tokens": 170,
+        "total_tokens": 15111,
+        "est_cost_usd": 0.00454,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.11009434353605459,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 1089.2,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 5688.5,
+            "prompt_tokens": 11201,
+            "output_tokens": 21,
+            "total_tokens": 11751,
+            "est_cost_usd": 0.003413,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 3944.5,
+            "prompt_tokens": 2515,
+            "output_tokens": 149,
+            "total_tokens": 3360,
+            "est_cost_usd": 0.001127,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 78.1,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "attn-training-hardware",
+      "tags": [
+        "text"
+      ],
+      "found": true,
+      "latency_ms": 15822.1,
+      "gold_rank": 1,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "attention.pdf",
+        "page": 8
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.1145751651805089,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The system answer correctly identifies both the training duration of 3.5 days and the P100 hardware."
+      },
+      "answer": "The big Transformer model (Transformer (big)) was trained for 3.5 days on 8 P100 GPUs.",
+      "meta": {
+        "request_id": "fecb78a0c22d49ab9970f32b2877bc59",
+        "latency_ms": 15822.1,
+        "prompt_tokens": 13746,
+        "output_tokens": 162,
+        "total_tokens": 16394,
+        "est_cost_usd": 0.004529,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.1145751651805089,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 533.0,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 7645.5,
+            "prompt_tokens": 11229,
+            "output_tokens": 21,
+            "total_tokens": 12163,
+            "est_cost_usd": 0.003421,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 7503.0,
+            "prompt_tokens": 2517,
+            "output_tokens": 141,
+            "total_tokens": 4231,
+            "est_cost_usd": 0.001108,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 128.9,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "attn-encoder-sublayers",
+      "tags": [
+        "text",
+        "figure"
+      ],
+      "found": true,
+      "latency_ms": 10832.7,
+      "gold_rank": 1,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "attention.pdf",
+        "page": 3
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.1171677575499893,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The answer correctly identifies both sub-layers, including the required feed-forward network."
+      },
+      "answer": "The two sub-layers inside each Transformer encoder layer are a multi-head self-attention mechanism (the first) and a simple, position-wise fully connected feed-forward network (the second).",
+      "meta": {
+        "request_id": "1e0963fc55204e25b884ca8667fa3b38",
+        "latency_ms": 10832.7,
+        "prompt_tokens": 13753,
+        "output_tokens": 136,
+        "total_tokens": 15147,
+        "est_cost_usd": 0.004466,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.1171677575499893,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 890.0,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 6270.5,
+            "prompt_tokens": 11237,
+            "output_tokens": 21,
+            "total_tokens": 11972,
+            "est_cost_usd": 0.003424,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 3587.5,
+            "prompt_tokens": 2516,
+            "output_tokens": 115,
+            "total_tokens": 3175,
+            "est_cost_usd": 0.001042,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 76.1,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "attn-multihead-formula",
+      "tags": [
+        "formula"
+      ],
+      "found": true,
+      "latency_ms": 12511.7,
+      "gold_rank": 1,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "attention.pdf",
+        "page": 5
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.13314904598970403,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The system answer perfectly explains and represents the formula for Multi-head attention, explicitly including the Concat operation as requested."
+      },
+      "answer": "Multi-head attention is computed by concatenating the outputs of multiple attention heads and then projecting the result using a parameter matrix $W^O$:\n\n$$\\text{MultiHead}(Q, K, V) = \\text{Concat}(\\text{head}_1, ..., \\text{head}_h)W^O$$\n\nwhere each individual head is computed as:\n\n$$\\text{head}_i = \\text{Attention}(QW_i^Q, KW_i^K, VW_i^V)$$\n\nHere, the projections are parameter matrices $W_i^Q \\in \\mathbb{R}^{d_{\\text{model}} \\times d_k}$, $W_i^K \\in \\mathbb{R}^{d_{\\text{model}} \\times d_k}$, $W_i^V \\in \\mathbb{R}^{d_{\\text{model}} \\times d_v}$, and $W^O \\in \\mathbb{R}^{h d_v \\times d_{\\text{model}}}$.",
+      "meta": {
+        "request_id": "8e65862a19614202a91036893ab37b0f",
+        "latency_ms": 12511.7,
+        "prompt_tokens": 13775,
+        "output_tokens": 371,
+        "total_tokens": 15498,
+        "est_cost_usd": 0.00506,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.13314904598970403,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 1072.0,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 5930.1,
+            "prompt_tokens": 11256,
+            "output_tokens": 9,
+            "total_tokens": 11892,
+            "est_cost_usd": 0.003399,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 5427.0,
+            "prompt_tokens": 2519,
+            "output_tokens": 362,
+            "total_tokens": 3606,
+            "est_cost_usd": 0.001661,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 78.3,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "colpali-benchmark-name",
+      "tags": [
+        "text"
+      ],
+      "found": true,
+      "latency_ms": 10075.6,
+      "gold_rank": 1,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "colpali.pdf",
+        "page": 1
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.10863468735334864,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The system answer correctly identifies the benchmark as ViDoRe, matching the reference fact."
+      },
+      "answer": "ViDoRe (Visual Document Retrieval Benchmark)",
+      "meta": {
+        "request_id": "5c78220e5ba74a2f88fa36842a259698",
+        "latency_ms": 10075.6,
+        "prompt_tokens": 13810,
+        "output_tokens": 159,
+        "total_tokens": 15104,
+        "est_cost_usd": 0.00454,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.10863468735334864,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 572.6,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 4139.5,
+            "prompt_tokens": 11286,
+            "output_tokens": 21,
+            "total_tokens": 11596,
+            "est_cost_usd": 0.003438,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 5262.8,
+            "prompt_tokens": 2524,
+            "output_tokens": 138,
+            "total_tokens": 3508,
+            "est_cost_usd": 0.001102,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 95.9,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "colpali-avg-ndcg",
+      "tags": [
+        "table"
+      ],
+      "found": true,
+      "latency_ms": 14948.5,
+      "gold_rank": 5,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "colpali.pdf",
+        "page": 7
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.10089106473664447,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The system answer correctly and concisely provides the exact score of 81.3 as specified in the reference."
+      },
+      "answer": "81.3",
+      "meta": {
+        "request_id": "b6d67ce58f03459f8c118e76820c48da",
+        "latency_ms": 14948.5,
+        "prompt_tokens": 13821,
+        "output_tokens": 203,
+        "total_tokens": 15789,
+        "est_cost_usd": 0.004654,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.10089106473664447,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 1215.5,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 7718.7,
+            "prompt_tokens": 11294,
+            "output_tokens": 21,
+            "total_tokens": 12108,
+            "est_cost_usd": 0.003441,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 5911.0,
+            "prompt_tokens": 2527,
+            "output_tokens": 182,
+            "total_tokens": 3681,
+            "est_cost_usd": 0.001213,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 97.4,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "colpali-indexing-speed",
+      "tags": [
+        "chart",
+        "figure"
+      ],
+      "found": true,
+      "latency_ms": 14115.1,
+      "gold_rank": 1,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "colpali.pdf",
+        "page": 19
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.10112081614134484,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The system answer correctly states the reference value of 0.39 seconds per page for ColPali and provides a helpful comparison."
+      },
+      "answer": "ColPali takes 0.39 seconds per page to index a document, compared to 7.22 seconds per page for the standard PDF parser pipeline (Unstructured).",
+      "meta": {
+        "request_id": "a9b0861d1d574809b0bb836c4491f229",
+        "latency_ms": 14115.1,
+        "prompt_tokens": 13829,
+        "output_tokens": 133,
+        "total_tokens": 15777,
+        "est_cost_usd": 0.004482,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.10112081614134484,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 1113.4,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 7316.9,
+            "prompt_tokens": 11297,
+            "output_tokens": 21,
+            "total_tokens": 12190,
+            "est_cost_usd": 0.003442,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 5602.9,
+            "prompt_tokens": 2532,
+            "output_tokens": 112,
+            "total_tokens": 3587,
+            "est_cost_usd": 0.00104,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 74.6,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "colpali-query-latency",
+      "tags": [
+        "text"
+      ],
+      "found": true,
+      "latency_ms": 12222.1,
+      "gold_rank": 1,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "colpali.pdf",
+        "page": 8
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.11091627161640244,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The system answer correctly states that encoding a query takes about 30 ms, directly matching the reference fact."
+      },
+      "answer": "Encoding a query with ColPali's language model takes about 30 ms.",
+      "meta": {
+        "request_id": "f399df965a50472a85eff91a794b5a4d",
+        "latency_ms": 12222.1,
+        "prompt_tokens": 13815,
+        "output_tokens": 168,
+        "total_tokens": 15381,
+        "est_cost_usd": 0.004565,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.11091627161640244,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 961.2,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 5194.5,
+            "prompt_tokens": 11291,
+            "output_tokens": 21,
+            "total_tokens": 11760,
+            "est_cost_usd": 0.00344,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 5915.7,
+            "prompt_tokens": 2524,
+            "output_tokens": 147,
+            "total_tokens": 3621,
+            "est_cost_usd": 0.001125,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 147.0,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "colpali-embedding-dim",
+      "tags": [
+        "text"
+      ],
+      "found": true,
+      "latency_ms": 10357.5,
+      "gold_rank": 2,
+      "rerank_hit": true,
+      "citation_correct": false,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "colpali.pdf",
+        "page": 6
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.09790947329436056,
+      "self_confidence": "medium",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The system answer correctly identifies the dimension as 128, which exactly matches the reference fact."
+      },
+      "answer": "128",
+      "meta": {
+        "request_id": "a44b79a81dbf46488e2023aca65d0dd5",
+        "latency_ms": 10357.5,
+        "prompt_tokens": 13802,
+        "output_tokens": 142,
+        "total_tokens": 14974,
+        "est_cost_usd": 0.004495,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.09790947329436056,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 499.0,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 5841.0,
+            "prompt_tokens": 11279,
+            "output_tokens": 21,
+            "total_tokens": 11843,
+            "est_cost_usd": 0.003436,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 3851.5,
+            "prompt_tokens": 2523,
+            "output_tokens": 121,
+            "total_tokens": 3131,
+            "est_cost_usd": 0.001059,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 160.1,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "colpali-memory-footprint",
+      "tags": [
+        "text"
+      ],
+      "found": true,
+      "latency_ms": 12493.9,
+      "gold_rank": 2,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "colpali.pdf",
+        "page": 8
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.10623764278313606,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The system answer correctly identifies the storage footprint as 257.5 KB per page, which matches the reference fact."
+      },
+      "answer": "257.5 KB per page",
+      "meta": {
+        "request_id": "338eace636424eb795521f74c2b57153",
+        "latency_ms": 12493.9,
+        "prompt_tokens": 13806,
+        "output_tokens": 145,
+        "total_tokens": 15495,
+        "est_cost_usd": 0.004504,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.10623764278313606,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 899.2,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 5836.1,
+            "prompt_tokens": 11286,
+            "output_tokens": 21,
+            "total_tokens": 11861,
+            "est_cost_usd": 0.003438,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 5602.9,
+            "prompt_tokens": 2520,
+            "output_tokens": 124,
+            "total_tokens": 3634,
+            "est_cost_usd": 0.001066,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 150.4,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "colpali-token-pooling",
+      "tags": [
+        "text"
+      ],
+      "found": true,
+      "latency_ms": 11600.5,
+      "gold_rank": 1,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "colpali.pdf",
+        "page": 8
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.11395973163783343,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The system answer perfectly matches the reference facts, stating a 66.7% reduction in vectors and 97.8% performance retention."
+      },
+      "answer": "With a pool factor of 3, the total number of vectors is reduced by 66.7%, while 97.8% of the original performance is maintained.",
+      "meta": {
+        "request_id": "ded9b1ea8e9a4c24b0050a1991025020",
+        "latency_ms": 11600.5,
+        "prompt_tokens": 13840,
+        "output_tokens": 131,
+        "total_tokens": 15089,
+        "est_cost_usd": 0.004479,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.11395973163783343,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 1433.0,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 4997.5,
+            "prompt_tokens": 11303,
+            "output_tokens": 21,
+            "total_tokens": 11754,
+            "est_cost_usd": 0.003443,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 5077.9,
+            "prompt_tokens": 2537,
+            "output_tokens": 110,
+            "total_tokens": 3335,
+            "est_cost_usd": 0.001036,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 81.4,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "colpali-llm-component",
+      "tags": [
+        "text"
+      ],
+      "found": true,
+      "latency_ms": 16081.0,
+      "gold_rank": 3,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "colpali.pdf",
+        "page": 7
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.10405175619928984,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The answer correctly identifies the Gemma language model (specifically the 2B version used in PaliGemma)."
+      },
+      "answer": "Gemma 2B",
+      "meta": {
+        "request_id": "bbf3b5ab125f449e89e903756759373d",
+        "latency_ms": 16081.0,
+        "prompt_tokens": 13765,
+        "output_tokens": 156,
+        "total_tokens": 16182,
+        "est_cost_usd": 0.00452,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.10405175619928984,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 1326.1,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 8817.9,
+            "prompt_tokens": 11235,
+            "output_tokens": 21,
+            "total_tokens": 12477,
+            "est_cost_usd": 0.003423,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 5789.2,
+            "prompt_tokens": 2530,
+            "output_tokens": 135,
+            "total_tokens": 3705,
+            "est_cost_usd": 0.001097,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 142.5,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "sales-q3-revenue",
+      "tags": [
+        "chart"
+      ],
+      "found": true,
+      "latency_ms": 11995.2,
+      "gold_rank": 1,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "sales_report.pdf",
+        "page": 1
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.15657740945283385,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The system answer correctly formats the reference fact of 210 as $210,000."
+      },
+      "answer": "$210,000",
+      "meta": {
+        "request_id": "d844ab57f1834675862fd9e7c8081483",
+        "latency_ms": 11995.2,
+        "prompt_tokens": 13758,
+        "output_tokens": 151,
+        "total_tokens": 15056,
+        "est_cost_usd": 0.004505,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.15657740945283385,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 833.5,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 4964.4,
+            "prompt_tokens": 11252,
+            "output_tokens": 17,
+            "total_tokens": 11595,
+            "est_cost_usd": 0.003418,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 5781.7,
+            "prompt_tokens": 2506,
+            "output_tokens": 134,
+            "total_tokens": 3461,
+            "est_cost_usd": 0.001087,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 410.2,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "sales-q2-revenue",
+      "tags": [
+        "chart",
+        "hard"
+      ],
+      "found": true,
+      "latency_ms": 12448.8,
+      "gold_rank": 1,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "sales_report.pdf",
+        "page": 1
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.1555198946014518,
+      "self_confidence": "high",
+      "judge": {
+        "correct": false,
+        "score": 2,
+        "reasoning": "The system answer states 150,000 (or $150,000), which is a different number than the reference fact of 150."
+      },
+      "answer": "$150,000 (or 150,000)",
+      "meta": {
+        "request_id": "c4d2594542c04c44b23fe64a99ee4704",
+        "latency_ms": 12448.8,
+        "prompt_tokens": 13758,
+        "output_tokens": 161,
+        "total_tokens": 14864,
+        "est_cost_usd": 0.00453,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.1555198946014518,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 1101.7,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 4822.2,
+            "prompt_tokens": 11252,
+            "output_tokens": 17,
+            "total_tokens": 11630,
+            "est_cost_usd": 0.003418,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 6110.5,
+            "prompt_tokens": 2506,
+            "output_tokens": 144,
+            "total_tokens": 3234,
+            "est_cost_usd": 0.001112,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 407.5,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "sales-north-growth",
+      "tags": [
+        "table"
+      ],
+      "found": true,
+      "latency_ms": 13079.1,
+      "gold_rank": 1,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "sales_report.pdf",
+        "page": 2
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.19638974938944653,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The answer correctly identifies the growth figure of 240 and provides helpful context about its scale."
+      },
+      "answer": "240 (which represents 240,000, as the table header indicates the values are in thousands)",
+      "meta": {
+        "request_id": "dfcf615bc6b54932927856555040367a",
+        "latency_ms": 13079.1,
+        "prompt_tokens": 13765,
+        "output_tokens": 155,
+        "total_tokens": 14933,
+        "est_cost_usd": 0.004517,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.19638974938944653,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 3750.2,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 4745.2,
+            "prompt_tokens": 11251,
+            "output_tokens": 17,
+            "total_tokens": 11720,
+            "est_cost_usd": 0.003418,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 4376.6,
+            "prompt_tokens": 2514,
+            "output_tokens": 138,
+            "total_tokens": 3213,
+            "est_cost_usd": 0.001099,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 196.0,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "sales-east-growth",
+      "tags": [
+        "table",
+        "hard"
+      ],
+      "found": true,
+      "latency_ms": 13686.6,
+      "gold_rank": 1,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "sales_report.pdf",
+        "page": 2
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.18353660241336656,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The system answer matches the reference fact exactly."
+      },
+      "answer": "150",
+      "meta": {
+        "request_id": "fed243042ad843e99de436b8befe558b",
+        "latency_ms": 13686.6,
+        "prompt_tokens": 13757,
+        "output_tokens": 149,
+        "total_tokens": 15539,
+        "est_cost_usd": 0.004499,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.18353660241336656,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 1269.8,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 4725.7,
+            "prompt_tokens": 11243,
+            "output_tokens": 17,
+            "total_tokens": 11529,
+            "est_cost_usd": 0.003415,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 7506.6,
+            "prompt_tokens": 2514,
+            "output_tokens": 132,
+            "total_tokens": 4010,
+            "est_cost_usd": 0.001084,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 178.2,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "sales-highest-growth-region",
+      "tags": [
+        "table",
+        "hard"
+      ],
+      "found": true,
+      "latency_ms": 12637.9,
+      "gold_rank": 1,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "sales_report.pdf",
+        "page": 2
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.19771117377238379,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The system answer correctly identifies the South region as having the highest growth in FY2025, matching the reference fact perfectly."
+      },
+      "answer": "South",
+      "meta": {
+        "request_id": "6ea81aeb6b1b4886b4254fcab3a548d9",
+        "latency_ms": 12637.9,
+        "prompt_tokens": 13763,
+        "output_tokens": 147,
+        "total_tokens": 15494,
+        "est_cost_usd": 0.004496,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.19771117377238379,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 1134.0,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 5018.5,
+            "prompt_tokens": 11252,
+            "output_tokens": 17,
+            "total_tokens": 11735,
+            "est_cost_usd": 0.003418,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 6309.0,
+            "prompt_tokens": 2511,
+            "output_tokens": 130,
+            "total_tokens": 3759,
+            "est_cost_usd": 0.001078,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 170.2,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "attn-table1-recurrent-sequential-ops",
+      "tags": [
+        "table",
+        "hard"
+      ],
+      "found": true,
+      "latency_ms": 15499.5,
+      "gold_rank": 1,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "attention.pdf",
+        "page": 6
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.14367075458182135,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The system answer matches the reference fact exactly."
+      },
+      "answer": "O(n)",
+      "meta": {
+        "request_id": "422e450a98624a0fa1ba53ab4567a6dd",
+        "latency_ms": 15499.5,
+        "prompt_tokens": 13778,
+        "output_tokens": 202,
+        "total_tokens": 15515,
+        "est_cost_usd": 0.004639,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.14367075458182135,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 1199.0,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 8474.4,
+            "prompt_tokens": 11248,
+            "output_tokens": 21,
+            "total_tokens": 11953,
+            "est_cost_usd": 0.003427,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 5731.0,
+            "prompt_tokens": 2530,
+            "output_tokens": 181,
+            "total_tokens": 3562,
+            "est_cost_usd": 0.001211,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 91.4,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "attn-posenc-geometric-progression",
+      "tags": [
+        "text",
+        "formula",
+        "hard"
+      ],
+      "found": true,
+      "latency_ms": 11572.8,
+      "gold_rank": 1,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "attention.pdf",
+        "page": 6
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.1257442416622621,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The system answer correctly identifies the maximum wavelength value of 10000 * 2\\pi, which contains the reference value of 10000."
+      },
+      "answer": "10000 \\cdot 2\\pi",
+      "meta": {
+        "request_id": "24f8ebd60a5d4034b8b08354f54899f9",
+        "latency_ms": 11572.8,
+        "prompt_tokens": 13752,
+        "output_tokens": 110,
+        "total_tokens": 15025,
+        "est_cost_usd": 0.004401,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.1257442416622621,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 382.5,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 7384.5,
+            "prompt_tokens": 11235,
+            "output_tokens": 17,
+            "total_tokens": 11939,
+            "est_cost_usd": 0.003413,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 3732.9,
+            "prompt_tokens": 2517,
+            "output_tokens": 93,
+            "total_tokens": 3086,
+            "est_cost_usd": 0.000988,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 69.1,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "attn-warmup-steps-4000",
+      "tags": [
+        "text",
+        "hard"
+      ],
+      "found": true,
+      "latency_ms": 13806.4,
+      "gold_rank": 1,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "attention.pdf",
+        "page": 7
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.13147504768917206,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The system answer correctly identifies the value of warmup_steps as 4000, matching the reference fact perfectly."
+      },
+      "answer": "4000",
+      "meta": {
+        "request_id": "391227d1916f49cc88b769f48252b8ba",
+        "latency_ms": 13806.4,
+        "prompt_tokens": 13783,
+        "output_tokens": 107,
+        "total_tokens": 15728,
+        "est_cost_usd": 0.004403,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.13147504768917206,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 399.2,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 8659.4,
+            "prompt_tokens": 11261,
+            "output_tokens": 21,
+            "total_tokens": 12383,
+            "est_cost_usd": 0.003431,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 4679.7,
+            "prompt_tokens": 2522,
+            "output_tokens": 86,
+            "total_tokens": 3345,
+            "est_cost_usd": 0.000972,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 63.9,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "attn-adam-beta2",
+      "tags": [
+        "text",
+        "hard"
+      ],
+      "found": true,
+      "latency_ms": 75496.3,
+      "gold_rank": 1,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "attention.pdf",
+        "page": 7
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.13340979777619957,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The system answer correctly states the reference value of 0.98 for beta2 in the Transformer model, while providing additional context."
+      },
+      "answer": "Two different values are used for beta2 in the Adam optimizer across the provided pages:\n- For the Transformer model (PAGE 1), beta2 = 0.98.\n- For the BERT model (PAGE 2), beta2 = 0.999.",
+      "meta": {
+        "request_id": "80e8256536c444ba826f4a6996c327c0",
+        "latency_ms": 75496.3,
+        "prompt_tokens": 13729,
+        "output_tokens": 194,
+        "total_tokens": 15952,
+        "est_cost_usd": 0.004604,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.13340979777619957,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 1076.6,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 8671.7,
+            "prompt_tokens": 11221,
+            "output_tokens": 21,
+            "total_tokens": 12316,
+            "est_cost_usd": 0.003419,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 65592.8,
+            "prompt_tokens": 2508,
+            "output_tokens": 173,
+            "total_tokens": 3636,
+            "est_cost_usd": 0.001185,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 145.6,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "attn-ende-vocab-37000",
+      "tags": [
+        "text",
+        "hard"
+      ],
+      "found": true,
+      "latency_ms": 13959.8,
+      "gold_rank": 1,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "attention.pdf",
+        "page": 7
+      },
+      "substring_match": false,
+      "retrieval_confidence": 0.1495668899114533,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The system answer correctly identifies the number of tokens as 37,000, which matches the reference fact."
+      },
+      "answer": "37,000",
+      "meta": {
+        "request_id": "38a6fed842344dd4a5822a9cebc3be4a",
+        "latency_ms": 13959.8,
+        "prompt_tokens": 13792,
+        "output_tokens": 102,
+        "total_tokens": 15541,
+        "est_cost_usd": 0.004393,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.1495668899114533,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 1615.1,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 7401.1,
+            "prompt_tokens": 11258,
+            "output_tokens": 21,
+            "total_tokens": 12056,
+            "est_cost_usd": 0.00343,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 4869.3,
+            "prompt_tokens": 2534,
+            "output_tokens": 81,
+            "total_tokens": 3485,
+            "est_cost_usd": 0.000963,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 67.5,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "attn-table2-base-flops",
+      "tags": [
+        "table",
+        "hard"
+      ],
+      "found": true,
+      "latency_ms": 12872.1,
+      "gold_rank": 1,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "attention.pdf",
+        "page": 8
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.13080817469308412,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The system answer correctly identifies the training cost as 3.3 \u00b7 10^18 FLOPs, which precisely contains and extends the reference fact."
+      },
+      "answer": "3.3 \u00b7 10^18",
+      "meta": {
+        "request_id": "c392cb3565d849d8a562cd541d3a20b8",
+        "latency_ms": 12872.1,
+        "prompt_tokens": 13793,
+        "output_tokens": 109,
+        "total_tokens": 15321,
+        "est_cost_usd": 0.00441,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.13080817469308412,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 1483.2,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 6604.6,
+            "prompt_tokens": 11268,
+            "output_tokens": 17,
+            "total_tokens": 11959,
+            "est_cost_usd": 0.003423,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 4706.8,
+            "prompt_tokens": 2525,
+            "output_tokens": 92,
+            "total_tokens": 3362,
+            "est_cost_usd": 0.000987,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 70.3,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "attn-table2-convs2s-enfr-bleu",
+      "tags": [
+        "table",
+        "hard"
+      ],
+      "found": true,
+      "latency_ms": 13508.8,
+      "gold_rank": 1,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "attention.pdf",
+        "page": 8
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.1531255614214725,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The system answer correctly identifies the exact BLEU score of 40.46 as stated in the reference."
+      },
+      "answer": "40.46",
+      "meta": {
+        "request_id": "0100bb829f8e4c4f89b0bac14aff532a",
+        "latency_ms": 13508.8,
+        "prompt_tokens": 13816,
+        "output_tokens": 104,
+        "total_tokens": 15720,
+        "est_cost_usd": 0.004404,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.1531255614214725,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 1105.6,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 6773.3,
+            "prompt_tokens": 11283,
+            "output_tokens": 17,
+            "total_tokens": 12041,
+            "est_cost_usd": 0.003427,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 5558.7,
+            "prompt_tokens": 2533,
+            "output_tokens": 87,
+            "total_tokens": 3679,
+            "est_cost_usd": 0.000977,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 66.3,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "attn-table2-gnmt-ensemble-ende-bleu",
+      "tags": [
+        "table",
+        "hard"
+      ],
+      "found": true,
+      "latency_ms": 12416.7,
+      "gold_rank": 1,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "attention.pdf",
+        "page": 8
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.15458795324959965,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The system answer exactly matches the reference BLEU score of 26.30."
+      },
+      "answer": "26.30",
+      "meta": {
+        "request_id": "f0bac234e80e4e65b2c6a1c1b16016bc",
+        "latency_ms": 12416.7,
+        "prompt_tokens": 13782,
+        "output_tokens": 97,
+        "total_tokens": 15761,
+        "est_cost_usd": 0.004377,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.15458795324959965,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 1055.3,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 5326.3,
+            "prompt_tokens": 11251,
+            "output_tokens": 17,
+            "total_tokens": 11880,
+            "est_cost_usd": 0.003418,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 5962.2,
+            "prompt_tokens": 2531,
+            "output_tokens": 80,
+            "total_tokens": 3881,
+            "est_cost_usd": 0.000959,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 67.6,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "attn-table3-single-head-bleu",
+      "tags": [
+        "table",
+        "hard"
+      ],
+      "found": true,
+      "latency_ms": 14920.6,
+      "gold_rank": 1,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "attention.pdf",
+        "page": 9
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.12017056998139868,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The system answer correctly identifies the development-set BLEU score as 24.9, matching the reference fact."
+      },
+      "answer": "24.9",
+      "meta": {
+        "request_id": "8960ac1c11ef499c806e636a75b5e76b",
+        "latency_ms": 14920.6,
+        "prompt_tokens": 13796,
+        "output_tokens": 203,
+        "total_tokens": 15702,
+        "est_cost_usd": 0.004646,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.12017056998139868,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 773.6,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 8329.1,
+            "prompt_tokens": 11268,
+            "output_tokens": 21,
+            "total_tokens": 11905,
+            "est_cost_usd": 0.003433,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 5707.4,
+            "prompt_tokens": 2528,
+            "output_tokens": 182,
+            "total_tokens": 3797,
+            "est_cost_usd": 0.001213,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 103.5,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "attn-table3-big-ppl",
+      "tags": [
+        "table",
+        "hard"
+      ],
+      "found": true,
+      "latency_ms": 13327.1,
+      "gold_rank": 1,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "attention.pdf",
+        "page": 9
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.12324188530286068,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The system answer exactly matches the reference fact of 4.33."
+      },
+      "answer": "4.33",
+      "meta": {
+        "request_id": "7b57743d695948c295e098e5f0555946",
+        "latency_ms": 13327.1,
+        "prompt_tokens": 13771,
+        "output_tokens": 155,
+        "total_tokens": 15537,
+        "est_cost_usd": 0.004519,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.12324188530286068,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 1194.2,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 7458.2,
+            "prompt_tokens": 11245,
+            "output_tokens": 21,
+            "total_tokens": 12119,
+            "est_cost_usd": 0.003426,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 4575.7,
+            "prompt_tokens": 2526,
+            "output_tokens": 134,
+            "total_tokens": 3418,
+            "est_cost_usd": 0.001093,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 89.9,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "attn-table3-dk16-bleu",
+      "tags": [
+        "table",
+        "hard"
+      ],
+      "found": true,
+      "latency_ms": 19807.6,
+      "gold_rank": 1,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "attention.pdf",
+        "page": 9
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.12742993133213865,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The system answer matches the reference fact exactly."
+      },
+      "answer": "25.1",
+      "meta": {
+        "request_id": "cd43703199a146a49c568d3a857d3a3f",
+        "latency_ms": 19807.6,
+        "prompt_tokens": 13814,
+        "output_tokens": 107,
+        "total_tokens": 17030,
+        "est_cost_usd": 0.004411,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.12742993133213865,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 921.1,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 9794.2,
+            "prompt_tokens": 11283,
+            "output_tokens": 21,
+            "total_tokens": 12496,
+            "est_cost_usd": 0.003437,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 9016.3,
+            "prompt_tokens": 2531,
+            "output_tokens": 86,
+            "total_tokens": 4534,
+            "est_cost_usd": 0.000974,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 66.1,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "attn-table4-transformer-semisup-f1",
+      "tags": [
+        "table",
+        "hard"
+      ],
+      "found": true,
+      "latency_ms": 11421.3,
+      "gold_rank": 1,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "attention.pdf",
+        "page": 10
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.13848751052258626,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The system answer matches the reference fact exactly."
+      },
+      "answer": "92.7",
+      "meta": {
+        "request_id": "e680d01bb2ed4e59af05404832a2336d",
+        "latency_ms": 11421.3,
+        "prompt_tokens": 13793,
+        "output_tokens": 95,
+        "total_tokens": 14809,
+        "est_cost_usd": 0.004375,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.13848751052258626,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 925.9,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 6367.5,
+            "prompt_tokens": 11260,
+            "output_tokens": 16,
+            "total_tokens": 11634,
+            "est_cost_usd": 0.003418,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 4052.4,
+            "prompt_tokens": 2533,
+            "output_tokens": 79,
+            "total_tokens": 3175,
+            "est_cost_usd": 0.000957,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 71.3,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "attn-parsing-beam-size",
+      "tags": [
+        "text",
+        "hard"
+      ],
+      "found": true,
+      "latency_ms": 10477.4,
+      "gold_rank": 2,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "attention.pdf",
+        "page": 10
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.11397592341840525,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The system answer correctly identifies the beam size of 21 and length penalty alpha of 0.3."
+      },
+      "answer": "For the English constituency parsing experiments, a beam size of 21 and a length penalty alpha = 0.3 were used during inference.",
+      "meta": {
+        "request_id": "09b3975d2d4445f4b084afc8e24a3fd1",
+        "latency_ms": 10477.4,
+        "prompt_tokens": 13761,
+        "output_tokens": 124,
+        "total_tokens": 15011,
+        "est_cost_usd": 0.004438,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.11397592341840525,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 752.5,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 5946.3,
+            "prompt_tokens": 11238,
+            "output_tokens": 21,
+            "total_tokens": 11855,
+            "est_cost_usd": 0.003424,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 3688.7,
+            "prompt_tokens": 2523,
+            "output_tokens": 103,
+            "total_tokens": 3156,
+            "est_cost_usd": 0.001014,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 85.7,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "colpali-ndcg-ai-task",
+      "tags": [
+        "table",
+        "hard"
+      ],
+      "found": true,
+      "latency_ms": 13913.8,
+      "gold_rank": 3,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "colpali.pdf",
+        "page": 7
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.10407703031342294,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The system answer correctly identifies the score of 96.2 as stated in the reference facts."
+      },
+      "answer": "96.2",
+      "meta": {
+        "request_id": "4a9b4136ce2b47948f85181781b35909",
+        "latency_ms": 13913.8,
+        "prompt_tokens": 13842,
+        "output_tokens": 203,
+        "total_tokens": 15854,
+        "est_cost_usd": 0.00466,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.10407703031342294,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 911.1,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 7637.0,
+            "prompt_tokens": 11304,
+            "output_tokens": 21,
+            "total_tokens": 12229,
+            "est_cost_usd": 0.003444,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 5265.9,
+            "prompt_tokens": 2538,
+            "output_tokens": 182,
+            "total_tokens": 3625,
+            "est_cost_usd": 0.001216,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 95.1,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "colpali-ndcg-tabfquad",
+      "tags": [
+        "table",
+        "hard"
+      ],
+      "found": true,
+      "latency_ms": 13353.4,
+      "gold_rank": 4,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "colpali.pdf",
+        "page": 7
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.10173140696477971,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The system answer perfectly matches the reference fact of 83.9."
+      },
+      "answer": "83.9",
+      "meta": {
+        "request_id": "60fc664a32c94589a1da0d8140effdd2",
+        "latency_ms": 13353.4,
+        "prompt_tokens": 13848,
+        "output_tokens": 197,
+        "total_tokens": 15689,
+        "est_cost_usd": 0.004647,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.10173140696477971,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 1234.6,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 7558.9,
+            "prompt_tokens": 11307,
+            "output_tokens": 21,
+            "total_tokens": 12231,
+            "est_cost_usd": 0.003445,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 4459.5,
+            "prompt_tokens": 2541,
+            "output_tokens": 176,
+            "total_tokens": 3458,
+            "est_cost_usd": 0.001202,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 93.8,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "colpali-late-interaction-maxsim",
+      "tags": [
+        "formula",
+        "hard"
+      ],
+      "found": true,
+      "latency_ms": 14723.4,
+      "gold_rank": 1,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "colpali.pdf",
+        "page": 6
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.13028213865926774,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The system answer correctly and comprehensively explains that the late-interaction operator is computed using the maximum dot product between query and document token embeddings, even providing the exact mathematical formulation."
+      },
+      "answer": "The late-interaction operator $LI(q, d)$ is computed by taking the sum over all query vectors $\\mathbf{E}_q^{(i)}$ of their maximum dot product with each of the $N_d$ document embedding vectors $\\mathbf{E}_d^{(j)}$, which is expressed as:\n\n$$LI(q, d) = \\sum_{i \\in [1, N_q]} \\max_{j \\in [1, N_d]} \\langle \\mathbf{E}_q^{(i)} | \\mathbf{E}_d^{(j)} \\rangle$$",
+      "meta": {
+        "request_id": "2813c721fa674561aacbb0d1e62d8898",
+        "latency_ms": 14723.4,
+        "prompt_tokens": 13809,
+        "output_tokens": 228,
+        "total_tokens": 16052,
+        "est_cost_usd": 0.004712,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.13028213865926774,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 955.2,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 7342.0,
+            "prompt_tokens": 11276,
+            "output_tokens": 21,
+            "total_tokens": 12135,
+            "est_cost_usd": 0.003435,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 6338.3,
+            "prompt_tokens": 2533,
+            "output_tokens": 207,
+            "total_tokens": 3917,
+            "est_cost_usd": 0.001277,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 82.3,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "colpali-training-synthetic-fraction",
+      "tags": [
+        "text",
+        "hard"
+      ],
+      "found": true,
+      "latency_ms": 12224.7,
+      "gold_rank": 2,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "colpali.pdf",
+        "page": 6
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.1057426038277489,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The answer accurately states that the synthetic split is 37% of the training set and that the pseudo-questions were generated by Claude-3 Sonnet."
+      },
+      "answer": "The synthetic split accounts for 37% of ColPali's training set, and its pseudo-questions were generated by Claude-3 Sonnet.",
+      "meta": {
+        "request_id": "885a84b9ba294a55afc313ec89cde24d",
+        "latency_ms": 12224.7,
+        "prompt_tokens": 13830,
+        "output_tokens": 127,
+        "total_tokens": 15610,
+        "est_cost_usd": 0.004467,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.1057426038277489,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 1002.5,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 6182.5,
+            "prompt_tokens": 11298,
+            "output_tokens": 21,
+            "total_tokens": 12031,
+            "est_cost_usd": 0.003442,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 4924.9,
+            "prompt_tokens": 2532,
+            "output_tokens": 106,
+            "total_tokens": 3579,
+            "est_cost_usd": 0.001025,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 85.0,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "colpali-tatdqa-corpus-size",
+      "tags": [
+        "table",
+        "hard"
+      ],
+      "found": true,
+      "latency_ms": 11470.2,
+      "gold_rank": 1,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "colpali.pdf",
+        "page": 4
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.12110381697670065,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The system answer correctly identifies the number of queries as 1600."
+      },
+      "answer": "1600",
+      "meta": {
+        "request_id": "13e238a2285c4f29822ccf2a429d49b9",
+        "latency_ms": 11470.2,
+        "prompt_tokens": 13785,
+        "output_tokens": 107,
+        "total_tokens": 14974,
+        "est_cost_usd": 0.004403,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.12110381697670065,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 1083.4,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 6925.8,
+            "prompt_tokens": 11256,
+            "output_tokens": 21,
+            "total_tokens": 11919,
+            "est_cost_usd": 0.003429,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 3381.2,
+            "prompt_tokens": 2529,
+            "output_tokens": 86,
+            "total_tokens": 3055,
+            "est_cost_usd": 0.000974,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 73.7,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "colpali-french-vidore-tasks",
+      "tags": [
+        "table",
+        "hard"
+      ],
+      "found": true,
+      "latency_ms": 14431.9,
+      "gold_rank": 1,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "colpali.pdf",
+        "page": 4
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.11872350173283126,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The system answer correctly identifies both French ViDoRe tasks, TabFQuAD and Shift Project, exactly as specified in the reference facts."
+      },
+      "answer": "The two ViDoRe tasks that are in French rather than English are TabFQuAD and Shift Project.",
+      "meta": {
+        "request_id": "0b0759de629c498a96245ef0fe6f0880",
+        "latency_ms": 14431.9,
+        "prompt_tokens": 13798,
+        "output_tokens": 168,
+        "total_tokens": 15832,
+        "est_cost_usd": 0.004559,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.11872350173283126,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 853.1,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 7672.6,
+            "prompt_tokens": 11278,
+            "output_tokens": 21,
+            "total_tokens": 12141,
+            "est_cost_usd": 0.003436,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 5805.5,
+            "prompt_tokens": 2520,
+            "output_tokens": 147,
+            "total_tokens": 3691,
+            "est_cost_usd": 0.001123,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 93.5,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "colpali-scrapped-pdfs-split",
+      "tags": [
+        "table",
+        "hard"
+      ],
+      "found": true,
+      "latency_ms": 12526.9,
+      "gold_rank": 1,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "colpali.pdf",
+        "page": 18
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.14172124018718102,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The system answer accurately states both the correct number of samples (45,940) and the correct number of distinct URL domains (3,885) as specified in the reference."
+      },
+      "answer": "The Scrapped PDFs split has 45,940 samples, and they span across 3,885 distinct URL domains.",
+      "meta": {
+        "request_id": "5970af55a79d417f9b394825962c25b0",
+        "latency_ms": 12526.9,
+        "prompt_tokens": 13829,
+        "output_tokens": 165,
+        "total_tokens": 15340,
+        "est_cost_usd": 0.004562,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.14172124018718102,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 1278.8,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 7080.2,
+            "prompt_tokens": 11287,
+            "output_tokens": 21,
+            "total_tokens": 12063,
+            "est_cost_usd": 0.003439,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 4072.6,
+            "prompt_tokens": 2542,
+            "output_tokens": 144,
+            "total_tokens": 3277,
+            "est_cost_usd": 0.001123,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 84.8,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "colpali-bge-m3-embedding-size",
+      "tags": [
+        "table",
+        "hard"
+      ],
+      "found": true,
+      "latency_ms": 10924.4,
+      "gold_rank": 1,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "colpali.pdf",
+        "page": 18
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.1422247942730102,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The system answer exactly matches the reference fact of 8.60."
+      },
+      "answer": "8.60",
+      "meta": {
+        "request_id": "ef74193a8e804b2e990dad2ed3992288",
+        "latency_ms": 10924.4,
+        "prompt_tokens": 13820,
+        "output_tokens": 102,
+        "total_tokens": 14982,
+        "est_cost_usd": 0.004401,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.1422247942730102,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 1392.2,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 5812.0,
+            "prompt_tokens": 11281,
+            "output_tokens": 21,
+            "total_tokens": 11815,
+            "est_cost_usd": 0.003437,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 3653.9,
+            "prompt_tokens": 2539,
+            "output_tokens": 81,
+            "total_tokens": 3167,
+            "est_cost_usd": 0.000964,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 61.6,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "colpali-unstructured-captioning-latency",
+      "tags": [
+        "table",
+        "hard"
+      ],
+      "found": true,
+      "latency_ms": 11331.6,
+      "gold_rank": 1,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "colpali.pdf",
+        "page": 19
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.1260127821134937,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The system answer correctly identifies the latency as 3.71 seconds, which matches the reference fact."
+      },
+      "answer": "3.71 seconds (or 3.71 s)",
+      "meta": {
+        "request_id": "34af17669e054ff19cef9accf769df64",
+        "latency_ms": 11331.6,
+        "prompt_tokens": 13782,
+        "output_tokens": 145,
+        "total_tokens": 15041,
+        "est_cost_usd": 0.004497,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.1260127821134937,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 338.1,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 6783.2,
+            "prompt_tokens": 11250,
+            "output_tokens": 16,
+            "total_tokens": 11733,
+            "est_cost_usd": 0.003415,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 4121.9,
+            "prompt_tokens": 2532,
+            "output_tokens": 129,
+            "total_tokens": 3308,
+            "est_cost_usd": 0.001082,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 84.8,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "colpali-512-patch-degradation",
+      "tags": [
+        "text",
+        "hard"
+      ],
+      "found": true,
+      "latency_ms": 13191.9,
+      "gold_rank": 1,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "colpali.pdf",
+        "page": 9
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.1151955826266255,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The system answer accurately states that nDCG@5 drops by 24.8, matching the reference fact."
+      },
+      "answer": "The nDCG@5 drops by 24.8 (expressed as -24.8 nDCG@5 in the text) when PaliGemma is trained with half the image patches (512 instead of 1024).",
+      "meta": {
+        "request_id": "2815b989294b4ae68f5c9540c645eefc",
+        "latency_ms": 13191.9,
+        "prompt_tokens": 13865,
+        "output_tokens": 156,
+        "total_tokens": 15742,
+        "est_cost_usd": 0.00455,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.1151955826266255,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 645.9,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 7962.4,
+            "prompt_tokens": 11311,
+            "output_tokens": 21,
+            "total_tokens": 12414,
+            "est_cost_usd": 0.003446,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 4496.0,
+            "prompt_tokens": 2554,
+            "output_tokens": 135,
+            "total_tokens": 3328,
+            "est_cost_usd": 0.001104,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 84.0,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "colpali-idefics2-patch-gain",
+      "tags": [
+        "text",
+        "hard"
+      ],
+      "found": true,
+      "latency_ms": 12581.6,
+      "gold_rank": 1,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "colpali.pdf",
+        "page": 9
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.12807918388216188,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The system answer correctly states that ColIdefics2 outperforms ColPali by +20.1 nDCG@5, which matches the reference fact."
+      },
+      "answer": "ColIdefics2 with 64 image patches outperforms ColPali with 512 patches by +20.1 nDCG@5.",
+      "meta": {
+        "request_id": "870babd6aab446479f49d4cfedeb50ec",
+        "latency_ms": 12581.6,
+        "prompt_tokens": 13849,
+        "output_tokens": 128,
+        "total_tokens": 15597,
+        "est_cost_usd": 0.004475,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.12807918388216188,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 600.9,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 6664.3,
+            "prompt_tokens": 11308,
+            "output_tokens": 21,
+            "total_tokens": 12047,
+            "est_cost_usd": 0.003445,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 5224.7,
+            "prompt_tokens": 2541,
+            "output_tokens": 107,
+            "total_tokens": 3550,
+            "est_cost_usd": 0.00103,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 87.2,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "colpali-interpretability-hour-token",
+      "tags": [
+        "figure",
+        "hard"
+      ],
+      "found": true,
+      "latency_ms": 13120.4,
+      "gold_rank": 1,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "colpali.pdf",
+        "page": 9
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.1346087904911389,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The answer perfectly identifies the two document words, 'hourly' and 'hours', as specified in the reference facts."
+      },
+      "answer": "The two document words that show high similarity with the query's <hour> token are \"hourly\" and \"hours\".",
+      "meta": {
+        "request_id": "19aac98a3813470a85d6f4756a33bff9",
+        "latency_ms": 13120.4,
+        "prompt_tokens": 13826,
+        "output_tokens": 116,
+        "total_tokens": 15474,
+        "est_cost_usd": 0.004438,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.1346087904911389,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 915.5,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 8099.8,
+            "prompt_tokens": 11292,
+            "output_tokens": 16,
+            "total_tokens": 12240,
+            "est_cost_usd": 0.003428,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 4015.4,
+            "prompt_tokens": 2534,
+            "output_tokens": 100,
+            "total_tokens": 3234,
+            "est_cost_usd": 0.00101,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 83.6,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "colpali-kashagan-world-knowledge",
+      "tags": [
+        "figure",
+        "hard"
+      ],
+      "found": true,
+      "latency_ms": 13370.9,
+      "gold_rank": 1,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": null,
+      "cited": {
+        "pdf": "colpali.pdf",
+        "page": 22
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.14252177565068705,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The system answer correctly identifies the Kashagan oil field as specified in the reference."
+      },
+      "answer": "Kashagan",
+      "meta": {
+        "request_id": "edd58721d57d485298f021b6ea32fadc",
+        "latency_ms": 13370.9,
+        "prompt_tokens": 13852,
+        "output_tokens": 99,
+        "total_tokens": 15437,
+        "est_cost_usd": 0.004403,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.14252177565068705,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 1111.3,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 7458.2,
+            "prompt_tokens": 11309,
+            "output_tokens": 21,
+            "total_tokens": 12145,
+            "est_cost_usd": 0.003445,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 4700.1,
+            "prompt_tokens": 2543,
+            "output_tokens": 78,
+            "total_tokens": 3292,
+            "est_cost_usd": 0.000958,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 85.6,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "xdoc-transformer-vs-bert-layers",
+      "tags": [
+        "cross-doc",
+        "text"
+      ],
+      "found": true,
+      "latency_ms": 11077.8,
+      "gold_rank": 3,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": 1.0,
+      "cited": {
+        "pdf": "attention.pdf",
+        "page": 3
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.10126813652435601,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The system answer correctly identifies both the 6 layers in the Transformer's encoder stack and the 12 layers in BERT-base."
+      },
+      "answer": "The Transformer's encoder stack is composed of 6 layers (N = 6), and BERT-base has 12 layers (L = 12).",
+      "meta": {
+        "request_id": "bce7657a030a441db2cd7f0b6089de74",
+        "latency_ms": 11077.8,
+        "prompt_tokens": 13729,
+        "output_tokens": 171,
+        "total_tokens": 15205,
+        "est_cost_usd": 0.004547,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.10126813652435601,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 635.9,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 5025.3,
+            "prompt_tokens": 11214,
+            "output_tokens": 21,
+            "total_tokens": 11686,
+            "est_cost_usd": 0.003417,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 5267.2,
+            "prompt_tokens": 2515,
+            "output_tokens": 150,
+            "total_tokens": 3519,
+            "est_cost_usd": 0.001129,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 145.5,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "xdoc-transformer-vs-bert-params",
+      "tags": [
+        "cross-doc",
+        "table"
+      ],
+      "found": true,
+      "latency_ms": 14093.1,
+      "gold_rank": 2,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": 1.0,
+      "cited": {
+        "pdf": "attention.pdf",
+        "page": 9
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.0967209398993694,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The system answer correctly identifies that BERT-large has 340 million parameters, matching the reference fact, and also correctly states the parameters for the big Transformer."
+      },
+      "answer": "The big Transformer model has 213 million parameters, and the BERT-large model has 340 million parameters.",
+      "meta": {
+        "request_id": "db565f66a0f54169a10059d9eb634bd4",
+        "latency_ms": 14093.1,
+        "prompt_tokens": 13736,
+        "output_tokens": 162,
+        "total_tokens": 16016,
+        "est_cost_usd": 0.004526,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.0967209398993694,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 366.2,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 7188.1,
+            "prompt_tokens": 11224,
+            "output_tokens": 21,
+            "total_tokens": 12017,
+            "est_cost_usd": 0.00342,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 6383.3,
+            "prompt_tokens": 2512,
+            "output_tokens": 141,
+            "total_tokens": 3999,
+            "est_cost_usd": 0.001106,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 149.0,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "xdoc-colbert-vs-colpali-dim",
+      "tags": [
+        "cross-doc",
+        "text"
+      ],
+      "found": true,
+      "latency_ms": 29846.5,
+      "gold_rank": 3,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": 0.5,
+      "cited": {
+        "pdf": "colpali.pdf",
+        "page": 8
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.10054510348333093,
+      "self_confidence": "high",
+      "judge": {
+        "correct": false,
+        "score": 2,
+        "reasoning": "The answer correctly identifies the dimension of 128 for ColPali but fails to state that ColBERT also projects to 128."
+      },
+      "answer": "According to the provided pages, ColPali projects each PaliGemma vector to a lower dimensional space of D = 128 (as stated on Page 1). For ColBERT, the text on Page 2 mentions that the output embeddings are projected to a \"lower dimension,\" but it does not specify the exact numerical dimension value.",
+      "meta": {
+        "request_id": "66603360101e4a839d32e0be990264a4",
+        "latency_ms": 29846.5,
+        "prompt_tokens": 13790,
+        "output_tokens": 205,
+        "total_tokens": 18662,
+        "est_cost_usd": 0.004649,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.10054510348333093,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 974.9,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 20173.3,
+            "prompt_tokens": 11272,
+            "output_tokens": 21,
+            "total_tokens": 14208,
+            "est_cost_usd": 0.003434,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 8516.7,
+            "prompt_tokens": 2518,
+            "output_tokens": 184,
+            "total_tokens": 4454,
+            "est_cost_usd": 0.001215,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 172.4,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "xdoc-colpali-base-model",
+      "tags": [
+        "cross-doc",
+        "text"
+      ],
+      "found": true,
+      "latency_ms": 15909.6,
+      "gold_rank": 6,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": 0.5,
+      "cited": {
+        "pdf": "colpali.pdf",
+        "page": 6
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.09805919530258034,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The answer correctly identifies PaliGemma-3B as the base model and states that it has 3 billion parameters."
+      },
+      "answer": "ColPali is built on the PaliGemma-3B vision-language model, which has 3 billion parameters.",
+      "meta": {
+        "request_id": "29fec3b5901d4e4280fe04acc8e6446e",
+        "latency_ms": 15909.6,
+        "prompt_tokens": 13824,
+        "output_tokens": 161,
+        "total_tokens": 16241,
+        "est_cost_usd": 0.00455,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.09805919530258034,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 966.0,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 8580.4,
+            "prompt_tokens": 11295,
+            "output_tokens": 21,
+            "total_tokens": 12441,
+            "est_cost_usd": 0.003441,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 6186.8,
+            "prompt_tokens": 2529,
+            "output_tokens": 140,
+            "total_tokens": 3800,
+            "est_cost_usd": 0.001109,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 166.7,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "xdoc-ndcg-cutoffs",
+      "tags": [
+        "cross-doc",
+        "text"
+      ],
+      "found": true,
+      "latency_ms": 14901.2,
+      "gold_rank": 4,
+      "rerank_hit": true,
+      "citation_correct": true,
+      "gold_doc_coverage": 0.5,
+      "cited": {
+        "pdf": "colpali.pdf",
+        "page": 7
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.10011491040257837,
+      "self_confidence": "high",
+      "judge": {
+        "correct": false,
+        "score": 2,
+        "reasoning": "The system incorrectly states that ColPali reports on ViDoRe using nDCG@5, whereas the correct cutoff is nDCG@10."
+      },
+      "answer": "ColPali reports evaluation results on ViDoRe using the nDCG@5 metric, while the BEIR benchmark is evaluated using the nDCG@10 metric.",
+      "meta": {
+        "request_id": "1debb849f38f453eb1135d8ce7605f3e",
+        "latency_ms": 14901.2,
+        "prompt_tokens": 13815,
+        "output_tokens": 224,
+        "total_tokens": 15634,
+        "est_cost_usd": 0.004705,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.10011491040257837,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 910.8,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 8636.8,
+            "prompt_tokens": 11291,
+            "output_tokens": 17,
+            "total_tokens": 12078,
+            "est_cost_usd": 0.00343,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 5178.7,
+            "prompt_tokens": 2524,
+            "output_tokens": 207,
+            "total_tokens": 3556,
+            "est_cost_usd": 0.001275,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 169.4,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "xdoc-beir-vs-vidore",
+      "tags": [
+        "cross-doc",
+        "text"
+      ],
+      "found": true,
+      "latency_ms": 12541.0,
+      "gold_rank": 1,
+      "rerank_hit": true,
+      "citation_correct": false,
+      "gold_doc_coverage": 0.5,
+      "cited": {
+        "pdf": "beir.pdf",
+        "page": 3
+      },
+      "substring_match": true,
+      "retrieval_confidence": 0.10177490265731766,
+      "self_confidence": "high",
+      "judge": {
+        "correct": true,
+        "score": 5,
+        "reasoning": "The system answer correctly identifies the 18 datasets for the BEIR benchmark and thoroughly describes the documents covered by ViDoRe."
+      },
+      "answer": "The BEIR benchmark includes 18 English zero-shot evaluation datasets. ViDoRe covers documents containing various modalities (text, figures, infographics, and tables) across multiple thematic domains (medical, business, scientific, and administrative) and in English and French languages.",
+      "meta": {
+        "request_id": "47b0a30801314f2f9eac1b2259ed2bf8",
+        "latency_ms": 12541.0,
+        "prompt_tokens": 13812,
+        "output_tokens": 199,
+        "total_tokens": 15531,
+        "est_cost_usd": 0.004642,
+        "gemini_calls": 2,
+        "retrieval_confidence": 0.10177490265731766,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 834.1,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 6150.4,
+            "prompt_tokens": 11285,
+            "output_tokens": 16,
+            "total_tokens": 11973,
+            "est_cost_usd": 0.003426,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 5396.8,
+            "prompt_tokens": 2527,
+            "output_tokens": 183,
+            "total_tokens": 3558,
+            "est_cost_usd": 0.001216,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 155.5,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "neg-sales-profit-margin",
+      "tags": [
+        "unanswerable"
+      ],
+      "found": false,
+      "latency_ms": 11167.0,
+      "abstention_correct": true,
+      "answer": "I am sorry, but the provided documents do not contain information about Acme USA's profit margin for FY2025.",
+      "meta": {
+        "request_id": "12f63a2823264720bc40c736d55525ff",
+        "latency_ms": 11167.0,
+        "prompt_tokens": 13763,
+        "output_tokens": 72,
+        "total_tokens": 14796,
+        "est_cost_usd": 0.004309,
+        "gemini_calls": 2,
+        "retrieval_confidence": null,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 907.2,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 6422.3,
+            "prompt_tokens": 11262,
+            "output_tokens": 16,
+            "total_tokens": 11855,
+            "est_cost_usd": 0.003419,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 3834.0,
+            "prompt_tokens": 2501,
+            "output_tokens": 56,
+            "total_tokens": 2941,
+            "est_cost_usd": 0.00089,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 0.0,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "neg-sales-central-region",
+      "tags": [
+        "unanswerable"
+      ],
+      "found": false,
+      "latency_ms": 9634.1,
+      "abstention_correct": true,
+      "answer": "The provided document does not contain data for a \"Central\" region; it only lists North, South, East, and West regions in the FY2025 regional sales table.",
+      "meta": {
+        "request_id": "6291f6b004a94030999faa17e81d3023",
+        "latency_ms": 9634.1,
+        "prompt_tokens": 13757,
+        "output_tokens": 84,
+        "total_tokens": 14563,
+        "est_cost_usd": 0.004337,
+        "gemini_calls": 2,
+        "retrieval_confidence": null,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 807.8,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 5855.1,
+            "prompt_tokens": 11239,
+            "output_tokens": 17,
+            "total_tokens": 11716,
+            "est_cost_usd": 0.003414,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 2967.8,
+            "prompt_tokens": 2518,
+            "output_tokens": 67,
+            "total_tokens": 2847,
+            "est_cost_usd": 0.000923,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 0.0,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "neg-sales-headcount",
+      "tags": [
+        "unanswerable"
+      ],
+      "found": false,
+      "latency_ms": 10392.1,
+      "abstention_correct": true,
+      "answer": "I am sorry, but the provided documents do not contain information about the number of employees Acme USA had in FY2025.",
+      "meta": {
+        "request_id": "a2c46a8885294a55bf8e169107344a45",
+        "latency_ms": 10392.1,
+        "prompt_tokens": 13753,
+        "output_tokens": 78,
+        "total_tokens": 14691,
+        "est_cost_usd": 0.004321,
+        "gemini_calls": 2,
+        "retrieval_confidence": null,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 601.8,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 6468.7,
+            "prompt_tokens": 11252,
+            "output_tokens": 21,
+            "total_tokens": 11872,
+            "est_cost_usd": 0.003428,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 3317.8,
+            "prompt_tokens": 2501,
+            "output_tokens": 57,
+            "total_tokens": 2819,
+            "est_cost_usd": 0.000893,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 0.0,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "neg-sales-forecast",
+      "tags": [
+        "unanswerable"
+      ],
+      "found": false,
+      "latency_ms": 11788.5,
+      "abstention_correct": true,
+      "answer": "I could not find any information about the revenue Acme USA forecasts for next year on the provided pages.",
+      "meta": {
+        "request_id": "afe16aeb106746fdb168a52484c04e1a",
+        "latency_ms": 11788.5,
+        "prompt_tokens": 13687,
+        "output_tokens": 67,
+        "total_tokens": 14643,
+        "est_cost_usd": 0.004273,
+        "gemini_calls": 2,
+        "retrieval_confidence": null,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 851.6,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 6718.0,
+            "prompt_tokens": 11203,
+            "output_tokens": 17,
+            "total_tokens": 11725,
+            "est_cost_usd": 0.003403,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 4212.9,
+            "prompt_tokens": 2484,
+            "output_tokens": 50,
+            "total_tokens": 2918,
+            "est_cost_usd": 0.00087,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 0.1,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "neg-attn-bleu-en-ru",
+      "tags": [
+        "unanswerable"
+      ],
+      "found": false,
+      "latency_ms": 10179.4,
+      "abstention_correct": true,
+      "answer": "The provided pages do not contain information about the BLEU score achieved by the big Transformer model on the WMT 2014 English-to-Russian translation task. Only English-to-German and English-to-French translation results are reported.",
+      "meta": {
+        "request_id": "c540b0556c59404ea9fd4c813779db4b",
+        "latency_ms": 10179.4,
+        "prompt_tokens": 13765,
+        "output_tokens": 103,
+        "total_tokens": 14987,
+        "est_cost_usd": 0.004387,
+        "gemini_calls": 2,
+        "retrieval_confidence": null,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 970.3,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 6542.5,
+            "prompt_tokens": 11235,
+            "output_tokens": 21,
+            "total_tokens": 12030,
+            "est_cost_usd": 0.003423,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 2661.7,
+            "prompt_tokens": 2530,
+            "output_tokens": 82,
+            "total_tokens": 2957,
+            "est_cost_usd": 0.000964,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 0.0,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "neg-attn-training-dollars",
+      "tags": [
+        "unanswerable"
+      ],
+      "found": false,
+      "latency_ms": 14961.4,
+      "abstention_correct": true,
+      "answer": "The provided pages do not contain information about the training cost of the big Transformer model in US dollars. They only provide training costs in FLOPs (2.3 * 10^19 FLOPs) and training time (3.5 days on 8 P100 GPUs).",
+      "meta": {
+        "request_id": "950e4d080676489691788658a31f9091",
+        "latency_ms": 14961.4,
+        "prompt_tokens": 13749,
+        "output_tokens": 113,
+        "total_tokens": 15935,
+        "est_cost_usd": 0.004407,
+        "gemini_calls": 2,
+        "retrieval_confidence": null,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 1061.4,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 8275.8,
+            "prompt_tokens": 11231,
+            "output_tokens": 21,
+            "total_tokens": 12332,
+            "est_cost_usd": 0.003422,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 5620.7,
+            "prompt_tokens": 2518,
+            "output_tokens": 92,
+            "total_tokens": 3603,
+            "est_cost_usd": 0.000985,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 0.0,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "neg-colpali-indexing-cost-dollars",
+      "tags": [
+        "unanswerable"
+      ],
+      "found": false,
+      "latency_ms": 18350.7,
+      "abstention_correct": true,
+      "answer": "I am sorry, but the provided pages do not contain information about the cost in dollars to index a page with ColPali. They only provide the latency (0.39 seconds per page on a g2-standard-8 GCP VM with an NVIDIA L4 GPU) and embedding sizes.",
+      "meta": {
+        "request_id": "bf7c2347e9a04c6bafa1adf070ecb1bf",
+        "latency_ms": 18350.7,
+        "prompt_tokens": 13815,
+        "output_tokens": 106,
+        "total_tokens": 15628,
+        "est_cost_usd": 0.00441,
+        "gemini_calls": 2,
+        "retrieval_confidence": null,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 862.2,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 13063.9,
+            "prompt_tokens": 11290,
+            "output_tokens": 16,
+            "total_tokens": 12410,
+            "est_cost_usd": 0.003427,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 4413.3,
+            "prompt_tokens": 2525,
+            "output_tokens": 90,
+            "total_tokens": 3218,
+            "est_cost_usd": 0.000982,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 0.0,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "neg-colbert-vidore",
+      "tags": [
+        "unanswerable"
+      ],
+      "found": false,
+      "latency_ms": 21200.6,
+      "abstention_correct": true,
+      "answer": "I am sorry, but the provided pages do not contain the nDCG@5 score for ColBERT on the ViDoRe benchmark. While ColPali and various baseline models (such as BM25, BGE-M3, Jina-CLIP, Nomic-vision, and SigLIP) are evaluated, ColBERT is not listed in the results tables.",
+      "meta": {
+        "request_id": "2ba272e80dcf49a29cd66c9b4e69adc6",
+        "latency_ms": 21200.6,
+        "prompt_tokens": 13797,
+        "output_tokens": 128,
+        "total_tokens": 17229,
+        "est_cost_usd": 0.004459,
+        "gemini_calls": 2,
+        "retrieval_confidence": null,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 1257.4,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 14780.8,
+            "prompt_tokens": 11271,
+            "output_tokens": 21,
+            "total_tokens": 13603,
+            "est_cost_usd": 0.003434,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 5157.6,
+            "prompt_tokens": 2526,
+            "output_tokens": 107,
+            "total_tokens": 3626,
+            "est_cost_usd": 0.001025,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 0.0,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "neg-bert-vidore",
+      "tags": [
+        "unanswerable"
+      ],
+      "found": false,
+      "latency_ms": 14867.0,
+      "abstention_correct": true,
+      "answer": "I am sorry, but the provided pages do not contain information or scores for BERT-large on the ViDoRe visual retrieval benchmark.",
+      "meta": {
+        "request_id": "0f755bae472b46bbae0fa10963ba1687",
+        "latency_ms": 14867.0,
+        "prompt_tokens": 13776,
+        "output_tokens": 78,
+        "total_tokens": 15645,
+        "est_cost_usd": 0.004328,
+        "gemini_calls": 2,
+        "retrieval_confidence": null,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 803.7,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 10293.0,
+            "prompt_tokens": 11255,
+            "output_tokens": 21,
+            "total_tokens": 12615,
+            "est_cost_usd": 0.003429,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 3766.5,
+            "prompt_tokens": 2521,
+            "output_tokens": 57,
+            "total_tokens": 3030,
+            "est_cost_usd": 0.000899,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 0.0,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "neg-donut-wmt-bleu",
+      "tags": [
+        "unanswerable"
+      ],
+      "found": false,
+      "latency_ms": 14443.6,
+      "abstention_correct": true,
+      "answer": "I am sorry, but the provided pages do not contain any information about a model named \"Donut\" or its BLEU score on the WMT 2014 English-to-German task.",
+      "meta": {
+        "request_id": "93a1c13831db4262884200f866a9d209",
+        "latency_ms": 14443.6,
+        "prompt_tokens": 13695,
+        "output_tokens": 93,
+        "total_tokens": 15366,
+        "est_cost_usd": 0.004341,
+        "gemini_calls": 2,
+        "retrieval_confidence": null,
+        "stages": [
+          {
+            "node": "retrieve",
+            "latency_ms": 1206.0,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          },
+          {
+            "node": "rerank",
+            "latency_ms": 10455.1,
+            "prompt_tokens": 11168,
+            "output_tokens": 21,
+            "total_tokens": 12443,
+            "est_cost_usd": 0.003403,
+            "gemini_calls": 1
+          },
+          {
+            "node": "answer",
+            "latency_ms": 2774.8,
+            "prompt_tokens": 2527,
+            "output_tokens": 72,
+            "total_tokens": 2923,
+            "est_cost_usd": 0.000938,
+            "gemini_calls": 1
+          },
+          {
+            "node": "highlight",
+            "latency_ms": 0.0,
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "gemini_calls": 0
+          }
+        ]
+      }
+    }
+  ]
+}

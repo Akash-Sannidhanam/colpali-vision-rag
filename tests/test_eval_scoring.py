@@ -150,6 +150,19 @@ def test_substring_match_miss():
     assert substring_match("no idea", ["180"]) is False
 
 
+def test_substring_match_ignores_thousands_separators():
+    """A digit-grouping comma is typography, not a different number.
+
+    The live eval scored "37,000" against the label "37000" as a miss, which measured
+    formatting rather than correctness.
+    """
+    assert substring_match("about 37,000 tokens", ["37000"]) is True
+    assert substring_match("about 37000 tokens", ["37,000"]) is True
+    assert substring_match("$1,234,567 in revenue", ["1234567"]) is True
+    # A comma that isn't grouping thousands is left alone, so 37,0 stays distinct.
+    assert substring_match("37,0 units", ["370"]) is False
+
+
 def test_substring_match_without_expected_is_not_applicable():
     """No expectation yields None (N/A), which aggregation excludes from denominators."""
     assert substring_match("anything", None) is None
