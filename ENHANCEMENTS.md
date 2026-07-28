@@ -99,3 +99,16 @@ the reader) is complete, tested, and shipped. Captured here so they are not lost
   deterministic retrieval confidence separates correct from wrong citations by only
   0.032. Both are surfaced in the UI. Either calibrate them or stop showing them as if
   they mean something; the eval now reports `confidence_separation` to tell.
+- **Refuse to pin a baseline from a degraded run.** _(new, and found the hard way.)_ A
+  full `--judge` run against a depleted Gemini quota produced `citation_accuracy` 0.0,
+  `substring_accuracy` 0.0 and every judge N/A — the graceful-degradation contract
+  working exactly as designed — and still wrote a report that could have been committed
+  as the reference. Worse, **`abstention_accuracy` scored 1.0 on that run**, because
+  `abstention_correct` is `not citation["found"]` and cannot tell "correctly declined"
+  from "never reached the model". The metric most dangerous to falsely peg at 1.0 is the
+  one a total outage flatters most.
+  `request_context` already records per-stage call counts and `gemini_client` already
+  logs `degraded: True`, so the fix is to thread a degraded-call count into the report
+  and have `run_eval` exit 2 — the existing setup-error code — when it exceeds a small
+  fraction of rows, rather than writing a report at all. Cheap, pure, and testable
+  without an API key.
