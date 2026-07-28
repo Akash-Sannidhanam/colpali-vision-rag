@@ -277,6 +277,10 @@ def parse_gates(
             raise ValueError(f"--gate {spec!r}: {raw!r} is not a finite threshold")
         gates.append((metric.strip(), minimum))
     if fail_under is not None:
+        # argparse's type=float parses "nan" just as happily, and this path skipped the
+        # check above - guarding one of two entry points to the same list is no guard.
+        if not math.isfinite(fail_under):
+            raise ValueError(f"--fail-under-recall {fail_under!r} is not a finite threshold")
         gates.append((fail_metric, fail_under))
     return gates
 

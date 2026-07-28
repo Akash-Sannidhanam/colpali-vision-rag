@@ -250,6 +250,17 @@ def test_parse_gates_rejects_a_malformed_spec(spec):
         parse_gates([spec], "recall@10", None)
 
 
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+def test_parse_gates_rejects_a_non_finite_legacy_threshold(value):
+    """--fail-under-recall reaches the same gate list and needs the same check.
+
+    argparse's `type=float` accepts "nan", and this path skipped the validation the
+    --gate specs get - guarding one of two entry points to one list is no guard.
+    """
+    with pytest.raises(ValueError, match="finite"):
+        parse_gates(None, "recall@1", value)
+
+
 @pytest.mark.parametrize("spec", ["recall@1:nan", "recall@1:inf", "recall@1:-inf"])
 def test_parse_gates_rejects_non_finite_thresholds(spec):
     """float() parses "nan", and `value < nan` is always False - a gate that can't fire.
