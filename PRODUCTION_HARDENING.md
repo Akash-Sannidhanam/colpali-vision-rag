@@ -429,12 +429,15 @@ away would flatter the number rather than measure it.
 
 **Baseline:** `eval/reports/baseline_desaturated.json` (committed; the rest of
 `eval/reports/` stays gitignored). recall@1 0.7627, recall@3 0.9322, recall@10 1.0,
-rerank_recall 1.0, citation_accuracy 0.9661, substring 1.0 (over 58 applicable
-rows), judge 0.9661,
-**gold_coverage_avg 0.6667**, **abstention_accuracy 1.0** (10/10, zero hallucinations),
-**confidence_separation 0.0312**. `judge_accuracy` carries a ~1-question noise floor:
-`sales-q2-revenue` has flipped miss/pass/miss across three identical runs, which is why
-it is not gated.
+rerank_recall 1.0, citation_accuracy 1.0, substring 1.0 (over 58 applicable
+rows), judge 0.9831,
+**gold_coverage_avg 0.75**, **abstention_accuracy 1.0** (10/10, zero hallucinations),
+`confidence_separation` is n/a in the pinned run: it needs at least one wrong citation
+to exist and there were none, which is a real flaw in how it is defined - the metric
+disappears when the pipeline does well. Across four valid runs of identical code,
+citation_accuracy was 0.9661 three times and 1.0 once, gold_coverage_avg 0.6667 three
+times and 0.75 once, and `sales-q2-revenue` flipped the judge miss/pass/miss/pass. One
+question is worth 0.017 / 0.083 on those denominators, so none is gated tightly.
 **Verify:** `uv run python scripts/fetch_eval_corpus.py --verify` → exit 0;
 `PYTHONPATH=. uv run python eval/run_eval.py --judge --gate recall@1:0.70 --gate
 recall@3:0.88 --gate citation_accuracy:0.91 --gate gold_coverage_avg:0.55 --gate
