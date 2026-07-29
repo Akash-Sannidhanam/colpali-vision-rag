@@ -278,6 +278,8 @@ src/
 scripts/
   make_sample_pdf.py     # generates the text-layer-free sample PDF
   fetch_eval_corpus.py   # downloads + sha256-verifies the distractor corpus into pdfs/
+  find_in_pdfs.py        # labeling aid: which page states a fact (searches the text
+                         #   layer the pipeline itself never reads)
 eval/
   dataset.jsonl        # labeled questions: gold {pdf, page} + expected substrings
   corpus_manifest.json # the distractor corpus, pinned by sha256 (PDFs not committed)
