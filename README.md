@@ -423,12 +423,12 @@ latency/token/cost for free.
 | recall@3 | 0.9623 | 0.9322 |
 | recall@10 | 1.0000 | 1.0000 |
 | rerank_recall | 1.0000 | 1.0000 |
-| citation_accuracy | 1.0000 | 0.9661 |
+| citation_accuracy | 1.0000 | 1.0000 |
 | substring_accuracy | 1.0000 | 1.0000 |
 | judge_accuracy | 1.0000 | 0.9831 |
-| **gold_coverage_avg** | — | **0.6667** |
+| **gold_coverage_avg** | — | **0.7500** |
 | **abstention_accuracy** | — | **1.0000** (10/10) |
-| **confidence_separation** | — | **0.0317** |
+| **confidence_separation** | — | *n/a this run* |
 
 **What the de-saturation actually found.** Not more retrieval headroom — on the
 *identical* 53 questions the 8× bigger corpus moved recall@1/@3/@10 by exactly zero,
@@ -442,6 +442,21 @@ shown. For a system whose premise is *"here is the box where I read this,"* that
 failure mode that matters, and `gold_coverage_avg` is the only metric that sees it.
 Four of six cross-document questions score 0.5 for the same reason: `RERANK_K=2` spent
 both slots inside one document.
+
+**Read these numbers with their run-to-run variance.** Across four valid runs of
+identical code, `citation_accuracy` was 0.9661 three times and 1.0000 once, and
+`gold_coverage_avg` was 0.6667 three times and 0.7500 once. On denominators of 59 and 6
+respectively, one question moves them by 0.017 and 0.083 — so a single row's movement is
+noise, not a regression. `judge_accuracy` is the same story: `sales-q2-revenue`, where
+the judge rejects `$150,000` for a chart labeled "Thousands" showing 150, has flipped
+miss/pass/miss/pass across those runs. None of the three is gated tightly for that reason.
+
+**`confidence_separation` has a design flaw worth knowing about.** It is the gap between
+retrieval confidence on correct citations and on wrong ones, so it needs at least one
+wrong citation to exist — and reports `n/a` when the pipeline gets everything right, as
+it did in the pinned run. The metric vanishes exactly when things go well. The component
+averages are still reported (`retrieval_conf_correct_avg` 0.1319 here), and the earlier
+runs that did have wrong citations put the separation at ~0.032, i.e. close to noise.
 
 Two smaller results worth knowing: the model self-reported `high` confidence on all 59
 answerable questions (a degenerate signal), and the deterministic retrieval confidence

@@ -42,9 +42,16 @@ def test_shipped_dataset_parses_and_holds_its_invariants():
     assert len(negatives) >= 10, "no abstention rows left - hallucination rate goes unmeasured"
     assert len(cross_doc) >= 6, "no cross-document rows left - RERANK_K goes unpressured"
 
-    # An answerable row without an expected substring scores nothing but recall.
-    assert all(r["answer_contains"] or r["answer_contains_all"] for r in rows if not r["unanswerable"])
     assert all("unanswerable" in r["tags"] for r in negatives)
+
+    # A cross-document row must never carry a bare any-of label: one hit on either
+    # document's fact would satisfy it, which is how substring_accuracy scored 1.0 on
+    # this slice while the judge was failing rows on it. All-of, or nothing at all.
+    for r in cross_doc:
+        assert not r["answer_contains"], (
+            f"{r['id']}: any-of `answer_contains` can pass on half a cross-document "
+            f"answer - use `answer_contains_all`, or drop it and let the judge score it"
+        )
 
 
 def test_judge_answer_routes_through_client_with_judge_model(monkeypatch):
@@ -81,13 +88,14 @@ def test_judge_answer_failure_returns_none_not_raise(monkeypatch):
 def _dataset_row(pdf="a.pdf", page=3, row_id="q1"):
     """One labeled dataset row pointing at a single gold page."""
     return {"id": row_id, "question": "q", "gold": [{"pdf": pdf, "page": page}],
-            "answer_contains": None, "answer_contains_all": None, "tags": [], "unanswerable": False}
+            "answer_contains": None, "answer_contains_all": None, "tags": [],
+            "unanswerable": False}
 
 
 def _unanswerable_row(row_id="n1"):
     """One dataset row whose answer is nowhere in the corpus."""
-    return {"id": row_id, "question": "q", "gold": [], "answer_contains": None,
-            "answer_contains_all": None, "tags": ["unanswerable"], "unanswerable": True}
+    return {"id": row_id, "question": "q", "gold": [], "answer_contains": None, "answer_contains_all": None,
+            "tags": ["unanswerable"], "unanswerable": True}
 
 
 def test_check_corpus_passes_when_gold_pages_indexed(monkeypatch):
@@ -240,3 +248,37 @@ def test_parse_gates_rejects_a_malformed_spec(spec):
     """A typo fails at parse time, not after a multi-minute run has already burned."""
     with pytest.raises(ValueError, match="gate"):
         parse_gates([spec], "recall@10", None)
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+def test_parse_gates_rejects_a_non_finite_legacy_threshold(value):
+    """--fail-under-recall reaches the same gate list and needs the same check.
+
+    argparse's `type=float` accepts "nan", and this path skipped the validation the
+    --gate specs get - guarding one of two entry points to one list is no guard.
+    """
+    with pytest.raises(ValueError, match="finite"):
+        parse_gates(None, "recall@1", value)
+
+
+@pytest.mark.parametrize("spec", ["recall@1:nan", "recall@1:inf", "recall@1:-inf"])
+def test_parse_gates_rejects_non_finite_thresholds(spec):
+    """float() parses "nan", and `value < nan` is always False - a gate that can't fire.
+
+    Silently un-fireable is the one failure mode the fail-closed design exists to
+    prevent, so it has to be rejected at parse time.
+    """
+    with pytest.raises(ValueError, match="finite"):
+        parse_gates([spec], "recall@10", None)
+
+
+def test_config_snapshot_stores_a_repo_relative_dataset_path():
+    """An absolute default path would bake the operator's home dir into the baseline."""
+    snapshot = run_eval._config_snapshot("full", str(DEFAULT_DATASET), use_judge=False)
+    assert snapshot["dataset"] == "eval/dataset.jsonl"
+
+
+def test_config_snapshot_leaves_an_outside_path_alone():
+    """A dataset deliberately kept outside the repo still records where it came from."""
+    snapshot = run_eval._config_snapshot("full", "/somewhere/else/custom.jsonl", use_judge=False)
+    assert snapshot["dataset"] == "/somewhere/else/custom.jsonl"

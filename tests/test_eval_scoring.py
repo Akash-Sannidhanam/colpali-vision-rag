@@ -167,6 +167,37 @@ def test_substring_match_without_expected_is_not_applicable():
     """No expectation yields None (N/A), which aggregation excludes from denominators."""
     assert substring_match("anything", None) is None
     assert substring_match("anything", []) is None
+    assert substring_match("anything", [], []) is None
+
+
+def test_substring_match_all_of_requires_every_fact():
+    """`expected_all` is conjunctive, so half a two-part answer fails."""
+    whole = "The Transformer encoder has 6 layers and BERT-base has 12 layers."
+    half = "The Transformer encoder has 6 layers."
+    assert substring_match(whole, None, ["6", "12"]) is True
+    assert substring_match(half, None, ["6", "12"]) is False
+
+
+def test_substring_match_all_of_catches_the_half_answer_any_of_passed():
+    """Regression: the exact cross-document answer that scored a false pass.
+
+    Labelled any-of ["128"], an answer giving ColPali's dimension while declining on
+    ColBERT's matched - so substring_accuracy read 1.0 on the very question type the
+    cross-document rows were added to stress.
+    """
+    half = ('ColPali projects each PaliGemma vector to D = 128. For ColBERT, the text '
+            'mentions embeddings are "projected to a lower dimension," but it does not '
+            'specify the exact numerical dimension value.')
+    assert substring_match(half, ["128"]) is True          # the old, misleading label
+    assert substring_match(half, None, ["128", "ColBERT is 128"]) is False
+
+
+def test_substring_match_combines_any_of_and_all_of():
+    """Both checks must hold when a row carries both fields."""
+    answer = "revenue was 180 in Q4 and 150 in Q2"
+    assert substring_match(answer, ["180", "999"], ["150"]) is True
+    assert substring_match(answer, ["999"], ["150"]) is False   # any-of side fails
+    assert substring_match(answer, ["180"], ["999"]) is False   # all-of side fails
 
 
 # ---------------------------------------------------------------- load_dataset

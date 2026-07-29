@@ -178,15 +178,23 @@ def run_full(dataset: list[dict], use_judge: bool) -> list[dict]:
                 "citation_correct": citation_correct(citation, reranked, item["gold"]),
                 "gold_doc_coverage": gold_doc_coverage(reranked, item["gold"]),
                 "cited": cited,  # which page was actually cited - makes gold-label gaps auditable
-                "substring_match": substring_match(answer, item["answer_contains"], item.get("answer_contains_all")),
+                "substring_match": substring_match(
+                    answer, item["answer_contains"], item["answer_contains_all"]
+                ),
                 # Both confidence signals ride along on the result already (main.run_query),
                 # so calibration costs no extra call - only the scoring in eval.scoring.
                 "retrieval_confidence": meta.get("retrieval_confidence"),
                 "self_confidence": (citation or {}).get("confidence"),
             }
             if use_judge:
+                # Both label kinds are reference facts. Passing only `answer_contains`
+                # handed the judge an empty reference for every row labelled purely
+                # all-of, silently downgrading it to a faithfulness-only grade on
+                # exactly the cross-document rows that need the strictest one.
                 row["judge"] = judge_answer(
-                    item["question"], answer, item["answer_contains"] or item.get("answer_contains_all"), item["gold"]
+                    item["question"], answer,
+                    (item["answer_contains"] or []) + (item["answer_contains_all"] or []),
+                    item["gold"],
                 )
         # The report keeps the answer + full meta for debugging; the table doesn't show them.
         rows.append({**row, "answer": answer, "meta": meta})
@@ -197,20 +205,23 @@ def run_full(dataset: list[dict], use_judge: bool) -> list[dict]:
     return rows
 
 
+def _repo_relative(path: str) -> str:
+    """Path relative to the repo root when it lives inside it, else unchanged.
+
+    The default dataset path is absolute, so storing it verbatim baked the operator's
+    home directory into the *committed* baseline report and made snapshots differ per
+    machine for no reason.
+    """
+    resolved = Path(path).resolve()
+    root = Path(__file__).resolve().parent.parent
+    return str(resolved.relative_to(root)) if resolved.is_relative_to(root) else str(resolved)
+
+
 def _config_snapshot(mode: str, dataset_path: str, use_judge: bool) -> dict:
     """The knob values this run used, embedded in the report so runs diff cleanly."""
-    # Store dataset path relative to repo root if it's under the repo, to avoid
-    # operator-specific home directories in the config snapshot.
-    repo_root = Path(__file__).resolve().parent.parent
-    try:
-        dataset_rel = Path(dataset_path).resolve().relative_to(repo_root)
-        dataset_stored = str(dataset_rel)
-    except (ValueError, OSError):
-        # Not under repo root or path resolution failed; keep as-is
-        dataset_stored = dataset_path
     return {
         "mode": mode,
-        "dataset": dataset_stored,
+        "dataset": _repo_relative(dataset_path),
         "retrieve_k": RETRIEVE_K,
         "rerank_k": RERANK_K,
         "rerank_adaptive": config.RERANK_ADAPTIVE,
@@ -256,13 +267,20 @@ def parse_gates(
         if not sep or not metric.strip():
             raise ValueError(f"--gate {spec!r} must look like METRIC:MIN, e.g. recall@1:0.70")
         try:
-            threshold = float(raw)
+            minimum = float(raw)
         except ValueError as exc:
             raise ValueError(f"--gate {spec!r}: {raw!r} is not a number") from exc
-        if not math.isfinite(threshold):
-            raise ValueError(f"--gate {spec!r}: threshold must be finite (got {threshold})")
-        gates.append((metric.strip(), threshold))
+        # float() happily parses "nan", and `value < nan` is always False - a gate that
+        # can never fire, which is worse than no gate at all given this one is the whole
+        # point of the fail-closed design.
+        if not math.isfinite(minimum):
+            raise ValueError(f"--gate {spec!r}: {raw!r} is not a finite threshold")
+        gates.append((metric.strip(), minimum))
     if fail_under is not None:
+        # argparse's type=float parses "nan" just as happily, and this path skipped the
+        # check above - guarding one of two entry points to the same list is no guard.
+        if not math.isfinite(fail_under):
+            raise ValueError(f"--fail-under-recall {fail_under!r} is not a finite threshold")
         gates.append((fail_metric, fail_under))
     return gates
 
