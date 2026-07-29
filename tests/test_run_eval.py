@@ -36,12 +36,16 @@ def test_shipped_dataset_parses_and_holds_its_invariants():
     after the models are loaded.
     """
     rows = load_dataset(DEFAULT_DATASET.read_text().splitlines())
-    assert len(rows) >= 69
+    assert len(rows) >= 83
 
     negatives = [r for r in rows if r["unanswerable"]]
     cross_doc = [r for r in rows if len({g["pdf"] for g in r["gold"]}) > 1]
     assert len(negatives) >= 10, "no abstention rows left - hallucination rate goes unmeasured"
-    assert len(cross_doc) >= 6, "no cross-document rows left - RERANK_K goes unpressured"
+    # 20, not 6: gold_coverage_avg is the only metric with real headroom, and at n=6 one
+    # question moved it 0.083 - wider than the run-to-run variance measured on identical
+    # code. Trimming this slice back doesn't just lose rows, it makes the metric unable
+    # to adjudicate the RERANK_K question it exists for.
+    assert len(cross_doc) >= 20, "cross-document slice too small to resolve gold_coverage_avg"
 
     assert all("unanswerable" in r["tags"] for r in negatives)
 
