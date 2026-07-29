@@ -15,6 +15,7 @@ from google.genai import types
 from PIL import Image
 from pydantic import BaseModel
 
+from src import request_context
 from src.answerer import image_part
 from src.config import (
     RERANK_ADAPTIVE,
@@ -124,6 +125,9 @@ def rerank(question: str, pages: list[dict], k: int = RERANK_K) -> list[dict]:
         raw = (parsed.page_indices if parsed is not None
                else json.loads(response.text).get("page_indices", []))
     except Exception:  # network / quota / parse -> Qdrant top-k
+        # Counted, not just logged: the fallback is silent by design, so without this a
+        # whole run can degrade to unreranked Qdrant order and still look healthy.
+        request_context.record_degraded()
         log.warning(
             "rerank failed; falling back to Qdrant top-k",
             exc_info=True,

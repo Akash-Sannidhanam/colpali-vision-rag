@@ -7,6 +7,7 @@ from typing import Literal
 from google.genai import types
 from pydantic import BaseModel
 
+from src import request_context
 from src.config import GEMINI_MODEL
 from src.gemini_client import generate
 from src.logging_setup import get_logger
@@ -132,6 +133,10 @@ def answer(question: str, pages: list[dict]) -> dict:
         # KeyError-ing downstream where answer_node reads result["answer"].
         return _with_primary(Citation(**json.loads(response.text)))
     except Exception:
+        # Count it as well as log it: a not-found citation from here is indistinguishable
+        # downstream from one the model genuinely returned, and the eval's abstention
+        # metric scores that shape as a *correct* refusal.
+        request_context.record_degraded()
         log.warning(
             "answer step failed; returning not-found citation",
             exc_info=True,

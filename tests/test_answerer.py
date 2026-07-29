@@ -112,6 +112,28 @@ def test_generate_exception_falls_back_to_not_found(monkeypatch):
     assert answerer.answer("q", [_page(1)]) == answerer._NOT_FOUND
 
 
+def test_generate_exception_records_degradation(monkeypatch):
+    """The degraded not-found citation is counted, not just logged.
+
+    Its shape is identical to a genuine refusal, and the eval scores that shape as a
+    *correct* abstention - so without the count an outage reads as perfect behaviour.
+    """
+    from src import request_context
+
+    monkeypatch.setattr(answerer, "image_part", lambda p: None)
+    monkeypatch.setattr(answerer, "generate", _fake_generate([], error=RuntimeError("boom")))
+
+    scope = request_context.begin_request()
+    try:
+        out = answerer.answer("q", [_page(1)])
+        totals = request_context.usage_totals()
+    finally:
+        request_context.end_request(scope)
+
+    assert out == answerer._NOT_FOUND
+    assert totals["degraded_calls"] == 1
+
+
 def test_multiple_regions_pass_through_capped_at_max(monkeypatch):
     """Regions are capped at MAX_REGIONS and the primary box mirrors the first region."""
     monkeypatch.setattr(answerer, "image_part", lambda p: None)
