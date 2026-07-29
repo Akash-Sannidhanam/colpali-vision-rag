@@ -43,8 +43,13 @@ EMBED_VERSION = f"{COLPALI_MODEL}@{RENDER_DPI}"
 
 COLLECTION_NAME = "pdf_pages"
 VECTOR_DIM = 128 # ColQwen emits one 128-d vector per patch
-RETRIEVE_K = 10          # candidate pages pulled from Qdrant per query
-RERANK_K = 2             # pages kept after the Gemini rerank pass (a cap when RERANK_ADAPTIVE)
+# Both env-overridable for the same reason RENDER_DPI is: an eval arm should be a
+# command-line prefix (`RERANK_K=3 uv run python eval/run_eval.py ...`), not a code
+# edit that has to be reverted before the comparison run. load_dotenv() does not
+# override an already-set variable, so the prefix wins over .env.
+RETRIEVE_K = int(os.getenv("RETRIEVE_K", "10"))  # candidate pages pulled from Qdrant per query
+RERANK_K = int(os.getenv("RERANK_K", "2"))       # pages kept after the Gemini rerank pass
+                                                 # (a cap when RERANK_ADAPTIVE)
 # When true, rerank keeps a *variable* number of pages (1..RERANK_K) - only the
 # pages the model judged relevant, instead of always topping up to RERANK_K. Trades
 # a little predictability for answer precision. Off by default until an eval diff
