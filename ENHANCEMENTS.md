@@ -86,20 +86,32 @@ the reader) is complete, tested, and shipped. Captured here so they are not lost
   the unchanged questions, so corpus size was the wrong lever — new *question types*
   were the cheap one; and `gold_coverage_avg` (0.667) catches answers that are correct
   but ungrounded in the retrieved pages, which no other metric here can see.
-- **Raise `RERANK_K` for multi-document questions.** _(new, and now measurable.)_ Four
-  of six cross-document questions score `gold_doc_coverage` 0.5 — `RERANK_K=2` spends
-  both slots inside one document, and in at least one case the answer step then filled
-  the missing half from parametric knowledge rather than a retrieved page. A fixed
-  `RERANK_K=3` costs a full-resolution image per answer call; an adaptive "widen only
-  when the candidate set spans documents" rule would be cheaper. Either way
-  `gold_coverage_avg` is now the metric that decides it, and `RERANK_ADAPTIVE` above is
-  the knob to reach for first.
+- **Raise `RERANK_K` for multi-document questions.** _(next up; the instrument is now
+  sharp enough to decide it.)_ `RERANK_K=2` spends both slots inside one document, and
+  the answer step then fills the missing half from parametric knowledge rather than a
+  retrieved page. A fixed `RERANK_K=3` costs a full-resolution image per answer call; an
+  adaptive "widen only when the candidate set spans documents" rule would be cheaper, and
+  `RERANK_ADAPTIVE=true` with `RERANK_K=3` approximates it with no new code (cap of 3,
+  model keeps 1–3). The cross-document slice is now 20 questions rather than 6, so
+  `gold_coverage_avg` resolves 0.05 per question instead of 0.083, and
+  `eval/diff_reports.py` compares the arms **paired per question** — which is what makes
+  a handful of flips readable where an averaged delta of 0.08 was not. Both `RERANK_K`
+  and `RETRIEVE_K` are env-overridable, so an arm is a command-line prefix and needs no
+  re-ingest.
 - **The confidence signals carry almost no information.** _(new, measured.)_ The model
   self-reported `high` on all 59 answerable questions — zero variance — and the
   deterministic retrieval confidence separates correct from wrong citations by only
   0.032. Both are surfaced in the UI. Either calibrate them or stop showing them as if
   they mean something; the eval now reports `confidence_separation` to tell.
-- **Refuse to pin a baseline from a degraded run.** _(new, and found the hard way.)_ A
+- **Refuse to pin a baseline from a degraded run.** _(✅ done — see the
+  instrument-sharpening pass in PRODUCTION_HARDENING.md.)_ Built as described below, with
+  one change: the report is still written, stamped `degraded_run` and named
+  `degraded_<utc>.json` instead of `eval_<utc>.json`, rather than suppressed. Keeping the
+  artifact is worth more for diagnosing the outage than the marginal safety of deleting
+  it, and the filename plus the stamp are what actually prevent the mistake. Gates are
+  skipped on such a run, not evaluated. The original note follows.
+
+  A
   full `--judge` run against a depleted Gemini quota produced `citation_accuracy` 0.0,
   `substring_accuracy` 0.0 and every judge N/A — the graceful-degradation contract
   working exactly as designed — and still wrote a report that could have been committed

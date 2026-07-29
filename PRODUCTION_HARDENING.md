@@ -447,3 +447,45 @@ abstention_accuracy:0.90` → exit 0 at baseline, exit 1 on any breach.
 gated — on this pipeline the retrieval stage genuinely is not the bottleneck at k=10,
 and pretending otherwise would guard nothing. The obvious follow-up is raising
 `RERANK_K` for multi-document questions, which `gold_coverage_avg` now makes measurable.
+
+## Instrument-sharpening pass (follow-on) ◐ IN PROGRESS
+
+**The problem.** The de-saturation pass left exactly one metric with both headroom and a
+real failure mode behind it — `gold_coverage_avg` — and it could not adjudicate the very
+decision it was built for. Over 6 cross-document rows one question moves it 0.083, and
+runs of *identical* code had already produced 0.667 and 0.75. A `RERANK_K=2 → 3` result
+would have landed inside its own noise floor. Separately, a run against depleted quota
+still wrote a pinnable report, and scored `abstention_accuracy` **1.0** while doing it.
+
+- **Degraded-run guard** — `request_context.record_degraded()` counts every call that
+  fell through to graceful degradation, called from the `except` branches in
+  `reranker.rerank` and `answerer.answer`. It rides to the eval on `meta.degraded_calls`
+  for free, because `run_query`'s meta already spreads the usage accumulator.
+  `run_eval.degradation_summary` adds judge N/As (a `None` verdict *is* a failed call);
+  past `--max-degraded-frac` (default 0.02) the run stamps `degraded_run`, writes
+  `degraded_<utc>.json`, skips the gates, and exits 2. Clean runs still record zeros —
+  a report that can't say how much of the run reached the model is not much better than
+  one written before the guard existed.
+- **`eval/diff_reports.py`** *(new)* — pairs two reports by question id: flipped rows,
+  improved-vs-regressed counts, averages over the same question set both sides, and the
+  config knobs that differ. Refuses to quietly compare across drifted datasets, unknown
+  metrics, or a degraded side.
+- **`eval/dataset.jsonl`** — 69 → 83 questions; the cross-document slice 6 → 20, over
+  document pairs the original six never touched. No new PDFs and no re-ingest: the
+  distractor corpus already held these papers as noise, so this makes them load-bearing
+  for free. One question is now worth 0.05 rather than 0.083, and the comparison is
+  paired, which is what actually buys the power.
+- **`src/config.py`** — `RETRIEVE_K` and `RERANK_K` read from env like the knobs beside
+  them, so an arm is a command-line prefix rather than an edit to revert.
+
+**Caught by spot-checking three new rows before committing to a full run:** the model
+answers "50K questions" where the DocVQA page reads "50,000", so that label was
+known-bad on arrival. The same three queries surfaced a real cross-document miss — the
+reranker took `donut.pdf` p.8 over any DocVQA page and the answer step supplied the
+DocVQA half from parametric knowledge anyway.
+
+**Next:** re-pin the baseline on the 83-question dataset at `RERANK_K=2`, then run
+`RERANK_K=3` and `RERANK_K=3 RERANK_ADAPTIVE=true` as arms B and C and diff them paired
+on `gold_doc_coverage`. Judge is off for the arms — coverage, citation and substring do
+not need it, and leaving it out keeps judge variance out of the read. A null result is a
+legitimate outcome and gets recorded the way the adaptive-rerank rejection was.
