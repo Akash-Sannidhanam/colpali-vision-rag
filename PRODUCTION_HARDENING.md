@@ -484,8 +484,46 @@ known-bad on arrival. The same three queries surfaced a real cross-document miss
 reranker took `donut.pdf` p.8 over any DocVQA page and the answer step supplied the
 DocVQA half from parametric knowledge anyway.
 
-**Next:** re-pin the baseline on the 83-question dataset at `RERANK_K=2`, then run
-`RERANK_K=3` and `RERANK_K=3 RERANK_ADAPTIVE=true` as arms B and C and diff them paired
-on `gold_doc_coverage`. Judge is off for the arms — coverage, citation and substring do
-not need it, and leaving it out keeps judge variance out of the read. A null result is a
-legitimate outcome and gets recorded the way the adaptive-rerank rejection was.
+**The result: five metric families came off 1.0 at once.** The de-saturation pass had
+moved recall@1 and `gold_coverage_avg` and nothing else; every other family was still
+pinned at exactly 1.0 and could not report a regression. On the 83-question set:
+
+| metric | 69q baseline | 83q baseline |
+| --- | --- | --- |
+| recall@10 | 1.0 | **0.9863** |
+| rerank_recall | 1.0 | **0.9726** |
+| citation_accuracy | 1.0 | **0.9178** |
+| substring_accuracy | 1.0 | **0.9014** |
+| judge_accuracy | 0.9831 | 0.9041 |
+| recall@1 / recall@3 | 0.7627 / 0.9322 | 0.726 / 0.8767 |
+| gold_coverage_avg | 0.75 (n=6) | 0.625 (n=20) |
+| confidence_separation | n/a | **0.0261** |
+
+`confidence_separation` computes for the first time — it needs at least one wrong
+citation to exist, and now some do. At 0.0261 it confirms what the de-saturation pass
+suspected: the retrieval-confidence signal separates correct from wrong citations by
+almost nothing.
+
+**The finding that decides the RERANK_K question.** All **11** failing rows are
+cross-document, every one at `gold_doc_coverage` 0.5 or 0.0. Sharper than the "correct
+but ungrounded" case the last pass found: when the second document is not reranked in,
+the model does not decline — it fills the gap from parametric memory and gets the number
+*slightly wrong*. BERT-base as "108M" (the page says 110M), BERT-large as "334M" (340M),
+BEIR as "19 datasets" (18). A plausible wrong number sourced from memory is exactly the
+failure a visual-citation system exists to prevent, and nothing before this pass could
+see it.
+
+**Baseline:** `eval/reports/baseline_sharpened.json`, `degradation` all zeros.
+**Verify:** `PYTHONPATH=. uv run python eval/run_eval.py --judge --gate recall@1:0.68
+--gate recall@3:0.83 --gate recall@10:0.95 --gate rerank_recall:0.93 --gate
+citation_accuracy:0.86 --gate substring_accuracy:0.85 --gate abstention_accuracy:0.90
+--gate gold_coverage_avg:0.55 --gate judge_accuracy:0.85` → exit 0 at baseline. Each
+threshold leaves roughly three questions of slack: one question is worth 0.0137 on the
+recall denominators, 0.0141 on citation, and 0.05 on coverage. The old documented gate
+of `recall@3:0.88` is retired — the new value is 0.8767, inside its own noise.
+
+**Next:** run `RERANK_K=3` and `RERANK_K=3 RERANK_ADAPTIVE=true` as arms B and C and diff
+them paired on `gold_doc_coverage`. Judge is off for the arms — coverage, citation and
+substring do not need it, and leaving it out keeps judge variance out of the read. A null
+result is a legitimate outcome and gets recorded the way the adaptive-rerank rejection
+was.

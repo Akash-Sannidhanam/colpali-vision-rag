@@ -32,4 +32,7 @@ pdfs/*.pdf
 # Note `reports/*`, not `reports/`: git never descends into an excluded *directory*, so
 # the trailing-slash form would make the negation below unreachable.
 eval/reports/*
+# The current baseline (83 questions). `baseline_desaturated.json` is the superseded
+# 69-question one, kept because the de-saturation write-up cites its numbers.
+!eval/reports/baseline_sharpened.json
 !eval/reports/baseline_desaturated.json
