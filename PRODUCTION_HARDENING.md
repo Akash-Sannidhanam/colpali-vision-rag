@@ -579,7 +579,9 @@ coverage (0.5 → 1.0), citation and substring at once. The gap between this run
 figure and arm B's (0.9452 vs 0.9315) on identical config is the documented run-to-run
 variance — both beat k=2, which is the claim.
 
-**Baseline:** `eval/reports/baseline_rerank_k3.json`, `degradation` all zeros.
+**Baseline:** `eval/reports/baseline_rerank_k3.json`, `degradation` all zeros. *(Superseded
+as the current baseline by the cross-document attribution pass below; kept because this
+section cites its numbers.)*
 **Verify:** `PYTHONPATH=. uv run python eval/run_eval.py --judge --gate recall@1:0.68
 --gate recall@3:0.83 --gate recall@10:0.95 --gate rerank_recall:0.93 --gate
 citation_accuracy:0.89 --gate substring_accuracy:0.90 --gate abstention_accuracy:0.90
@@ -587,3 +589,105 @@ citation_accuracy:0.89 --gate substring_accuracy:0.90 --gate abstention_accuracy
 a breach, exit 2 if the run itself degraded. Each threshold leaves roughly three questions
 of slack: one question is worth 0.0137 on the recall denominators, 0.0141 on citation and
 substring, and 0.05 on coverage.
+
+---
+
+## Cross-document attribution pass (follow-on) ✅ DONE
+
+**The problem.** Every imperfect row in the pinned baseline was a cross-document question
+— 12 of 12 — and 10 of them scored `gold_doc_coverage` 0.5. But nothing in a stored report
+said *which stage* lost the second document, because coverage scores the reranked set and
+`gold_rank` records only the best gold page's rank. The two plausible fixes live in
+different stages, so there was no way to scope one. Compounding it, `gold_coverage_avg` was
+documented as a lower bound: page-level gold lists name fewer pages than state each fact.
+
+**Shipped:**
+- **`candidate_doc_coverage`** — `scoring.gold_doc_coverage` was already stage-agnostic in
+  its hits argument, so the retrieval-stage twin is the same function applied to the
+  untrimmed Qdrant candidates, not new scoring logic. Read as a pair: candidates 1.0 with
+  coverage <1.0 means rerank dropped a page it was offered; both <1.0 means retrieval never
+  offered it. `candidate_coverage_avg` joins the summary; `cand_cov` joins the table beside
+  `cov`. Scored in `--retrieval-only` too, which needs **no API key and no Gemini spend**.
+- **`candidate_pages` / `reranked_pages` per row** — `gold_rank`, `rerank_hit` and both
+  coverages are pure functions of (pages, gold), so a label change becomes re-scorable
+  **offline** instead of costing a judged re-run. It paid for itself inside this pass: the
+  sweep's effect on every retrieval metric was computed from the stored report before the
+  re-run, and the re-run then reproduced those numbers exactly (`candidate_coverage_avg`
+  0.700 predicted, 0.700 measured; recall@1 0.7397 predicted, 0.7397 measured).
+- **Gold-label sweep** — all 20 cross-document rows, 11 gained pages, plus the stronger
+  `["450%", "6 identical"]` that `5b688e5` deferred here.
+
+**Finding 1: the gold-label gap was mostly a myth.** The sweep moved coverage on **one
+row**. The pinned figure was a lower bound by 0.025, not by the wide margin the note in
+`ENHANCEMENTS.md` feared. `docvqa.pdf` p.3 ("The DocVQA comprises 50, 000 questions") is
+real and now labelled; the rest of the suspected gap is not there. Recorded because the
+instrument worry that motivated the sweep was largely unfounded, which is worth knowing
+before trusting the next such worry. The sweep also found a trap: `pdftotext` matches
+**running headers**, and "OCR-free Document Understanding Transformer" is `donut.pdf`'s
+title on every odd page. Counting page furniture would have made half that document gold
+and turned document-level coverage into a tautology — only prose that states the fact counts.
+
+**Finding 2: retrieval is the ceiling, not rerank — and `RERANK_K` never could have been.**
+**11 of the 12 coverage misses are retrieval-side.** The reranker preserved coverage on
+every row where retrieval offered both documents, losing exactly one. So
+`candidate_coverage_avg` is a hard ceiling on `gold_coverage_avg`, and at 0.675 vs 0.700
+coverage already sits at **96% of what retrieval offers**. This retroactively explains why
+the `RERANK_K` decision's pre-registered metric did not fire: no value of `RERANK_K` could
+have moved it.
+
+**Finding 3: the mechanism is monopolisation, not ranking.** Seven misses are the second
+document being *entirely absent* from the top-10, and on three rows the top-10 is **ten
+pages of a single PDF** — `colpali.pdf` ×10 shuts out `paligemma.pdf`, `albert.pdf` ×10
+shuts out `bert.pdf`, `rag.pdf` ×10 shuts out `dpr.pdf` — with a fourth at 9 of 10.
+ColQwen2's MaxSim on a two-part query is dominated by whichever document matches more
+query tokens, and it takes every slot.
+
+**The probe that scopes the fix** (free, deterministic, `RETRIEVE_K=50 --retrieval-only`):
+for **6 of the 7** shut-out documents the gold page sits at global rank 11–41 but at rank
+**1–4 among its own document's pages** — beir 11/#1, paligemma 15/#1, siglip 15/#2, bert
+16/#3, dpr 20/#4, dpr 41/#4. A **per-document cap of 4** on the 10-slot slate recovers six
+of seven. Only `xdoc-splade-vocab-dpr-dense`'s `dpr.pdf` page is outside the top-50
+entirely and would need query decomposition. That is the next pass, and it is now scoped
+on measurement rather than on a hypothesis.
+
+**Audit of the flipped rows** (the standing rule earning its keep):
+- `gold_rank` improved on 2, regressed on 0 — exactly the two rows the offline re-score
+  predicted. `gold_doc_coverage` improved on 1, regressed on 0.
+- `xdoc-e5-pairs-beir-datasets` lost substring **and** the judge — the model answered "19
+  information retrieval datasets" where it had said 18. Its labels did not change and
+  coverage is still 0.5, so this is **the parametric-memory failure recurring**, not an
+  instrument artifact. The row is unstable precisely because it is ungrounded.
+- `xdoc-rag-generator-dpr-dim` lost its citation by *declining to cite at all* rather than
+  by citing wrongly — arguably better behaviour, scored as a regression.
+- `attn-posenc-geometric-progression` lost the judge because the answer step emitted
+  **Zalgo text** — `10000 · 2` followed by a combining-character dump. Rare model
+  degeneration, and worth noting that `substring_match` scored it **True** on the intact
+  prefix while the judge caught it. The judge is the backstop for garbage output.
+- `sales-q2-revenue` flipped to pass: the documented noise-floor row.
+
+**Baseline:** `eval/reports/baseline_swept.json` (83 questions, `RERANK_K=3`),
+`degradation` all zeros.
+
+| metric | k=3 baseline | this baseline |
+| --- | --- | --- |
+| recall@1 / recall@3 | 0.726 / 0.8767 | 0.7397 / 0.9041 |
+| recall@10 / rerank_recall | 0.9863 / 0.9726 | 0.9863 / 0.9863 |
+| citation_accuracy | 0.9452 | 0.9452 |
+| substring_accuracy | 0.9577 | 0.9444 |
+| judge_accuracy | 0.9315 | 0.9178 |
+| gold_coverage_avg | 0.65 | 0.675 |
+| **candidate_coverage_avg** | n/a | **0.70** *(the ceiling)* |
+| confidence_separation | 0.0247 | 0.0226 |
+
+Retrieval metrics moved because the sweep added gold pages; the answer-side metrics moved
+within the documented run-to-run variance, audited row by row above.
+
+**Verify:** `PYTHONPATH=. uv run python eval/run_eval.py --judge --gate recall@1:0.68
+--gate recall@3:0.86 --gate recall@10:0.94 --gate rerank_recall:0.94 --gate
+citation_accuracy:0.90 --gate substring_accuracy:0.90 --gate abstention_accuracy:0.90
+--gate gold_coverage_avg:0.52 --gate candidate_coverage_avg:0.65 --gate
+judge_accuracy:0.87` → exit 0 at baseline. Most thresholds leave ~3 questions of slack
+(one question is worth 0.0137 on the answerable denominators, 0.05 on the two coverages,
+0.1 on abstention). **`candidate_coverage_avg` is deliberately the tightest gate at one
+question of slack**: it is pure retrieval, measured identical across three runs here, so it
+needs no allowance for LLM variance — and it is the metric the next pass exists to move.
