@@ -8,6 +8,7 @@ the answerable-vs-unanswerable *row shapes*, which is where a scoring bug would 
 the live numbers still come from a real eval run.
 """
 
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -35,12 +36,16 @@ def test_shipped_dataset_parses_and_holds_its_invariants():
     after the models are loaded.
     """
     rows = load_dataset(DEFAULT_DATASET.read_text().splitlines())
-    assert len(rows) >= 69
+    assert len(rows) >= 83
 
     negatives = [r for r in rows if r["unanswerable"]]
     cross_doc = [r for r in rows if len({g["pdf"] for g in r["gold"]}) > 1]
     assert len(negatives) >= 10, "no abstention rows left - hallucination rate goes unmeasured"
-    assert len(cross_doc) >= 6, "no cross-document rows left - RERANK_K goes unpressured"
+    # 20, not 6: gold_coverage_avg is the only metric with real headroom, and at n=6 one
+    # question moved it 0.083 - wider than the run-to-run variance measured on identical
+    # code. Trimming this slice back doesn't just lose rows, it makes the metric unable
+    # to adjudicate the RERANK_K question it exists for.
+    assert len(cross_doc) >= 20, "cross-document slice too small to resolve gold_coverage_avg"
 
     assert all("unanswerable" in r["tags"] for r in negatives)
 
@@ -270,6 +275,151 @@ def test_parse_gates_rejects_non_finite_thresholds(spec):
     """
     with pytest.raises(ValueError, match="finite"):
         parse_gates([spec], "recall@10", None)
+
+
+# --- the degraded-run guard ---
+
+def _scored_row(row_id="q1", degraded=0, judge=..., unanswerable=False):
+    """One run_full output row with a given per-row degraded-call count."""
+    row = {"id": row_id, "tags": [], "meta": {"degraded_calls": degraded, "gemini_calls": 2}}
+    if unanswerable:
+        row["abstention_correct"] = True
+    elif judge is not ...:
+        row["judge"] = judge
+    return row
+
+
+def test_degradation_summary_of_a_clean_run_is_all_zeros():
+    """A healthy run records zeros - positive evidence the guard ran at all."""
+    rows = [_scored_row("q1"), _scored_row("q2")]
+    assert run_eval.degradation_summary(rows, use_judge=False) == {
+        "degraded_calls": 0, "rows_with_degraded": 0, "judge_na": 0, "degraded_row_frac": 0.0,
+    }
+
+
+def test_degradation_summary_counts_calls_and_rows_separately():
+    """Two failures on one row is 2 calls but 1 affected row - the fraction uses rows."""
+    rows = [_scored_row("q1", degraded=2), _scored_row("q2"), _scored_row("q3"), _scored_row("q4")]
+    out = run_eval.degradation_summary(rows, use_judge=False)
+    assert out["degraded_calls"] == 2
+    assert out["rows_with_degraded"] == 1
+    assert out["degraded_row_frac"] == 0.25
+
+
+def test_degradation_summary_counts_judge_na_as_degradation():
+    """A None judge verdict IS a failed judge call - no separate counter needed."""
+    rows = [_scored_row("q1", judge=None), _scored_row("q2", judge={"correct": True, "score": 5})]
+    out = run_eval.degradation_summary(rows, use_judge=True)
+    assert out["judge_na"] == 1
+    assert out["rows_with_degraded"] == 1        # the judge-N/A row counts as affected
+
+
+def test_degradation_summary_ignores_judge_when_not_requested():
+    """Without --judge every row is legitimately judge-less; that isn't degradation."""
+    rows = [_scored_row("q1"), _scored_row("q2")]
+    assert run_eval.degradation_summary(rows, use_judge=False)["judge_na"] == 0
+
+
+def test_degradation_summary_skips_the_judge_on_unanswerable_rows():
+    """run_full deliberately never judges a negative row, so its absence isn't a failure."""
+    rows = [_scored_row("n1", unanswerable=True), _scored_row("q1", judge={"correct": True})]
+    assert run_eval.degradation_summary(rows, use_judge=True)["judge_na"] == 0
+
+
+def test_degradation_summary_handles_rows_without_meta():
+    """Retrieval-only rows carry no meta and touch no Gemini - structurally zero."""
+    rows = [{"id": "q1", "tags": [], "gold_rank": 1}, {"id": "n1", "tags": [], "unanswerable": True}]
+    assert run_eval.degradation_summary(rows, use_judge=False)["degraded_calls"] == 0
+
+
+def test_degradation_summary_of_an_empty_run_does_not_divide_by_zero():
+    """No rows means no fraction to compute, not a ZeroDivisionError."""
+    assert run_eval.degradation_summary([], use_judge=False)["degraded_row_frac"] == 0.0
+
+
+@pytest.mark.parametrize(
+    "frac,limit,expected",
+    [(0.0, 0.02, False), (0.02, 0.02, False), (0.021, 0.02, True), (1.0, 0.02, True)],
+)
+def test_degradation_breached_is_strictly_above_the_limit(frac, limit, expected):
+    """At the limit is tolerated; above it is not. A run of all-degraded rows always trips."""
+    assert run_eval.degradation_breached({"degraded_row_frac": frac}, limit) is expected
+
+
+def test_degradation_breach_is_the_outage_that_flattered_abstention():
+    """The regression this guard exists for.
+
+    A full run against depleted quota degrades every answer to a not-found citation.
+    `abstention_correct` is `not citation["found"]`, so every negative row scores
+    *correct* and abstention_accuracy reads 1.0 - the most dangerous number in the
+    report to falsely peg. The row-level counts are what make it visible.
+    """
+    rows = [_scored_row(f"q{i}", degraded=1) for i in range(10)]
+    out = run_eval.degradation_summary(rows, use_judge=False)
+    assert out["degraded_row_frac"] == 1.0
+    assert run_eval.degradation_breached(out, 0.02) is True
+
+
+def _main_with_rows(monkeypatch, tmp_path, rows, argv=()):
+    """Drive run_eval.main() end-to-end over canned rows, stubbing every live seam."""
+    dataset = tmp_path / "d.jsonl"
+    dataset.write_text(
+        '{"id": "q1", "question": "q", "gold": [{"pdf": "a.pdf", "page": 1}]}\n'
+    )
+    monkeypatch.setattr(run_eval, "ping", lambda: None)
+    monkeypatch.setattr(run_eval, "check_corpus", lambda d: None)
+    monkeypatch.setattr(run_eval, "close_client", lambda: None)
+    monkeypatch.setattr(run_eval.config, "validate", lambda: None)
+    monkeypatch.setattr(run_eval, "run_full", lambda d, j: rows)
+    monkeypatch.setattr(run_eval, "DEFAULT_REPORT_DIR", tmp_path / "reports")
+    code = run_eval.main(["--dataset", str(dataset), *argv])
+    written = sorted((tmp_path / "reports").glob("*.json"))
+    return code, written
+
+
+def test_main_refuses_to_pin_a_degraded_run(monkeypatch, tmp_path):
+    """The whole point: an outage exits 2 and writes a report nobody can mistake for a baseline."""
+    rows = [_scored_row(f"q{i}", degraded=1) for i in range(5)]
+    code, written = _main_with_rows(monkeypatch, tmp_path, rows, ["--gate", "recall@1:0.99"])
+
+    assert code == 2                                  # not 0, and not the gate's 1
+    (report_path,) = written
+    assert report_path.name.startswith("degraded_")   # never eval_*, which is what gets pinned
+    report = json.loads(report_path.read_text())
+    assert report["degraded_run"] is True
+    assert report["degradation"]["rows_with_degraded"] == 5
+
+
+def test_main_writes_a_normal_report_when_nothing_degraded(monkeypatch, tmp_path):
+    """A clean run is unaffected, and records zeros as evidence the guard ran."""
+    code, written = _main_with_rows(monkeypatch, tmp_path, [_scored_row("q1")])
+
+    assert code == 0
+    (report_path,) = written
+    assert report_path.name.startswith("eval_")
+    report = json.loads(report_path.read_text())
+    assert report["degraded_run"] is False
+    assert report["degradation"]["degraded_calls"] == 0
+
+
+def test_main_tolerates_a_single_transient_failure(monkeypatch, tmp_path):
+    """One degraded row in 69 is under the default limit - a 429 shouldn't void a run."""
+    rows = [_scored_row("q0", degraded=1)] + [_scored_row(f"q{i}") for i in range(1, 69)]
+    code, written = _main_with_rows(monkeypatch, tmp_path, rows)
+
+    assert code == 0
+    assert written[0].name.startswith("eval_")
+
+
+def test_main_honors_an_explicit_output_path_even_when_degraded(monkeypatch, tmp_path):
+    """--output is obeyed rather than silently renamed; the stamp still marks the run."""
+    out = tmp_path / "reports" / "mine.json"
+    out.parent.mkdir(parents=True)
+    rows = [_scored_row(f"q{i}", degraded=1) for i in range(5)]
+    code, _ = _main_with_rows(monkeypatch, tmp_path, rows, ["--output", str(out)])
+
+    assert code == 2
+    assert json.loads(out.read_text())["degraded_run"] is True
 
 
 def test_config_snapshot_stores_a_repo_relative_dataset_path():

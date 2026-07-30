@@ -10,8 +10,10 @@ changing DPI, RERANK_K, or a model to *prove* no regression.
     PYTHONPATH=. uv run python eval/run_eval.py --judge            # + LLM-as-judge
     PYTHONPATH=. uv run python eval/run_eval.py --fail-under-recall 0.9
 
-Exit codes: 0 = ran and report written; 1 = --fail-under-recall breached;
-2 = setup error (bad dataset, corpus not ingested, Qdrant down, missing key).
+Exit codes: 0 = ran and report written; 1 = a --gate / --fail-under-recall threshold
+breached; 2 = setup error (bad dataset, corpus not ingested, Qdrant down, missing key)
+*or* a degraded run - too many Gemini calls fell through to graceful degradation for
+the numbers to mean anything (see --max-degraded-frac and `degradation_summary`).
 """
 
 import argparse
@@ -90,7 +92,8 @@ def check_corpus(dataset: list[dict]) -> None:
 def judge_answer(question: str, answer: str, expected: list[str] | None, gold: list[dict]) -> dict | None:
     """Score one answer with the judge model; None (N/A) on any failure."""
     reference = "; ".join(expected or []) or "none given - judge only faithfulness to the question"
-    reference += f" (read from {', '.join(f'{g['pdf']} p.{g['page']}' for g in gold)})"
+    gold_sources = ', '.join(f"{g['pdf']} p.{g['page']}" for g in gold)
+    reference += f" (read from {gold_sources})"
     try:
         response = generate(
             model=EVAL_JUDGE_MODEL,
@@ -235,6 +238,53 @@ def _config_snapshot(mode: str, dataset_path: str, use_judge: bool) -> dict:
     }
 
 
+def degradation_summary(rows: list[dict], use_judge: bool) -> dict:
+    """Count the Gemini calls in this run that fell through to graceful degradation.
+
+    Two sources, both already recorded: `meta.degraded_calls` (threaded up from
+    `request_context.record_degraded` in the rerank/answer nodes) and, when judging, a
+    `judge` of None - `judge_answer` returns None only on failure, so a missing verdict
+    *is* a failed call and needs no separate counter. Unanswerable rows are never
+    judged by design, so their absent verdict is not degradation.
+
+    `degraded_calls` counts calls, `rows_with_degraded` counts questions: one question
+    can fail twice, and it is the share of *questions* that says whether the run is
+    still measuring anything. Retrieval-only rows carry no `meta` and touch no Gemini,
+    so they contribute zero without a special case.
+
+    Kept pure so the guard is testable without an API key (tests/test_run_eval.py).
+    """
+    degraded_calls = 0
+    judge_na = 0
+    affected = 0
+    for row in rows:
+        row_calls = (row.get("meta") or {}).get("degraded_calls", 0) or 0
+        row_judge_na = (
+            use_judge
+            and not row.get("unanswerable")
+            and "abstention_correct" not in row
+            and row.get("judge", ...) is None
+        )
+        degraded_calls += row_calls
+        judge_na += int(row_judge_na)
+        affected += int(bool(row_calls) or row_judge_na)
+    return {
+        "degraded_calls": degraded_calls,
+        "rows_with_degraded": affected,
+        "judge_na": judge_na,
+        "degraded_row_frac": round(affected / len(rows), 4) if rows else 0.0,
+    }
+
+
+def degradation_breached(degradation: dict, limit: float) -> bool:
+    """True when too many rows degraded for the report to be worth pinning.
+
+    Strictly above the limit, so the default tolerates the odd transient 429 that
+    outlived its retries while still catching a real outage.
+    """
+    return degradation["degraded_row_frac"] > limit
+
+
 def gate_status(summary: dict, metric: str, threshold: float | None) -> tuple[bool, object]:
     """Evaluate one gate against a chosen summary metric.
 
@@ -303,6 +353,9 @@ def main(argv: list[str] | None = None) -> int:
                         help="summary metric the --fail-under-recall threshold applies to, "
                              "e.g. recall@1, recall@3, citation_accuracy "
                              f"(default recall@{RETRIEVE_K})")
+    parser.add_argument("--max-degraded-frac", type=float, default=0.02, metavar="FRAC",
+                        help="exit 2 without a pinnable report when more than this share of "
+                             "rows had a Gemini call degrade (default 0.02, ~1-2 rows in 83)")
     args = parser.parse_args(argv)
     if args.retrieval_only and args.judge:
         parser.error("--judge needs the full pipeline; drop --retrieval-only")
@@ -331,21 +384,46 @@ def main(argv: list[str] | None = None) -> int:
     ks = tuple(sorted({1, 3, RETRIEVE_K}))
     summary = aggregate(rows, ks=ks)
     per_tag = summary.pop("per_tag")
+    degradation = degradation_summary(rows, args.judge)
+    degraded_run = degradation_breached(degradation, args.max_degraded_frac)
     report = {
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "config": _config_snapshot(mode, args.dataset, args.judge),
+        # Always present, zeros and all: a report that doesn't say how much of the run
+        # reached the model can't be told apart from one written before this existed.
+        "degradation": degradation,
+        "degraded_run": degraded_run,
         "summary": summary,
         "per_tag": per_tag,
         "rows": rows,
     }
+    # A degraded run is written but deliberately hard to mistake for a baseline: a
+    # depleted quota degrades every answer to a not-found citation, which scores
+    # abstention_accuracy 1.0 while citation and substring read 0.0. The stamp and the
+    # filename are the difference between an artifact for diagnosis and a pinnable one.
+    stem = "degraded" if degraded_run else "eval"
     output = Path(args.output) if args.output else (
-        DEFAULT_REPORT_DIR / f"eval_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}.json"
+        DEFAULT_REPORT_DIR / f"{stem}_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}.json"
     )
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, indent=2) + "\n")
 
     print(format_table(rows, {**summary, "per_tag": per_tag}))
     print(f"\nreport: {output}")
+
+    if degraded_run:
+        print(
+            f"DEGRADED RUN: {degradation['rows_with_degraded']}/{len(rows)} rows "
+            f"({degradation['degraded_row_frac']:.1%}) had a Gemini call degrade "
+            f"[{degradation['degraded_calls']} pipeline calls, {degradation['judge_na']} judge]. "
+            f"Above --max-degraded-frac {args.max_degraded_frac}. Do NOT pin this as a baseline; "
+            f"these numbers measure the outage, not the pipeline.",
+            file=sys.stderr,
+        )
+        # Gates are skipped, not evaluated-and-passed: thresholds applied to a run that
+        # never reached the model would report a regression that isn't one - or worse,
+        # pass, because the metrics an outage flatters are the ones gates watch.
+        return 2
 
     # Report every breached gate, not just the first: one run is expensive enough that
     # finding out about the second regression should not cost another one.

@@ -97,3 +97,47 @@ def test_stage_helpers_are_noop_outside_a_request():
     request_context.enter_stage("rerank")             # must not raise with no scope
     request_context.exit_stage("rerank", 1.0)
     assert request_context.stage_breakdown() == []
+
+
+def test_record_degraded_folds_into_request_and_stage():
+    """A degraded call counts in its stage bucket and in the request aggregate."""
+    scope = request_context.begin_request()
+    try:
+        request_context.enter_stage("rerank")
+        request_context.record_degraded()
+        request_context.exit_stage("rerank", 5.0)
+        request_context.enter_stage("answer")
+        request_context.record_usage(prompt=10, output=5, total=15, cost=0.0)
+        request_context.exit_stage("answer", 6.0)
+        stages = request_context.stage_breakdown()
+        totals = request_context.usage_totals()
+    finally:
+        request_context.end_request(scope)
+
+    rerank, answer = stages
+    assert rerank["degraded_calls"] == 1
+    # A degraded call never reached the model, so it is NOT a gemini_call: the two
+    # counters must not double-count the same failure.
+    assert rerank["gemini_calls"] == 0
+    assert answer["degraded_calls"] == 0 and answer["gemini_calls"] == 1
+    assert totals["degraded_calls"] == 1 and totals["gemini_calls"] == 1
+
+
+def test_degraded_calls_starts_at_zero():
+    """A clean request reports zero rather than omitting the key.
+
+    The eval's degraded-run guard reads this off every row, so a healthy run must
+    produce positive evidence (0) rather than a missing field indistinguishable
+    from "the guard never ran".
+    """
+    scope = request_context.begin_request()
+    try:
+        assert request_context.usage_totals()["degraded_calls"] == 0
+    finally:
+        request_context.end_request(scope)
+
+
+def test_record_degraded_outside_request_is_noop():
+    """Degradation recorded with no active scope is dropped instead of raising."""
+    request_context.record_degraded()                 # must not raise with no scope
+    assert request_context.usage_totals() == {}

@@ -32,4 +32,11 @@ pdfs/*.pdf
 # Note `reports/*`, not `reports/`: git never descends into an excluded *directory*, so
 # the trailing-slash form would make the negation below unreachable.
 eval/reports/*
+# The current baseline is `baseline_rerank_k3.json` (83 questions, RERANK_K=3 - the
+# shipped default). The other two are superseded but kept because the write-ups cite
+# their numbers: `baseline_sharpened.json` is the same 83 questions at RERANK_K=2, and
+# doubles as arm A of the RERANK_K experiment; `baseline_desaturated.json` is the older
+# 69-question set.
+!eval/reports/baseline_rerank_k3.json
+!eval/reports/baseline_sharpened.json
 !eval/reports/baseline_desaturated.json

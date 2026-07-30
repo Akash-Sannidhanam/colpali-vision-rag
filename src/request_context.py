@@ -45,6 +45,10 @@ def _fresh_usage() -> dict:
         "total_tokens": 0,
         "est_cost_usd": 0.0,
         "gemini_calls": 0,
+        # Calls that fell through to graceful degradation (see `record_degraded`).
+        # Always present - a healthy request reports 0, which is what lets a consumer
+        # tell "nothing degraded" from "nobody was counting".
+        "degraded_calls": 0,
     }
 
 
@@ -95,6 +99,23 @@ def record_usage(*, prompt: int, output: int, total: int, cost: float) -> None:
         acc["total_tokens"] += total
         acc["est_cost_usd"] = round(acc["est_cost_usd"] + cost, 6)
         acc["gemini_calls"] += 1
+
+
+def record_degraded() -> None:
+    """Count one Gemini call that fell through to graceful degradation.
+
+    Called from the `except` branches in `reranker.rerank` and `answerer.answer` - the
+    two places the no-raise contract is honored - so a run can tell a genuinely
+    not-found answer from one that never reached the model. Deliberately separate from
+    `gemini_calls`: a degraded call recorded no usage, so counting it as both would
+    double-count the same failure.
+
+    Folds into the request accumulator and the active stage bucket, and is a no-op
+    outside a request, exactly like `record_usage`.
+    """
+    for acc in (_usage.get(), _current_stage.get()):
+        if acc is not None:
+            acc["degraded_calls"] += 1
 
 
 def usage_totals() -> dict:

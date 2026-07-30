@@ -111,6 +111,33 @@ def test_rerank_routes_through_shared_client_with_rerank_model(monkeypatch):
     assert calls[0]["response_schema"] is reranker.Rerank
 
 
+def test_rerank_failure_records_degradation_and_falls_back(monkeypatch):
+    """A failed rerank counts itself before silently serving Qdrant order.
+
+    The fallback is invisible in the result - it looks like a normal top-k - so the
+    count is the only way a run can tell it happened.
+    """
+    from src import request_context
+
+    def fake_generate(**kwargs):
+        """A stubbed Gemini call that fails the way a depleted quota does."""
+        raise RuntimeError("429")
+
+    monkeypatch.setattr(reranker, "_candidate_part", lambda p: None)
+    monkeypatch.setattr(reranker, "generate", fake_generate)
+
+    pages = [_page(1), _page(2), _page(3)]
+    scope = request_context.begin_request()
+    try:
+        out = rerank("q", pages, k=2)
+        totals = request_context.usage_totals()
+    finally:
+        request_context.end_request(scope)
+
+    assert out == [pages[0], pages[1]]                       # pure Qdrant top-k
+    assert totals["degraded_calls"] == 1
+
+
 def test_rerank_adaptive_keeps_only_the_relevant_pages(monkeypatch):
     """With RERANK_ADAPTIVE on, a single relevant page is returned alone - no top-up to
     the cap, so the answer step isn't handed a distracting extra."""
