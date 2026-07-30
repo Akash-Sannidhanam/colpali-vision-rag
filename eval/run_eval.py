@@ -114,6 +114,18 @@ def judge_answer(question: str, answer: str, expected: list[str] | None, gold: l
         return None
 
 
+def _pages_of(hits: list[dict]) -> list[dict]:
+    """The `[{pdf, page}, ...]` identity of a hit list, in order, without the payload.
+
+    Stored per row so a later change to the gold labels is re-scorable **offline**:
+    `gold_rank`, `rerank_hit`, `gold_doc_coverage` and `candidate_doc_coverage` are all
+    pure functions of (pages, gold), and `cited` / `answer` are already kept. Without
+    these two lists, re-labelling one question costs a full ~25-minute judged re-run to
+    learn what the pipeline had already done. Costs ~45 KB on a 192 KB report.
+    """
+    return [{"pdf": h["pdf"], "page": h["page_number"]} for h in hits]
+
+
 def run_retrieval_only(dataset: list[dict]) -> list[dict]:
     """Embed + search per question - no Gemini modules touched, no API key needed."""
     from src.embedder import embed_query
@@ -134,7 +146,15 @@ def run_retrieval_only(dataset: list[dict]) -> list[dict]:
         # The retrieval top-1 makes a recall@1 miss auditable: it shows *which* page
         # out-ranked the gold page (kept in the report row, not the summary table).
         top1 = {"pdf": hits[0]["pdf"], "page": hits[0]["page_number"]} if hits else None
-        row = {"id": item["id"], "tags": item["tags"], "gold_rank": rank, "top1": top1}
+        row = {
+            "id": item["id"], "tags": item["tags"], "gold_rank": rank, "top1": top1,
+            # Scored here too, not only in run_full, because retrieval is the half of
+            # the attribution that costs nothing: this mode needs no API key and no
+            # Gemini spend, and retrieval is deterministic, so the number carries none
+            # of the rerank/answer run-to-run variance the full mode does.
+            "candidate_doc_coverage": gold_doc_coverage(hits, item["gold"]),
+            "candidate_pages": _pages_of(hits),
+        }
         rows.append(row)
         log.info("eval question scored",
                  extra={"eval_id": item["id"], "gold_rank": rank, "top1": top1})
@@ -175,12 +195,20 @@ def run_full(dataset: list[dict], use_judge: bool) -> list[dict]:
                  "page": reranked[source_page - 1]["page_number"]}
                 if 1 <= source_page <= len(reranked) else None
             )
+            candidates = result.get("candidates", [])
             row |= {
-                "gold_rank": gold_rank(result.get("candidates", []), item["gold"]),
+                "gold_rank": gold_rank(candidates, item["gold"]),
                 "rerank_hit": gold_rank(reranked, item["gold"]) is not None,
                 "citation_correct": citation_correct(citation, reranked, item["gold"]),
+                # The attribution pair. Scored on the same gold with the same function,
+                # one stage apart: candidates 1.0 with coverage <1.0 means the second
+                # document was in the top-k and the reranker dropped it; both <1.0 means
+                # retrieval never offered it and no rerank change can recover the row.
+                "candidate_doc_coverage": gold_doc_coverage(candidates, item["gold"]),
                 "gold_doc_coverage": gold_doc_coverage(reranked, item["gold"]),
                 "cited": cited,  # which page was actually cited - makes gold-label gaps auditable
+                "candidate_pages": _pages_of(candidates),
+                "reranked_pages": _pages_of(reranked),
                 "substring_match": substring_match(
                     answer, item["answer_contains"], item["answer_contains_all"]
                 ),
