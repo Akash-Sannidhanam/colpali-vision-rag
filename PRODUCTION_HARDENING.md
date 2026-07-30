@@ -513,17 +513,77 @@ BEIR as "19 datasets" (18). A plausible wrong number sourced from memory is exac
 failure a visual-citation system exists to prevent, and nothing before this pass could
 see it.
 
-**Baseline:** `eval/reports/baseline_sharpened.json`, `degradation` all zeros.
+**Baseline for this section:** `eval/reports/baseline_sharpened.json` (83 questions at
+`RERANK_K=2`), `degradation` all zeros. Superseded as the *current* baseline by the
+`RERANK_K` decision below, but kept: it is arm A of that experiment and the numbers above
+are its numbers. The old documented gate of `recall@3:0.88` is retired — the value is now
+0.8767, inside its own noise floor.
+
+### The RERANK_K decision ✅ ADOPTED (k=2 → 3)
+
+Three arms over the 83 questions, judge off for B and C (coverage, citation and substring
+do not need it, and leaving it out keeps judge variance out of the read). All three ran
+with `degradation` at zero.
+
+| | A — k=2 | B — k=3 fixed | C — k=3 adaptive |
+| --- | --- | --- | --- |
+| `gold_coverage_avg` | 0.625 | 0.625 · **0 flips** | 0.65 · +1, −0 |
+| substring | 0.9014 | 0.9577 · +4, −0 | 0.9437 · +3, −0 |
+| citation | 0.9178 | 0.9315 · +1, −0 | 0.9178 · 0 flips |
+| rerank_recall | 0.9726 | 0.9726 | 0.9863 |
+| cost / 83 q | $0.3740 | $0.4032 (+7.8%) | $0.3930 (+5.1%) |
+| median latency | 13444 ms | 13740 ms (+2.2%) | 14309 ms (+6.4%) |
+
+**Zero regressions in all six paired comparisons** — 0 of 144 row comparisons moved
+backwards. Run-to-run variance produces flips in both directions, so the direction is
+real even from one run per arm. `RERANK_K` defaults to 3.
+
+**The pre-registered criterion did not fire, and that is the more useful finding.**
+`gold_coverage_avg` — the metric this whole pass existed to make decisive — moved by
+nothing on B. The reason is an instrument gap, not an absent effect: **page-level gold
+lists are narrower than the set of pages that state each fact.** Arm B fixed the DocVQA
+row by reading `docvqa.pdf` p.3 ("The DocVQA comprises 50,000 questions"), which is not
+in that row's gold; `beir.pdf` states its 18 datasets on p.7 and p.9 as well as the
+labelled p.1–3. Coverage scored both wins as nothing. The pinned `gold_coverage_avg` is
+therefore a **lower bound**, and closing the gap is filed in `ENHANCEMENTS.md`.
+
+**Auditing the four substring flips leaves two clean wins, not four** — the audit rule
+earning its keep again:
+
+- `xdoc-docvqa-scale-layoutlm-pretraining` — real: "6 million" → "11 million".
+- `xdoc-e5-pairs-beir-datasets` — real: read 18 off a BEIR page instead of answering
+  "19" from memory.
+- `xdoc-vit-base-vs-bert-base-params` — **a hedge, not a fix**: "either 108M (Page 2) or
+  110M (Page 3)". Substring passes on "110M" while the answer got vaguer.
+- `xdoc-colbert-v1-v2-compression` — **phrasing luck**: substantively the same answer,
+  which happened to write "residual compression" this time and match a strict label.
+
+So the genuine gain is two answer fixes plus one citation fix
+(`xdoc-rag-generator-dpr-dim`, `None` → `rag.pdf` p.3) for +7.8% cost — a weaker case
+than the summary row implies, and adopted on substring/citation rather than the metric
+that was pre-registered. Recorded that way deliberately.
+
+**Arm C rejected, narrowly.** `RERANK_ADAPTIVE=true` with `RERANK_K=3` costs no new code
+(`_valid_order(top_up=False)` already keeps 1..k), was cheaper, and was the only arm to
+move coverage or `rerank_recall`. It gave up one substring win and the citation fix, and
+its median latency was *worse* than fixed k=3 — the cost saving was 2.7 points. Kept as
+a knob for a corpus where the third page distracts more than it helps.
+
+**Re-pinned at k=3**, an independent `--judge` run that reproduced the arm and moved a
+little further: citation 0.9178 → **0.9452**, substring 0.9014 → **0.9577**, judge 0.9041
+→ **0.9315**, `gold_coverage_avg` 0.625 → **0.65**, and average latency *down* 15859 →
+14786 ms. Retrieval metrics are byte-identical, as they must be — `RERANK_K` is applied
+after retrieval. Paired against the k=2 baseline: **0 regressions**, 4 substring and 2
+citation improvements. `xdoc-docvqa-scale-layoutlm-pretraining` is a clean sweep, fixing
+coverage (0.5 → 1.0), citation and substring at once. The gap between this run's citation
+figure and arm B's (0.9452 vs 0.9315) on identical config is the documented run-to-run
+variance — both beat k=2, which is the claim.
+
+**Baseline:** `eval/reports/baseline_rerank_k3.json`, `degradation` all zeros.
 **Verify:** `PYTHONPATH=. uv run python eval/run_eval.py --judge --gate recall@1:0.68
 --gate recall@3:0.83 --gate recall@10:0.95 --gate rerank_recall:0.93 --gate
-citation_accuracy:0.86 --gate substring_accuracy:0.85 --gate abstention_accuracy:0.90
---gate gold_coverage_avg:0.55 --gate judge_accuracy:0.85` → exit 0 at baseline. Each
-threshold leaves roughly three questions of slack: one question is worth 0.0137 on the
-recall denominators, 0.0141 on citation, and 0.05 on coverage. The old documented gate
-of `recall@3:0.88` is retired — the new value is 0.8767, inside its own noise.
-
-**Next:** run `RERANK_K=3` and `RERANK_K=3 RERANK_ADAPTIVE=true` as arms B and C and diff
-them paired on `gold_doc_coverage`. Judge is off for the arms — coverage, citation and
-substring do not need it, and leaving it out keeps judge variance out of the read. A null
-result is a legitimate outcome and gets recorded the way the adaptive-rerank rejection
-was.
+citation_accuracy:0.89 --gate substring_accuracy:0.90 --gate abstention_accuracy:0.90
+--gate gold_coverage_avg:0.55 --gate judge_accuracy:0.87` → exit 0 at baseline, exit 1 on
+a breach, exit 2 if the run itself degraded. Each threshold leaves roughly three questions
+of slack: one question is worth 0.0137 on the recall denominators, 0.0141 on citation and
+substring, and 0.05 on coverage.

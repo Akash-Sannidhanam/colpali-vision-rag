@@ -48,7 +48,13 @@ VECTOR_DIM = 128 # ColQwen emits one 128-d vector per patch
 # edit that has to be reverted before the comparison run. load_dotenv() does not
 # override an already-set variable, so the prefix wins over .env.
 RETRIEVE_K = int(os.getenv("RETRIEVE_K", "10"))  # candidate pages pulled from Qdrant per query
-RERANK_K = int(os.getenv("RERANK_K", "2"))       # pages kept after the Gemini rerank pass
+# 3, not 2: at 2 the reranker spent both slots inside one document on cross-document
+# questions, and the answer step filled the missing half from parametric memory - with
+# numbers that were plausible and *wrong* (BERT-base "108M" for 110M, BEIR "19 datasets"
+# for 18). Measured over 83 questions: 3 genuine answer/citation fixes, zero regressions
+# across 144 paired row comparisons, for +7.8% cost and flat latency. See the
+# instrument-sharpening pass in PRODUCTION_HARDENING.md.
+RERANK_K = int(os.getenv("RERANK_K", "3"))       # pages kept after the Gemini rerank pass
                                                  # (a cap when RERANK_ADAPTIVE)
 # When true, rerank keeps a *variable* number of pages (1..RERANK_K) - only the
 # pages the model judged relevant, instead of always topping up to RERANK_K. Trades

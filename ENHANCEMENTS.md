@@ -86,18 +86,26 @@ the reader) is complete, tested, and shipped. Captured here so they are not lost
   the unchanged questions, so corpus size was the wrong lever — new *question types*
   were the cheap one; and `gold_coverage_avg` (0.667) catches answers that are correct
   but ungrounded in the retrieved pages, which no other metric here can see.
-- **Raise `RERANK_K` for multi-document questions.** _(next up; the instrument is now
-  sharp enough to decide it.)_ `RERANK_K=2` spends both slots inside one document, and
-  the answer step then fills the missing half from parametric knowledge rather than a
-  retrieved page. A fixed `RERANK_K=3` costs a full-resolution image per answer call; an
-  adaptive "widen only when the candidate set spans documents" rule would be cheaper, and
-  `RERANK_ADAPTIVE=true` with `RERANK_K=3` approximates it with no new code (cap of 3,
-  model keeps 1–3). The cross-document slice is now 20 questions rather than 6, so
-  `gold_coverage_avg` resolves 0.05 per question instead of 0.083, and
-  `eval/diff_reports.py` compares the arms **paired per question** — which is what makes
-  a handful of flips readable where an averaged delta of 0.08 was not. Both `RERANK_K`
-  and `RETRIEVE_K` are env-overridable, so an arm is a command-line prefix and needs no
-  re-ingest.
+- **Raise `RERANK_K` for multi-document questions.** _(✅ done — `RERANK_K` defaults to 3.
+  See the RERANK_K decision in PRODUCTION_HARDENING.md.)_ Three arms over 83 questions:
+  fixed k=3 gave two genuine answer fixes plus a citation fix with **zero regressions
+  across 144 paired row comparisons**, for +7.8% cost and flat median latency. Adaptive
+  (`RERANK_ADAPTIVE=true`, cap 3) was cheaper and the only arm to move `rerank_recall`,
+  but gave up the citation fix and had *worse* median latency; kept as a knob, not the
+  default. The failure being fixed was sharper than expected — starved of the second
+  document the model did not decline, it answered from memory with numbers that were
+  plausible and wrong ("108M" for 110M, "19 datasets" for 18).
+
+- **Gold labels are page-level and under-complete, so `gold_doc_coverage` under-counts.**
+  _(new, and it cost the RERANK_K decision its pre-registered metric.)_ Coverage did not
+  move at all on the winning arm, because the extra rerank slot pulled in pages that
+  state the fact but are not in the row's gold list — `docvqa.pdf` p.3 says "The DocVQA
+  comprises 50,000 questions" and is unlabelled; `beir.pdf` states its 18 datasets on p.7
+  and p.9 beyond the labelled p.1–3. Every pinned `gold_coverage_avg` is a lower bound
+  until the 20 cross-document rows are swept for the same gap. The sweep is mechanical —
+  `scripts/find_in_pdfs.py` with the fact's regex, then add every page that states it —
+  but it invalidates the pinned baseline, so it wants its own pass with a re-run. Worth
+  doing before `gold_doc_coverage` is trusted to adjudicate anything else.
 - **The confidence signals carry almost no information.** _(new, measured.)_ The model
   self-reported `high` on all 59 answerable questions — zero variance — and the
   deterministic retrieval confidence separates correct from wrong citations by only
