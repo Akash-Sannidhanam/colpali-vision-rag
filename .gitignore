@@ -42,3 +42,9 @@ eval/reports/*
 !eval/reports/baseline_rerank_k3.json
 !eval/reports/baseline_sharpened.json
 !eval/reports/baseline_desaturated.json
+# Arms B and C of the RERANK_K experiment, kept so the decision stays auditable at the
+# row level rather than only through the summary table in PRODUCTION_HARDENING.md - a
+# re-run cannot reproduce them (the answer step is not deterministic). Delete once the
+# gold-label sweep forces a fresh set of arms; nothing depends on them.
+!eval/reports/arm_b_k3.json
+!eval/reports/arm_c_k3_adaptive.json
