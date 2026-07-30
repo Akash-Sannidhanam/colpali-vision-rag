@@ -107,10 +107,11 @@ the reader) is complete, tested, and shipped. Captured here so they are not lost
   but it invalidates the pinned baseline, so it wants its own pass with a re-run. Worth
   doing before `gold_doc_coverage` is trusted to adjudicate anything else.
 - **The confidence signals carry almost no information.** _(new, measured.)_ The model
-  self-reported `high` on all 59 answerable questions — zero variance — and the
-  deterministic retrieval confidence separates correct from wrong citations by only
-  0.032. Both are surfaced in the UI. Either calibrate them or stop showing them as if
-  they mean something; the eval now reports `confidence_separation` to tell.
+  self-reported `high` on most of the 73 answerable questions, showing some variance
+  (high-confidence accuracy: 0.958, low-confidence: 0.0), but the deterministic
+  retrieval confidence separates correct from wrong citations by only 0.0247. Both are
+  surfaced in the UI. Either calibrate them or stop showing them as if they mean
+  something; the eval now reports `confidence_separation` to tell.
 - **Refuse to pin a baseline from a degraded run.** _(✅ done — see the
   instrument-sharpening pass in PRODUCTION_HARDENING.md.)_ Built as described below, with
   one change: the report is still written, stamped `degraded_run` and named

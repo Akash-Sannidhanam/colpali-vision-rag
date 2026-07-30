@@ -448,7 +448,7 @@ gated — on this pipeline the retrieval stage genuinely is not the bottleneck a
 and pretending otherwise would guard nothing. The obvious follow-up is raising
 `RERANK_K` for multi-document questions, which `gold_coverage_avg` now makes measurable.
 
-## Instrument-sharpening pass (follow-on) ◐ IN PROGRESS
+## Instrument-sharpening pass (follow-on) ✅ DONE
 
 **The problem.** The de-saturation pass left exactly one metric with both headroom and a
 real failure mode behind it — `gold_coverage_avg` — and it could not adjudicate the very

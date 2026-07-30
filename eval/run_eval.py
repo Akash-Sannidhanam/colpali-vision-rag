@@ -92,7 +92,8 @@ def check_corpus(dataset: list[dict]) -> None:
 def judge_answer(question: str, answer: str, expected: list[str] | None, gold: list[dict]) -> dict | None:
     """Score one answer with the judge model; None (N/A) on any failure."""
     reference = "; ".join(expected or []) or "none given - judge only faithfulness to the question"
-    reference += f" (read from {', '.join(f'{g['pdf']} p.{g['page']}' for g in gold)})"
+    gold_sources = ', '.join(f"{g['pdf']} p.{g['page']}" for g in gold)
+    reference += f" (read from {gold_sources})"
     try:
         response = generate(
             model=EVAL_JUDGE_MODEL,
@@ -354,7 +355,7 @@ def main(argv: list[str] | None = None) -> int:
                              f"(default recall@{RETRIEVE_K})")
     parser.add_argument("--max-degraded-frac", type=float, default=0.02, metavar="FRAC",
                         help="exit 2 without a pinnable report when more than this share of "
-                             "rows had a Gemini call degrade (default 0.02, ~1 row in 69)")
+                             "rows had a Gemini call degrade (default 0.02, ~1-2 rows in 83)")
     args = parser.parse_args(argv)
     if args.retrieval_only and args.judge:
         parser.error("--judge needs the full pipeline; drop --retrieval-only")
