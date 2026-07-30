@@ -44,7 +44,10 @@ eval/reports/*
 !eval/reports/baseline_desaturated.json
 # Arms B and C of the RERANK_K experiment, kept so the decision stays auditable at the
 # row level rather than only through the summary table in PRODUCTION_HARDENING.md - a
-# re-run cannot reproduce them (the answer step is not deterministic). Delete once the
-# gold-label sweep forces a fresh set of arms; nothing depends on them.
+# re-run cannot reproduce them (the answer step is not deterministic). They are scored
+# against the PRE-SWEEP gold labels and predate `candidate_pages`, so they cannot be
+# re-scored offline either: compare them only with each other and with
+# `baseline_rerank_k3.json`, never with `baseline_swept.json`. Nothing in the harness or
+# the tests reads them.
 !eval/reports/arm_b_k3.json
 !eval/reports/arm_c_k3_adaptive.json
