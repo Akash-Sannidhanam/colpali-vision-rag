@@ -58,6 +58,20 @@ def test_shipped_dataset_parses_and_holds_its_invariants():
             f"answer - use `answer_contains_all`, or drop it and let the judge score it"
         )
 
+    # ...and a single-element all-of is an any-of wearing a disguise. A two-document
+    # question needs one reference fact per document, or the label passes on half the
+    # answer - the exact failure the check above exists to prevent. Found the hard way:
+    # a review bot helpfully labelled `xdoc-colbert-vs-colpali-dim` ["128"], and since
+    # ColBERT and ColPali *both* project to 128, that scored True on an answer which
+    # explicitly declined the ColBERT half and which the judge marked wrong.
+    for r in cross_doc:
+        labels = r["answer_contains_all"]
+        assert not labels or len(labels) >= 2, (
+            f"{r['id']}: a one-element `answer_contains_all` on a cross-document row can "
+            f"be satisfied by half the answer - give one reference fact per document, or "
+            f"drop the labels and let the judge score it"
+        )
+
 
 def test_judge_answer_routes_through_client_with_judge_model(monkeypatch):
     """The judge goes through the shared client tagged with EVAL_JUDGE_MODEL and purpose=judge."""
