@@ -605,9 +605,12 @@ documented as a lower bound: page-level gold lists name fewer pages than state e
 - **`candidate_doc_coverage`** — `scoring.gold_doc_coverage` was already stage-agnostic in
   its hits argument, so the retrieval-stage twin is the same function applied to the
   untrimmed Qdrant candidates, not new scoring logic. Read as a pair: candidates 1.0 with
-  coverage <1.0 means rerank dropped a page it was offered; both <1.0 means retrieval never
-  offered it. `candidate_coverage_avg` joins the summary; `cand_cov` joins the table beside
-  `cov`. Scored in `--retrieval-only` too, which needs **no API key and no Gemini spend**.
+  coverage <1.0 means rerank dropped a page it was offered; equal coverage with both <1.0
+  means retrieval never offered it and rerank was blameless; any decrease from candidate to
+  reranked coverage is attributed to reranking (potentially alongside retrieval, not
+  retrieval alone). `candidate_coverage_avg` joins the summary; `cand_cov` joins the table
+  beside `cov`. Scored in `--retrieval-only` too, which needs **no API key and no Gemini
+  spend**.
 - **`candidate_pages` / `reranked_pages` per row** — `gold_rank`, `rerank_hit` and both
   coverages are pure functions of (pages, gold), so a label change becomes re-scorable
   **offline** instead of costing a judged re-run. It paid for itself inside this pass: the

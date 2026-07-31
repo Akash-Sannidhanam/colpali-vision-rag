@@ -202,8 +202,10 @@ def run_full(dataset: list[dict], use_judge: bool) -> list[dict]:
                 "citation_correct": citation_correct(citation, reranked, item["gold"]),
                 # The attribution pair. Scored on the same gold with the same function,
                 # one stage apart: candidates 1.0 with coverage <1.0 means the second
-                # document was in the top-k and the reranker dropped it; both <1.0 means
-                # retrieval never offered it and no rerank change can recover the row.
+                # document was in the top-k and the reranker dropped it; equal coverage
+                # with both <1.0 means retrieval never offered it and rerank was blameless;
+                # any decrease from candidate to reranked coverage is attributed to reranking
+                # (potentially alongside retrieval, not retrieval alone).
                 "candidate_doc_coverage": gold_doc_coverage(candidates, item["gold"]),
                 "gold_doc_coverage": gold_doc_coverage(reranked, item["gold"]),
                 "cited": cited,  # which page was actually cited - makes gold-label gaps auditable

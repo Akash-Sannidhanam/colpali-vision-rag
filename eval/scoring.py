@@ -156,11 +156,14 @@ def gold_doc_coverage(hits: list[dict], gold: list[dict]) -> float | None:
     candidates (`candidate_doc_coverage`). The pair is what attributes a coverage miss
     to a stage, which neither number can do alone:
 
-        candidates 1.0, reranked <1.0  -> rerank lost it; the page was on the table
-        candidates <1.0               -> retrieval never surfaced it; rerank was blameless
+        candidates 1.0, reranked <1.0     -> rerank lost it; the page was on the table
+        candidates == reranked AND <1.0   -> retrieval-only loss; rerank was blameless
+        candidates <1.0, reranked <cand   -> both stages failed (retrieval + rerank)
 
-    Before this pair existed, every 0.5 read as one undifferentiated failure and there
-    was no way to tell which stage to fix.
+    Any decrease from candidate coverage to reranked coverage must be attributed to
+    reranking (potentially alongside retrieval, not retrieval alone). Before this pair
+    existed, every 0.5 read as one undifferentiated failure and there was no way to
+    tell which stage to fix.
     """
     gold_pdfs = {g["pdf"] for g in gold}
     if len(gold_pdfs) < 2:
