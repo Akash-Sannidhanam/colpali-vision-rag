@@ -15,6 +15,7 @@ six apparent regressions on the last pass turned out to be under-labeled gold.
     PYTHONPATH=. uv run python eval/diff_reports.py BEFORE.json AFTER.json
     PYTHONPATH=. uv run python eval/diff_reports.py before.json after.json --metric citation_correct
     PYTHONPATH=. uv run python eval/diff_reports.py before.json after.json --metric judge.correct
+    PYTHONPATH=. uv run python eval/diff_reports.py before.json after.json --metric candidate_doc_coverage
 
 Stdlib only, so it runs with or without PYTHONPATH=. and needs no key, model, or Qdrant.
 
@@ -103,8 +104,9 @@ def compare(before: dict, after: dict, metric: str = DEFAULT_METRIC) -> dict:
                for r in list(b_rows.values()) + list(a_rows.values())):
         raise ValueError(
             f"no row in either report carries {metric!r} - check the name "
-            f"(row metrics include gold_doc_coverage, citation_correct, gold_rank, "
-            f"substring_match, rerank_hit, abstention_correct, judge.correct)"
+            f"(row metrics include gold_doc_coverage, candidate_doc_coverage, "
+            f"citation_correct, gold_rank, substring_match, rerank_hit, "
+            f"abstention_correct, judge.correct)"
         )
 
     flips, b_values, a_values = [], [], []

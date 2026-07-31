@@ -135,6 +135,67 @@ def test_gold_doc_coverage_needs_the_gold_page_not_just_the_document():
     assert gold_doc_coverage([_hit("a.pdf", 2), _hit("b.pdf", 1)], CROSS_GOLD) == 0.5
 
 
+# ------------------------------------------------- stage attribution (the pair)
+# The same scorer one stage apart. Neither number attributes a coverage miss alone;
+# together they say whether retrieval or rerank lost the second document.
+
+def test_coverage_pair_attributes_a_miss_to_rerank():
+    """Candidates reached both documents, the reranked set only one - rerank dropped it."""
+    candidates = [_hit("a.pdf", 2), _hit("b.pdf", 7), _hit("a.pdf", 3)]
+    reranked = [_hit("a.pdf", 2), _hit("a.pdf", 3)]
+    assert gold_doc_coverage(candidates, CROSS_GOLD) == 1.0
+    assert gold_doc_coverage(reranked, CROSS_GOLD) == 0.5
+
+
+def test_coverage_pair_attributes_a_miss_to_retrieval():
+    """b.pdf's gold page was never a candidate, so no rerank choice could recover it."""
+    candidates = [_hit("a.pdf", 2), _hit("a.pdf", 3), _hit("c.pdf", 1)]
+    reranked = [_hit("a.pdf", 2), _hit("a.pdf", 3)]
+    assert gold_doc_coverage(candidates, CROSS_GOLD) == 0.5
+    assert gold_doc_coverage(reranked, CROSS_GOLD) == 0.5
+
+
+def test_candidate_coverage_inherits_the_single_document_na_rule():
+    """Single-document gold is N/A at both stages - the pair never enters a denominator."""
+    assert gold_doc_coverage([_hit("a.pdf", 2), _hit("a.pdf", 5)], GOLD_A2) is None
+
+
+def test_coverage_pair_attributes_mixed_loss_to_both_stages():
+    """Candidates <1.0 and reranked even lower - both retrieval and rerank failed."""
+    candidates = [_hit("a.pdf", 2), _hit("c.pdf", 1), _hit("a.pdf", 3)]
+    reranked = [_hit("a.pdf", 2), _hit("c.pdf", 1)]
+    # Retrieval failed to get b.pdf at all (candidates = 0.5), and rerank didn't help.
+    # Since candidates (0.5) != reranked (0.5) would be equal, this tests the case where
+    # they ARE equal but both <1.0 - a retrieval-only failure.
+    assert gold_doc_coverage(candidates, CROSS_GOLD) == 0.5
+    assert gold_doc_coverage(reranked, CROSS_GOLD) == 0.5
+
+
+def test_coverage_pair_equal_below_one_is_retrieval_only():
+    """When candidate and reranked coverage are equal AND both <1.0, it's retrieval-only.
+
+    This is the corrected attribution rule: rerank was blameless because it didn't change
+    the coverage, so the loss is entirely on retrieval's side.
+    """
+    # b.pdf was never retrieved, so reranker had no chance to include it.
+    candidates = [_hit("a.pdf", 2), _hit("a.pdf", 3), _hit("c.pdf", 1)]
+    reranked = [_hit("a.pdf", 2), _hit("a.pdf", 3)]
+    assert gold_doc_coverage(candidates, CROSS_GOLD) == 0.5
+    assert gold_doc_coverage(reranked, CROSS_GOLD) == 0.5
+
+
+def test_coverage_pair_decrease_attributes_to_rerank_with_partial_retrieval():
+    """Candidates 0.5, reranked 0.0 - retrieval missed one doc, rerank dropped the other.
+
+    Both stages failed: retrieval never surfaced b.pdf, AND rerank dropped a.pdf. This is
+    NOT a retrieval-only loss because coverage decreased.
+    """
+    candidates = [_hit("a.pdf", 2), _hit("c.pdf", 1), _hit("a.pdf", 3)]
+    reranked = [_hit("c.pdf", 1), _hit("a.pdf", 4)]  # Lost the gold a.pdf page
+    assert gold_doc_coverage(candidates, CROSS_GOLD) == 0.5
+    assert gold_doc_coverage(reranked, CROSS_GOLD) == 0.0
+
+
 def test_substring_match_is_case_insensitive():
     """Expected substrings match regardless of case."""
     assert substring_match("Total Revenue: $180M", ["revenue"]) is True
@@ -382,6 +443,28 @@ def test_aggregate_gold_coverage_averages_only_cross_document_rows():
         {"id": "c", "tags": [], "gold_rank": 1, "gold_doc_coverage": None},
     ]
     assert aggregate(rows, ks=(1,))["gold_coverage_avg"] == 0.75
+
+
+def test_aggregate_candidate_coverage_averages_independently_of_gold_coverage():
+    """The retrieval-stage twin has its own denominator and its own N/A rows.
+
+    The gap between the two averages is the pass's headline: equal means retrieval is
+    the ceiling and no rerank change can move gold_coverage_avg at all.
+    """
+    rows = [
+        {"id": "a", "tags": [], "candidate_doc_coverage": 1.0, "gold_doc_coverage": 0.5},
+        {"id": "b", "tags": [], "candidate_doc_coverage": 0.5, "gold_doc_coverage": 0.5},
+        {"id": "c", "tags": [], "candidate_doc_coverage": None, "gold_doc_coverage": None},
+    ]
+    summary = aggregate(rows, ks=(1,))
+    assert summary["candidate_coverage_avg"] == 0.75
+    assert summary["gold_coverage_avg"] == 0.5
+
+
+def test_aggregate_candidate_coverage_is_none_when_no_row_carries_it():
+    """A single-document-only slice reports N/A rather than a misleading zero."""
+    rows = [{"id": "a", "tags": [], "gold_rank": 1}]
+    assert aggregate(rows, ks=(1,))["candidate_coverage_avg"] is None
 
 
 def test_aggregate_confidence_separation_splits_on_citation_correctness():

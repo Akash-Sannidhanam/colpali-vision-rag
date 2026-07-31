@@ -97,7 +97,19 @@ the reader) is complete, tested, and shipped. Captured here so they are not lost
   plausible and wrong ("108M" for 110M, "19 datasets" for 18).
 
 - **Gold labels are page-level and under-complete, so `gold_doc_coverage` under-counts.**
-  _(new, and it cost the RERANK_K decision its pre-registered metric.)_ Coverage did not
+  _(✅ swept — and the gap was much smaller than this note assumed. See the
+  cross-document attribution pass in PRODUCTION_HARDENING.md.)_ All 20 cross-document
+  rows were swept with `scripts/find_in_pdfs.py`; 11 gained pages. `docvqa.pdf` p.3 is
+  real and now labelled, as are `beir.pdf` p.7/p.9. But re-scoring the stored retrieval
+  candidates against the new labels moved coverage on **exactly one row** (0.675 →
+  0.700). The pinned figure was a lower bound by ~0.025, not by the wide margin the
+  original note feared. The sweep also fixed a methodological trap worth remembering:
+  `pdftotext` matches **running headers**, and "OCR-free Document Understanding
+  Transformer" is `donut.pdf`'s title on every odd page. Counting page furniture would
+  have made half that document gold and turned document-level coverage into a tautology.
+  The original note follows.
+
+  Coverage did not
   move at all on the winning arm, because the extra rerank slot pulled in pages that
   state the fact but are not in the row's gold list — `docvqa.pdf` p.3 says "The DocVQA
   comprises 50,000 questions" and is unlabelled; `beir.pdf` states its 18 datasets on p.7
@@ -106,6 +118,32 @@ the reader) is complete, tested, and shipped. Captured here so they are not lost
   `scripts/find_in_pdfs.py` with the fact's regex, then add every page that states it —
   but it invalidates the pinned baseline, so it wants its own pass with a re-run. Worth
   doing before `gold_doc_coverage` is trusted to adjudicate anything else.
+
+- **One document monopolizes the candidate slate on cross-document questions.**
+  _(new, measured, and the scope of the next pass.)_ With the attribution pair
+  (`candidate_doc_coverage` vs `gold_doc_coverage`) in place, **11 of the 12 coverage
+  misses are retrieval-side**: the reranker preserved coverage on every row where
+  retrieval offered both documents, losing exactly one. Seven of those misses are the
+  second document being **entirely absent from the top-10**, and the mechanism is
+  starker than "it ranked 11th" — on three rows the top-10 is 10 pages of a *single*
+  PDF (`colpali.pdf` ×10 shuts out `paligemma.pdf`; `albert.pdf` ×10 shuts out
+  `bert.pdf`; `rag.pdf` ×10 shuts out `dpr.pdf`), and on a fourth it is 9 of 10. ColQwen2's
+  MaxSim on a two-part query is dominated by whichever document matches more of the query
+  tokens, and it takes every slot.
+  This makes `candidate_coverage_avg` a **hard ceiling** on `gold_coverage_avg`: no
+  rerank change, and no `RERANK_K`, can lift coverage past what retrieval offered.
+  **The `RETRIEVE_K=50` probe settled it** (free, deterministic): `candidate_coverage_avg`
+  is **0.975 at k=50 against 0.700 at k=10**, so retrieval reaches both documents on 19.5
+  of 20 rows once the slate is deep enough — the ceiling is not ColQwen2's ranking, it is
+  slate diversity. And 6 of the 7 shut-out documents' gold pages sit at rank **1–4 within
+  their own document** (global 11–41): beir 11/#1, paligemma 15/#1, siglip 15/#2, bert
+  16/#3, dpr 20/#4, dpr 41/#4. So a **per-document cap of 4** on the 10-slot slate recovers
+  six of seven without deepening retrieval — via a cap in `vector_store.search` or Qdrant
+  `query_points_groups(group_by="pdf")`. Only `xdoc-splade-vocab-dpr-dense`'s `dpr.pdf`
+  page is outside the top-50 entirely and needs query decomposition (embed each half of a
+  two-part question, union the candidates). Guard the change with the new
+  `candidate_coverage_avg` gate — it is deterministic, so a diversity win shows up with no
+  LLM variance and needs no judged run to see.
 - **The confidence signals carry almost no information.** _(new, measured.)_ The model
   self-reported `high` on most of the 73 answerable questions, showing some variance
   (high-confidence accuracy: 0.958, low-confidence: 0.0), but the deterministic

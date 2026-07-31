@@ -7,9 +7,9 @@ scorers, then aggregates and renders.
 
 Row shape consumed by `aggregate` / `format_table` (keys absent or None = N/A,
 excluded from that metric's denominator):
-    id, tags, gold_rank, rerank_hit, citation_correct, gold_doc_coverage,
-    substring_match, abstention_correct, retrieval_confidence, self_confidence,
-    judge {correct, score}, latency_ms
+    id, tags, gold_rank, rerank_hit, citation_correct, candidate_doc_coverage,
+    gold_doc_coverage, substring_match, abstention_correct, retrieval_confidence,
+    self_confidence, judge {correct, score}, latency_ms
 
 Every metric is computed over applicable rows only, which is what lets one dataset
 hold questions of different kinds: an unanswerable row carries `abstention_correct`
@@ -142,19 +142,33 @@ def abstention_correct(citation: dict | None) -> bool:
     return not (citation and citation.get("found"))
 
 
-def gold_doc_coverage(reranked: list[dict], gold: list[dict]) -> float | None:
-    """Fraction of the distinct gold *documents* the reranked set reached a gold page in.
+def gold_doc_coverage(hits: list[dict], gold: list[dict]) -> float | None:
+    """Fraction of the distinct gold *documents* `hits` reached a gold page in.
 
     None (N/A) unless gold spans more than one pdf, so single-document questions drop
     out of the metric for free and a cross-document question needs no schema flag - the
     gold list already says whether it is one. This is the metric that puts RERANK_K
     under pressure: with gold in two pdfs and RERANK_K=2, scoring 1.0 means the
     reranker spent one of its two slots on each document rather than both on one.
+
+    Deliberately stage-agnostic in `hits`, because run_eval scores it **twice** - once
+    on the reranked set (`gold_doc_coverage`) and once on the untrimmed Qdrant
+    candidates (`candidate_doc_coverage`). The pair is what attributes a coverage miss
+    to a stage, which neither number can do alone:
+
+        candidates 1.0, reranked <1.0     -> rerank lost it; the page was on the table
+        candidates == reranked AND <1.0   -> retrieval-only loss; rerank was blameless
+        candidates <1.0, reranked <cand   -> both stages failed (retrieval + rerank)
+
+    Any decrease from candidate coverage to reranked coverage must be attributed to
+    reranking (potentially alongside retrieval, not retrieval alone). Before this pair
+    existed, every 0.5 read as one undifferentiated failure and there was no way to
+    tell which stage to fix.
     """
     gold_pdfs = {g["pdf"] for g in gold}
     if len(gold_pdfs) < 2:
         return None
-    covered = {hit.get("pdf") for hit in reranked if _is_gold(hit, gold)}
+    covered = {hit.get("pdf") for hit in hits if _is_gold(hit, gold)}
     return round(len(covered) / len(gold_pdfs), 4)
 
 
@@ -244,6 +258,8 @@ def _metrics(rows: list[dict], ks: tuple) -> dict:
     judges = [r["judge"] for r in rows if r.get("judge") is not None]
     latencies = [r["latency_ms"] for r in rows if r.get("latency_ms") is not None]
     coverage = [r["gold_doc_coverage"] for r in rows if r.get("gold_doc_coverage") is not None]
+    cand_coverage = [r["candidate_doc_coverage"] for r in rows
+                     if r.get("candidate_doc_coverage") is not None]
     out: dict = {"n": len(rows)}
     for k in ks:
         out[f"recall@{k}"] = _rate([rank is not None and rank <= k for rank in ranked]) if ranked else None
@@ -255,6 +271,10 @@ def _metrics(rows: list[dict], ks: tuple) -> dict:
     ):
         out[metric] = _rate([r[key] for r in rows if r.get(key) is not None])
     out["gold_coverage_avg"] = _mean(coverage)
+    # Its retrieval-stage twin. The gap between the two is the share of coverage the
+    # rerank step throws away: equal means retrieval is the ceiling, and no rerank
+    # change can move `gold_coverage_avg` at all.
+    out["candidate_coverage_avg"] = _mean(cand_coverage)
     out["judge_accuracy"] = _rate([j["correct"] for j in judges])
     out["judge_score_avg"] = round(sum(j["score"] for j in judges) / len(judges), 2) if judges else None
     _calibration(rows, out)
@@ -282,7 +302,10 @@ def _cell(value) -> str:
 
 def format_table(rows: list[dict], summary: dict) -> str:
     """Plain-text report: one line per question, then summary + per-tag blocks."""
-    headers = ["id", "gold_rank", "rerank", "cite", "cov", "substr", "abst", "judge", "latency_ms"]
+    # cand_cov sits immediately left of cov so the attribution pair reads together:
+    # a row showing `1.0  0.5` lost its second document at rerank, `0.5  0.5` at retrieval.
+    headers = ["id", "gold_rank", "rerank", "cite", "cand_cov", "cov",
+               "substr", "abst", "judge", "latency_ms"]
     body = []
     for r in rows:
         judge = r.get("judge")
@@ -291,6 +314,7 @@ def format_table(rows: list[dict], summary: dict) -> str:
             _cell(r.get("gold_rank")),
             _cell(r.get("rerank_hit")),
             _cell(r.get("citation_correct")),
+            _cell(r.get("candidate_doc_coverage")),
             _cell(r.get("gold_doc_coverage")),
             _cell(r.get("substring_match")),
             _cell(r.get("abstention_correct")),

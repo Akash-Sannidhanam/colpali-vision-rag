@@ -209,6 +209,148 @@ def test_run_full_carries_coverage_and_both_confidence_signals(monkeypatch):
     assert "abstention_correct" not in row
 
 
+# --- stage attribution: candidate_doc_coverage vs gold_doc_coverage ---
+
+def _page(pdf, page, score=0.9):
+    """One Qdrant-shaped hit."""
+    return {"pdf": pdf, "page_number": page, "image_path": f"{pdf}-{page}.png", "score": score}
+
+
+_CROSS_ROW = {"id": "x1", "question": "q", "answer_contains": None,
+              "answer_contains_all": None, "tags": ["cross-doc"], "unanswerable": False,
+              "gold": [{"pdf": "a.pdf", "page": 3}, {"pdf": "b.pdf", "page": 7}]}
+
+
+def _stub_cross_doc_run_query(monkeypatch, candidates, reranked):
+    """Stub run_query with an explicit candidate/reranked split - the attribution input."""
+    monkeypatch.setattr("src.main.run_query", lambda q: {
+        "answer": "180", "retrieved": reranked, "candidates": candidates,
+        "citation": {"answer": "180", "found": True, "confidence": "high",
+                     "source_page": 1, "box": []},
+        "meta": {"latency_ms": 12.0, "retrieval_confidence": 0.81},
+    })
+
+
+def test_run_full_attributes_a_coverage_miss_to_rerank(monkeypatch):
+    """b.pdf p.7 was retrieved and then dropped: candidates 1.0, coverage 0.5."""
+    _stub_cross_doc_run_query(
+        monkeypatch,
+        candidates=[_page("a.pdf", 3), _page("b.pdf", 7), _page("a.pdf", 4)],
+        reranked=[_page("a.pdf", 3), _page("a.pdf", 4)],
+    )
+
+    (row,) = run_eval.run_full([_CROSS_ROW], use_judge=False)
+
+    assert row["candidate_doc_coverage"] == 1.0
+    assert row["gold_doc_coverage"] == 0.5
+
+
+def test_run_full_attributes_a_coverage_miss_to_retrieval(monkeypatch):
+    """b.pdf p.7 was never a candidate, so the reranker could not have saved the row."""
+    _stub_cross_doc_run_query(
+        monkeypatch,
+        candidates=[_page("a.pdf", 3), _page("a.pdf", 4), _page("c.pdf", 1)],
+        reranked=[_page("a.pdf", 3), _page("a.pdf", 4)],
+    )
+
+    (row,) = run_eval.run_full([_CROSS_ROW], use_judge=False)
+
+    assert row["candidate_doc_coverage"] == 0.5
+    assert row["gold_doc_coverage"] == 0.5
+
+
+def test_run_full_stores_both_page_lists_for_offline_rescoring(monkeypatch):
+    """The stored lists are what make a later gold-label change re-scorable without a re-run."""
+    _stub_cross_doc_run_query(
+        monkeypatch,
+        candidates=[_page("a.pdf", 3), _page("b.pdf", 7)],
+        reranked=[_page("a.pdf", 3)],
+    )
+
+    (row,) = run_eval.run_full([_CROSS_ROW], use_judge=False)
+
+    assert row["candidate_pages"] == [{"pdf": "a.pdf", "page": 3}, {"pdf": "b.pdf", "page": 7}]
+    assert row["reranked_pages"] == [{"pdf": "a.pdf", "page": 3}]
+
+
+def test_run_retrieval_only_carries_candidate_coverage(monkeypatch):
+    """The retrieval half of the attribution needs no API key and no Gemini spend."""
+    monkeypatch.setattr("src.embedder.embed_query", lambda q: [[0.1]])
+    monkeypatch.setattr("src.vector_store.search",
+                        lambda mv: [_page("a.pdf", 3), _page("b.pdf", 7)])
+
+    (row,) = run_eval.run_retrieval_only([_CROSS_ROW])
+
+    assert row["candidate_doc_coverage"] == 1.0
+    assert row["candidate_pages"] == [{"pdf": "a.pdf", "page": 3}, {"pdf": "b.pdf", "page": 7}]
+
+
+def test_run_retrieval_only_leaves_unanswerable_rows_unscored(monkeypatch):
+    """Attribution must not leak into the negative rows' deliberately bare shape."""
+    monkeypatch.setattr("src.embedder.embed_query", lambda q: [[0.1]])
+    monkeypatch.setattr("src.vector_store.search", lambda mv: [_page("a.pdf", 3)])
+
+    (row,) = run_eval.run_retrieval_only([_unanswerable_row()])
+
+    for absent in ("gold_rank", "candidate_doc_coverage", "candidate_pages"):
+        assert absent not in row
+
+
+def test_run_full_equal_coverage_below_one_is_retrieval_only(monkeypatch):
+    """Candidates 0.5, reranked 0.5 - retrieval never offered the second doc, rerank blameless.
+
+    This tests the corrected attribution rule: when both coverages are equal AND both are
+    below 1.0, it's a retrieval-only loss. Rerank cannot recover what retrieval never surfaced.
+    """
+    _stub_cross_doc_run_query(
+        monkeypatch,
+        candidates=[_page("a.pdf", 3), _page("a.pdf", 4), _page("c.pdf", 1)],
+        reranked=[_page("a.pdf", 3), _page("a.pdf", 4)],
+    )
+
+    (row,) = run_eval.run_full([_CROSS_ROW], use_judge=False)
+
+    assert row["candidate_doc_coverage"] == 0.5
+    assert row["gold_doc_coverage"] == 0.5
+
+
+def test_run_full_any_decrease_attributes_to_rerank(monkeypatch):
+    """Candidates 0.5, reranked 0.0 - both stages failed, not retrieval-only.
+
+    Even though retrieval missed one document, rerank ALSO dropped the one that was
+    retrieved. Any decrease from candidate to reranked coverage must be attributed to
+    reranking (potentially alongside retrieval, not retrieval alone).
+    """
+    _stub_cross_doc_run_query(
+        monkeypatch,
+        candidates=[_page("a.pdf", 3), _page("c.pdf", 1), _page("a.pdf", 5)],
+        reranked=[_page("c.pdf", 1), _page("a.pdf", 5)],  # Lost the a.pdf gold page
+    )
+
+    (row,) = run_eval.run_full([_CROSS_ROW], use_judge=False)
+
+    assert row["candidate_doc_coverage"] == 0.5
+    assert row["gold_doc_coverage"] == 0.0
+
+
+def test_run_full_perfect_candidates_imperfect_rerank_is_rerank_only(monkeypatch):
+    """Candidates 1.0, reranked 0.5 - purely a rerank failure.
+
+    Retrieval surfaced both gold documents, but rerank dropped one. This is the
+    unambiguous rerank-only attribution case.
+    """
+    _stub_cross_doc_run_query(
+        monkeypatch,
+        candidates=[_page("a.pdf", 3), _page("b.pdf", 7), _page("a.pdf", 4)],
+        reranked=[_page("a.pdf", 3), _page("a.pdf", 4)],
+    )
+
+    (row,) = run_eval.run_full([_CROSS_ROW], use_judge=False)
+
+    assert row["candidate_doc_coverage"] == 1.0
+    assert row["gold_doc_coverage"] == 0.5
+
+
 # --- the --fail-metric / --fail-under-recall gate ---
 
 _SUMMARY = {"recall@1": 0.77, "recall@3": 0.95, "recall@10": 1.0, "citation_accuracy": 1.0}
