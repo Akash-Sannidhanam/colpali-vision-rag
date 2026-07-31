@@ -642,13 +642,22 @@ shuts out `bert.pdf`, `rag.pdf` ×10 shuts out `dpr.pdf` — with a fourth at 9 
 ColQwen2's MaxSim on a two-part query is dominated by whichever document matches more
 query tokens, and it takes every slot.
 
-**The probe that scopes the fix** (free, deterministic, `RETRIEVE_K=50 --retrieval-only`):
-for **6 of the 7** shut-out documents the gold page sits at global rank 11–41 but at rank
-**1–4 among its own document's pages** — beir 11/#1, paligemma 15/#1, siglip 15/#2, bert
-16/#3, dpr 20/#4, dpr 41/#4. A **per-document cap of 4** on the 10-slot slate recovers six
-of seven. Only `xdoc-splade-vocab-dpr-dense`'s `dpr.pdf` page is outside the top-50
-entirely and would need query decomposition. That is the next pass, and it is now scoped
-on measurement rather than on a hypothesis.
+**The probe that scopes the fix** (free, deterministic, `RETRIEVE_K=50 --retrieval-only`).
+Two results, and the first is the one that settles the question:
+
+- **`candidate_coverage_avg` is 0.975 at k=50, against 0.700 at k=10.** Retrieval reaches
+  both gold documents on 19.5 of 20 cross-document rows once the slate is deep enough. The
+  ceiling is therefore **not ColQwen2's ranking ability** — the second document is ranked,
+  it is crowded out of a 10-slot slate. That rules out "the model cannot find it" and
+  leaves candidate *diversity* as the entire problem.
+- For **6 of the 7** shut-out documents the gold page sits at global rank 11–41 but at rank
+  **1–4 among its own document's pages** — beir 11/#1, paligemma 15/#1, siglip 15/#2, bert
+  16/#3, dpr 20/#4, dpr 41/#4.
+
+So a **per-document cap of 4** on the 10-slot slate recovers six of seven without deepening
+retrieval at all. Only `xdoc-splade-vocab-dpr-dense`'s `dpr.pdf` page is outside the top-50
+entirely and would need query decomposition. That is the next pass, and it is now scoped on
+measurement rather than on a hypothesis.
 
 **Audit of the flipped rows** (the standing rule earning its keep):
 - `gold_rank` improved on 2, regressed on 0 — exactly the two rows the offline re-score

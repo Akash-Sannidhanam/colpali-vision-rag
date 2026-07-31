@@ -132,12 +132,18 @@ the reader) is complete, tested, and shipped. Captured here so they are not lost
   tokens, and it takes every slot.
   This makes `candidate_coverage_avg` a **hard ceiling** on `gold_coverage_avg`: no
   rerank change, and no `RERANK_K`, can lift coverage past what retrieval offered.
-  Candidate interventions, cheapest first: a per-document cap on candidates, or Qdrant
-  `query_points_groups(group_by="pdf")`, in `vector_store.search`; then query
-  decomposition (embed each half of a two-part question and union the candidates).
-  **Open question to settle first, cheaply:** re-run retrieval at `RETRIEVE_K=50` and
-  record at what rank the shut-out document's gold page appears. If it is at rank 200 no
-  cap on a 10-slot slate can reach it, and decomposition is the only option left.
+  **The `RETRIEVE_K=50` probe settled it** (free, deterministic): `candidate_coverage_avg`
+  is **0.975 at k=50 against 0.700 at k=10**, so retrieval reaches both documents on 19.5
+  of 20 rows once the slate is deep enough — the ceiling is not ColQwen2's ranking, it is
+  slate diversity. And 6 of the 7 shut-out documents' gold pages sit at rank **1–4 within
+  their own document** (global 11–41): beir 11/#1, paligemma 15/#1, siglip 15/#2, bert
+  16/#3, dpr 20/#4, dpr 41/#4. So a **per-document cap of 4** on the 10-slot slate recovers
+  six of seven without deepening retrieval — via a cap in `vector_store.search` or Qdrant
+  `query_points_groups(group_by="pdf")`. Only `xdoc-splade-vocab-dpr-dense`'s `dpr.pdf`
+  page is outside the top-50 entirely and needs query decomposition (embed each half of a
+  two-part question, union the candidates). Guard the change with the new
+  `candidate_coverage_avg` gate — it is deterministic, so a diversity win shows up with no
+  LLM variance and needs no judged run to see.
 - **The confidence signals carry almost no information.** _(new, measured.)_ The model
   self-reported `high` on most of the 73 answerable questions, showing some variance
   (high-confidence accuracy: 0.958, low-confidence: 0.0), but the deterministic
