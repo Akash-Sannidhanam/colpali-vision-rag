@@ -631,8 +631,11 @@ title on every odd page. Counting page furniture would have made half that docum
 and turned document-level coverage into a tautology — only prose that states the fact counts.
 
 **Finding 2: retrieval is the ceiling, not rerank — and `RERANK_K` never could have been.**
-**11 of the 12 coverage misses are retrieval-side.** The reranker preserved coverage on
-every row where retrieval offered both documents, losing exactly one. So
+Scored against the three-case rule above, the 12 misses split **11 retrieval-only, 1
+rerank-only, 0 mixed** — the reranker preserved coverage on every row where retrieval
+offered both documents, losing exactly one. (That no row is the mixed case is why the
+two-case reading this section originally shipped with reached the right answer despite
+being wrong in general; the third case is now covered by a test rather than by luck.) So
 `candidate_coverage_avg` is a hard ceiling on `gold_coverage_avg`, and at 0.675 vs 0.700
 coverage already sits at **96% of what retrieval offers**. This retroactively explains why
 the `RERANK_K` decision's pre-registered metric did not fire: no value of `RERANK_K` could

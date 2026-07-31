@@ -296,59 +296,23 @@ def test_run_retrieval_only_leaves_unanswerable_rows_unscored(monkeypatch):
         assert absent not in row
 
 
-def test_run_full_equal_coverage_below_one_is_retrieval_only(monkeypatch):
-    """Candidates 0.5, reranked 0.5 - retrieval never offered the second doc, rerank blameless.
+def test_run_full_attributes_a_partial_loss_to_both_stages(monkeypatch):
+    """Candidates 0.5, reranked 0.0 - retrieval missed one document and rerank dropped
+    the other, which only the *decrease* between the two distinguishes.
 
-    This tests the corrected attribution rule: when both coverages are equal AND both are
-    below 1.0, it's a retrieval-only loss. Rerank cannot recover what retrieval never surfaced.
-    """
-    _stub_cross_doc_run_query(
-        monkeypatch,
-        candidates=[_page("a.pdf", 3), _page("a.pdf", 4), _page("c.pdf", 1)],
-        reranked=[_page("a.pdf", 3), _page("a.pdf", 4)],
-    )
-
-    (row,) = run_eval.run_full([_CROSS_ROW], use_judge=False)
-
-    assert row["candidate_doc_coverage"] == 0.5
-    assert row["gold_doc_coverage"] == 0.5
-
-
-def test_run_full_any_decrease_attributes_to_rerank(monkeypatch):
-    """Candidates 0.5, reranked 0.0 - both stages failed, not retrieval-only.
-
-    Even though retrieval missed one document, rerank ALSO dropped the one that was
-    retrieved. Any decrease from candidate to reranked coverage must be attributed to
-    reranking (potentially alongside retrieval, not retrieval alone).
+    The row shape has to carry enough to tell this from the retrieval-only case above,
+    where the two coverages are equal. "Candidates <1.0" alone does not exonerate rerank.
     """
     _stub_cross_doc_run_query(
         monkeypatch,
         candidates=[_page("a.pdf", 3), _page("c.pdf", 1), _page("a.pdf", 5)],
-        reranked=[_page("c.pdf", 1), _page("a.pdf", 5)],  # Lost the a.pdf gold page
+        reranked=[_page("c.pdf", 1), _page("a.pdf", 5)],  # dropped the a.pdf gold page
     )
 
     (row,) = run_eval.run_full([_CROSS_ROW], use_judge=False)
 
     assert row["candidate_doc_coverage"] == 0.5
     assert row["gold_doc_coverage"] == 0.0
-
-
-def test_run_full_perfect_candidates_imperfect_rerank_is_rerank_only(monkeypatch):
-    """Candidates 1.0, reranked 0.5 - purely a rerank failure.
-
-    Retrieval surfaced both gold documents, but rerank dropped one. This is the
-    unambiguous rerank-only attribution case.
-    """
-    _stub_cross_doc_run_query(
-        monkeypatch,
-        candidates=[_page("a.pdf", 3), _page("b.pdf", 7), _page("a.pdf", 4)],
-        reranked=[_page("a.pdf", 3), _page("a.pdf", 4)],
-    )
-
-    (row,) = run_eval.run_full([_CROSS_ROW], use_judge=False)
-
-    assert row["candidate_doc_coverage"] == 1.0
-    assert row["gold_doc_coverage"] == 0.5
 
 
 # --- the --fail-metric / --fail-under-recall gate ---
