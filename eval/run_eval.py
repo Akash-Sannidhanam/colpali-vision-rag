@@ -258,6 +258,8 @@ def _config_snapshot(mode: str, dataset_path: str, use_judge: bool) -> dict:
         "retrieve_k": RETRIEVE_K,
         "rerank_k": RERANK_K,
         "rerank_adaptive": config.RERANK_ADAPTIVE,
+        "max_pages_per_doc": config.MAX_PAGES_PER_DOC,
+        "candidate_fanout": config.CANDIDATE_FANOUT,
         "rescore_oversampling": config.RESCORE_OVERSAMPLING,
         "gemini_model": config.GEMINI_MODEL,
         "rerank_model": config.RERANK_MODEL,

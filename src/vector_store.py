@@ -26,7 +26,9 @@ from qdrant_client import QdrantClient
 from qdrant_client import models as qm
 
 from src.config import (
+    CANDIDATE_FANOUT,
     COLLECTION_NAME,
+    MAX_PAGES_PER_DOC,
     QDRANT_API_KEY,
     QDRANT_PATH,
     QDRANT_URL,
@@ -318,6 +320,34 @@ def upsert_pages(points: list[qm.PointStruct], collection_name: str = COLLECTION
     client = get_client()
     client.upsert(collection_name=collection_name, points=points)
 
+def _diversify(hits: list[dict], cap: int, k: int) -> list[dict]:
+    """Keep score order, but let no single `pdf` occupy more than `cap` of the k slots.
+
+    Pure: plain dicts in, a sublist out, no client and no I/O. A page over its
+    document's quota is *dropped*, not demoted - with a deep enough pool the demoted
+    copy never reaches the slate anyway (measured: a stable-partition variant scores
+    identically), and dropping keeps the returned order a plain subsequence of the
+    ranking, which is what makes the 1-based indices downstream easy to reason about.
+
+    Returns short rather than padding when the cap leaves fewer than k eligible pages;
+    a slate is allowed to be smaller than RETRIEVE_K, and topping it up would mean
+    re-admitting exactly the pages the cap just excluded.
+    """
+    if cap <= 0:
+        return hits[:k]
+    kept: list[dict] = []
+    per_pdf: dict[str, int] = {}
+    for hit in hits:
+        pdf = hit.get("pdf")
+        if per_pdf.get(pdf, 0) >= cap:
+            continue
+        kept.append(hit)
+        per_pdf[pdf] = per_pdf.get(pdf, 0) + 1
+        if len(kept) == k:
+            break
+    return kept
+
+
 def search(query_multivector: list[list[float]], top_k: int = RETRIEVE_K) -> list[dict]:
     """Return the top_k pages for a query multivector, best score first.
 
@@ -326,12 +356,19 @@ def search(query_multivector: list[list[float]], top_k: int = RETRIEVE_K) -> lis
     persisted index outlives a wiped `page_images/`. Each drop is logged at WARNING so
     a stale index stays visible rather than silently answering off a shrunken set;
     downstream (rerank/answer/highlight) can then assume every hit resolves to a page.
+
+    With MAX_PAGES_PER_DOC set, fetches a CANDIDATE_FANOUT-wider pool and caps each
+    document's share of the slate. The cap is applied *after* the validation loop, so a
+    hit dropped for a missing page image is backfilled from deeper in the pool instead
+    of shrinking the slate. With the cap off the fetch width is exactly top_k, which
+    keeps the uncapped path identical to what it was before diversity existed.
     """
     client = get_client()
+    fetch_k = round(top_k * CANDIDATE_FANOUT) if MAX_PAGES_PER_DOC > 0 else top_k
     response = client.query_points(
         collection_name = COLLECTION_NAME,
         query = query_multivector,
-        limit = top_k,
+        limit = fetch_k,
         with_payload = True,
         # Binary quantization is lossy: pull extra candidates on the fast quantized
         # pass, then rescore them against the full-precision vectors to keep recall.
@@ -363,7 +400,7 @@ def search(query_multivector: list[list[float]], top_k: int = RETRIEVE_K) -> lis
                         extra={"point_id": p.id, "image_path": payload["image_path"]})
             continue
         hits.append({**payload, "score": round(p.score, 4)})
-    return hits
+    return _diversify(hits, MAX_PAGES_PER_DOC, top_k)
 
 def document_index() -> dict[str, dict]:
     """Every indexed PDF -> {page_count, content_hash, embed_version}.

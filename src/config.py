@@ -61,6 +61,19 @@ RERANK_K = int(os.getenv("RERANK_K", "3"))       # pages kept after the Gemini r
 # a little predictability for answer precision. Off by default until an eval diff
 # proves it wins (PRODUCTION_HARDENING.md retrieval-quality pass).
 RERANK_ADAPTIVE = os.getenv("RERANK_ADAPTIVE", "false").strip().lower() in ("1", "true", "yes")
+# Slate diversity: the most pages any one pdf may occupy in the RETRIEVE_K candidate
+# slate (0 = no cap, today's behaviour). ColQwen2's MaxSim on a two-part question is
+# dominated by whichever document matches more query tokens, and it takes every slot -
+# on three baseline rows the top-10 was ten pages of a *single* PDF, shutting the second
+# gold document out entirely. That makes candidate_coverage_avg a hard ceiling on
+# gold_coverage_avg which no RERANK_K value can lift. See the slate-diversity pass in
+# PRODUCTION_HARDENING.md.
+MAX_PAGES_PER_DOC = int(os.getenv("MAX_PAGES_PER_DOC", "0"))
+# How much wider than RETRIEVE_K to fetch when the cap is on, so capped-out pages are
+# backfilled from deeper in the ranking rather than shrinking the slate. Only read when
+# MAX_PAGES_PER_DOC is set; 2.0 is where coverage saturates on this corpus (a 20-deep
+# pool scores the same as 25/30/40/50).
+CANDIDATE_FANOUT = float(os.getenv("CANDIDATE_FANOUT", "2.0"))
 # Binary quantization is lossy; the fast quantized pass pulls RETRIEVE_K * this many
 # candidates, then rescores them against the full-precision vectors on disk. Higher
 # recovers recall@1 that quantization costs, at a little more disk I/O per query.
