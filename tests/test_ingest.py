@@ -25,7 +25,13 @@ def _stub_pipeline(monkeypatch, pages_per_pdf: int, indexed: dict | None = None)
     monkeypatch.setattr(ingest, "pdf_to_images", lambda path: [object()] * pages_per_pdf)
     monkeypatch.setattr(ingest, "save_page_image",
                         lambda page, name, n: embedded.append(name) or f"{name}_p{n}.png")
-    monkeypatch.setattr(ingest, "embed_image", lambda page: [[0.0] * 128])
+    # Yields in batches of 3 rather than one big batch, so the page numbering ingest derives
+    # from each batch's start index (`start + i + 1`) is actually exercised across batches.
+    def _iter_embedded(pages, batch_size=None):
+        for start in range(0, len(pages), 3):
+            yield start, [[[0.0] * 128] for _ in pages[start:start + 3]]
+
+    monkeypatch.setattr(ingest, "iter_embedded", _iter_embedded)
     monkeypatch.setattr(ingest, "build_point", lambda *a: {"point": a})
     monkeypatch.setattr(ingest, "upsert_pages", lambda batch, collection_name: None)
     return embedded
@@ -64,6 +70,31 @@ def test_run_ingest_defaults_to_printing(monkeypatch, tmp_path, capsys):
 
     out = capsys.readouterr().out
     assert "Rendering doc.pdf" in out and "embedded page 1" in out
+
+
+def test_the_whole_document_goes_to_one_embed_generator(monkeypatch, tmp_path):
+    """Ingest must not pre-chunk pages into EMBED_BATCH_SIZE windows.
+
+    `iter_embedded` halves its batch on an out-of-memory error and keeps the smaller size
+    for the life of the generator. Calling it once per window throws that away - each call
+    restarts at EMBED_BATCH_SIZE, so a memory-tight box re-pays the failed forward pass on
+    every window instead of once per document. This test is the guard: one call, all pages.
+    """
+    _stub_pipeline(monkeypatch, pages_per_pdf=10)
+    calls: list[int] = []
+
+    def _recording_iter(pages, batch_size=None):
+        calls.append(len(pages))
+        for start in range(0, len(pages), 3):
+            yield start, [[[0.0] * 128] for _ in pages[start:start + 3]]
+
+    monkeypatch.setattr(ingest, "iter_embedded", _recording_iter)
+    pages: list[int] = []
+    ingest.run_ingest([_pdf(tmp_path)],
+                      progress=lambda e: e["phase"] == "embed" and pages.append(e["page"]))
+
+    assert calls == [10]                    # one generator for the document, not one per window
+    assert pages == list(range(1, 11))      # and still one in-order embed event per page
 
 
 # --- incremental sync: what gets re-embedded ---
@@ -205,7 +236,7 @@ def test_rebuild_aborts_the_partial_on_failure(monkeypatch, tmp_path):
     _stub_pipeline(monkeypatch, pages_per_pdf=1)
     aborted: list[str] = []
     monkeypatch.setattr(ingest, "abort_ingest", lambda target: aborted.append(target))
-    monkeypatch.setattr(ingest, "embed_image", lambda page: (_ for _ in ()).throw(RuntimeError("boom")))
+    monkeypatch.setattr(ingest, "iter_embedded", lambda pages: (_ for _ in ()).throw(RuntimeError("boom")))
 
     with pytest.raises(RuntimeError, match="boom"):
         ingest.run_ingest([_pdf(tmp_path)], progress=lambda e: None, rebuild=True)

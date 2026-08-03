@@ -128,6 +128,28 @@ RESCORE_OVERSAMPLING = float(os.getenv("RESCORE_OVERSAMPLING", "2.0"))
 UPSERT_BATCH_SIZE = 8    # pages per Qdrant upsert flush; small enough that a batch's
                          # multivector payload (~1.4 MB/page) stays well under Qdrant's
                          # REST size limit, even on the default 32 MB server config
+# Pages per ColQwen2 forward pass during ingest. The embed step is 98% of a page's ingest
+# cost (measured: bench/reports/ingest_baseline.json - 8.242 s of an 8.413 s page, against
+# 0.123 s render and 0.047 s save), so this is the one knob that moves indexing throughput;
+# everything else is rounding error.
+#
+# Deliberately NOT part of EMBED_VERSION. Batching is vector-identical *where it is used at
+# all* - the padded positions a batch introduces are trimmed back off with the attention
+# mask, so a page embedded at batch 8 is the same page embedded alone (embedder._embed_batch,
+# checked by `profile_ingest.py --verify-equivalence`). Folding it into the fingerprint would
+# re-embed the whole corpus every time someone tuned it, for no change in what is stored.
+#
+# **This value is untuned.** It cannot be measured on an Apple-Silicon box: MPS + bfloat16
+# miscomputes a batched forward pass, so embedder._batching_is_trustworthy detects that at
+# runtime and pins the process to single-page passes - every arm of the sweep here ran at an
+# effective batch of 1. 4 is therefore a middle guess that only ever engages on a backend
+# where batching has been verified (in practice CUDA). To actually tune it, run
+#   PYTHONPATH=. uv run python scripts/profile_ingest.py --batch-sizes 1,2,4,8,16
+# on a CUDA box and read `effective_batch_size` in the report - an arm whose effective size
+# is below its requested one is not a measurement of that size. Too large is self-correcting:
+# embed_images halves and retries on an out-of-memory error rather than losing a long ingest.
+# Env-overridable so a sweep arm is a prefix, like the retrieval knobs.
+EMBED_BATCH_SIZE = int(os.getenv("EMBED_BATCH_SIZE", "4"))
 RERANK_THUMBNAIL_EDGE = 768  # long-edge px for rerank thumbnails; None = full-res
 GEMINI_MODEL = "gemini-3.5-flash"
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
@@ -203,4 +225,11 @@ def validate() -> None:
         raise RuntimeError(
             f"CANDIDATE_FANOUT must be a finite number, got {CANDIDATE_FANOUT!r}. "
             "It is a multiplier on RETRIEVE_K (2.0 = fetch twice the slate size)."
+        )
+    # Same rationale: a zero or negative batch would make the ingest loop embed nothing
+    # and store an empty index, which is far worse than refusing to start.
+    if EMBED_BATCH_SIZE < 1:
+        raise RuntimeError(
+            f"EMBED_BATCH_SIZE must be at least 1, got {EMBED_BATCH_SIZE!r}. "
+            "It is how many pages share one ColQwen2 forward pass during ingest."
         )
