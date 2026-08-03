@@ -120,9 +120,11 @@ the reader) is complete, tested, and shipped. Captured here so they are not lost
   doing before `gold_doc_coverage` is trusted to adjudicate anything else.
 
 - **One document monopolizes the candidate slate on cross-document questions.**
-  _(◐ fixed on the retrieval side — `MAX_PAGES_PER_DOC=5` with `RETRIEVE_K=12` takes
-  `candidate_coverage_avg` 0.700 → 0.825 with no gold page evicted; the judged confirmation
-  is outstanding on Gemini credits. See the slate-diversity pass in PRODUCTION_HARDENING.md.)_
+  _(✅ fixed — `MAX_PAGES_PER_DOC=5` with `RETRIEVE_K=12` takes `candidate_coverage_avg`
+  0.700 → 0.825 with no gold page evicted, and the judged run carried `gold_coverage_avg`
+  the full distance with it, 0.675 → 0.825. The two are now **equal**: rerank loses nothing,
+  and all remaining coverage headroom is retrieval-side. Cost: latency +20% and one net
+  citation question. See the slate-diversity pass in PRODUCTION_HARDENING.md.)_
   Two corrections to the note below, both from the arms. **Widening `RETRIEVE_K` 10 → 12 is
   worth 0.100 of the 0.125 on its own** — the boring lever, never tried, because the
   attribution pass framed the problem as diversity and went looking for a diversity fix. And

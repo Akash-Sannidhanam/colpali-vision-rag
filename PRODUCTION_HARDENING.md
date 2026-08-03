@@ -710,7 +710,7 @@ needs no allowance for LLM variance — and it is the metric the next pass exist
 
 ---
 
-## Slate-diversity pass (follow-on) ◐ retrieval side done, judged run outstanding
+## Slate-diversity pass (follow-on) ✅ DONE
 
 **The problem.** The attribution pass left one lever: `candidate_coverage_avg` (0.700) is a
 hard ceiling on `gold_coverage_avg` (0.675), and the mechanism is monopolisation — on three
@@ -779,30 +779,64 @@ A rank-based cap cannot know which of a document's pages are the useful ones. Si
 coverage against this one loss, so it is a good trade — but it is the honest failure mode of
 capping by rank, and it is what a relevance-aware cap would have to beat.
 
-**What is not done: the judged run.** The `--judge` confirmation was started and aborted
-after ~90 seconds — Gemini returned `429 RESOURCE_EXHAUSTED` with *"Your prepayment credits
-are depleted"*, a hard billing stop that no backoff clears (57 429s against 28 successful
-calls). Aborted deliberately rather than left to finish: the degraded-run guard would have
-stamped it `degraded_run`, written `degraded_<utc>.json` and exited 2, which is the guard
-working, but a run that cannot be pinned is not worth 25 minutes. **No report was written**,
-so nothing here risks being mistaken for a baseline.
+**The judged run: `gold_coverage_avg` moved the full distance.** `degradation` all zeros
+(the first attempt died on depleted Gemini credits and was aborted before it wrote anything —
+a report that cannot be pinned is not worth 25 minutes).
 
-The pinned baseline therefore remains `eval/reports/baseline_swept.json`, and the gates are
-unchanged. To finish the pass once credits are topped up:
+| metric | swept (k=10, no cap) | **diverse (k=12, cap 5)** |
+| --- | --- | --- |
+| recall@1 / recall@3 | 0.7397 / 0.9041 | 0.7397 / 0.9041 |
+| recall@k / rerank_recall | 0.9863 / 0.9863 | 0.9863 / 0.9863 |
+| citation_accuracy | 0.9452 | 0.9315 |
+| substring_accuracy | 0.9444 | 0.9444 |
+| judge_accuracy / score | 0.9178 / 4.77 | 0.9178 / 4.78 |
+| **gold_coverage_avg** | 0.675 | **0.825** |
+| candidate_coverage_avg | 0.700 | 0.825 |
+| avg_latency_ms | 14996 | 18049 |
+
+**`gold_coverage_avg` 0.675 → 0.825, and it now *equals* `candidate_coverage_avg`.** The
+reranker is losing nothing at all: coverage sits at 100% of what retrieval offers, against
+96% before. Every point of ceiling the pass bought was converted. Per-row: 7 improved, 1
+regressed — and the improvement includes `xdoc-donut-ocr-free-docvqa-questions`, the single
+*rerank*-only miss the attribution pass identified, which a deeper slate fixed for free.
+
+**Cost: latency +20%** (15.0 s → 18.0 s), the price of triaging 12 thumbnails instead of 10.
+The deterministic arms could not price this; it is the one number that needed the judged run.
+
+**The citation audit** (−0.0137 = one question; 2 regressions, 1 gain, all three cross-doc,
+all three checked against `cited` before being counted):
+- `xdoc-donut-encoder-layoutlm-embeddings` — **genuine, and the predicted cost.** The cap
+  evicted donut's gold pages, so the model saw only layoutlm and *declined* the donut half
+  ("The provided pages do not contain information about the visual encoder architecture used
+  by Donut") rather than answering from parametric memory. The right failure to have.
+- `xdoc-ndcg-cutoffs` — **genuine, and the more interesting one.** Coverage *improved*
+  0.5 → 1.0 and the answer is right (judge 5/5, substring True), but it cited `colpali.pdf`
+  p2, which `find_in_pdfs.py` confirms mentions ViDoRe and never nDCG in any form. Not an
+  under-labeled page. A better slate can still produce a worse citation: the reranker
+  ordered a topical-but-unstating page first and the answer step pointed at it.
+- `xdoc-siglip-loss-paligemma-resolution` — citation *gained* (`siglip.pdf` p1, gold, against
+  `colpali.pdf` p22 before) while the judge fell, because the answer dropped the PaliGemma
+  half. Citation quality and answer completeness moved in opposite directions on one row.
+
+**Re-derived gates** (the convention: ~3 questions of slack; one question is 0.0137 on the
+answerable denominators, 0.05 on either coverage, 0.1 on abstention):
 
 ```bash
-PYTHONPATH=. uv run python eval/run_eval.py --judge --output eval/reports/baseline_diverse.json
-PYTHONPATH=. uv run python eval/diff_reports.py eval/reports/baseline_swept.json \
-  eval/reports/baseline_diverse.json --metric gold_doc_coverage
+PYTHONPATH=. uv run python eval/run_eval.py --judge --gate recall@1:0.68 --gate recall@3:0.86 \
+  --gate recall@12:0.94 --gate rerank_recall:0.94 --gate citation_accuracy:0.89 \
+  --gate substring_accuracy:0.90 --gate abstention_accuracy:0.90 --gate gold_coverage_avg:0.67 \
+  --gate candidate_coverage_avg:0.77 --gate judge_accuracy:0.87
 ```
 
-Check `degradation` is all zeros *before* reading any metric. What the run is being asked:
-`gold_coverage_avg` should rise from 0.675 now that its ceiling moved 0.700 → 0.825, and
-`citation_accuracy` / `judge_accuracy` should hold within the documented run-to-run variance
-while the reranker triages 12 thumbnails instead of 10 (~+20% rerank input, the one cost of
-this pass that the deterministic arms could not price). If it lands, re-pin and re-derive
-`candidate_coverage_avg`'s gate from 0.65 to ~0.75 — it stays the tightest gate at one
-question of slack, because it carries no LLM variance.
+Three changes beyond the raised coverage floors. **`recall@10` is now `recall@12`** — the
+harness derives `ks = {1, 3, RETRIEVE_K}`, so the old gate name no longer exists in a report
+and would fail as a missing metric rather than a regression. `citation_accuracy` drops
+0.90 → 0.89 to keep its three questions of slack at the new 0.9315. And
+`candidate_coverage_avg` goes 0.65 → **0.77**, still deliberately the tightest gate at ~1
+question, because it is pure retrieval and carries no LLM variance.
+
+**Baseline:** `eval/reports/baseline_diverse.json`. Diff the pass against
+`baseline_swept.json`, which is the same 83 questions at `RETRIEVE_K=10` with no cap.
 
 **The remaining headroom after this pass.** `candidate_coverage_avg` 0.825 leaves 3.5 of 20
 cross-document rows uncovered. `xdoc-splade-vocab-dpr-dense`'s `dpr.pdf` page is outside the
