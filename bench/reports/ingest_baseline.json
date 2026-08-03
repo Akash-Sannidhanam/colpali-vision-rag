@@ -1,0 +1,113 @@
+{
+  "config": {
+    "colpali_model": "vidore/colqwen2-v1.0",
+    "render_dpi": 150,
+    "batch_sizes": [
+      1,
+      2,
+      4,
+      8
+    ],
+    "upsert_batch_size": 8,
+    "device": "mps:0",
+    "dtype": "torch.bfloat16",
+    "torch": "2.11.0",
+    "platform": "macOS-26.3.1-arm64-arm-64bit-Mach-O",
+    "python": "3.13.13",
+    "upsert_measured": false
+  },
+  "documents": [
+    {
+      "pdf": "attention.pdf",
+      "pages_rendered": 15,
+      "pages_profiled": 8
+    }
+  ],
+  "model_load_s": 16.28,
+  "pages": 8,
+  "stages": {
+    "render": {
+      "total_s": 1.85,
+      "per_page_s": 0.123,
+      "pages_rendered": 15
+    },
+    "save": {
+      "total_s": 0.378,
+      "mean_s": 0.047,
+      "median_s": 0.048,
+      "n": 8,
+      "per_page_s": 0.047
+    },
+    "upsert": {
+      "measured": false,
+      "n": 0,
+      "per_page_s": 0.0
+    }
+  },
+  "arms": [
+    {
+      "batch_size": 1,
+      "effective_batch_size": 1,
+      "requested_size_honoured": true,
+      "embed": {
+        "total_s": 65.939,
+        "mean_s": 8.242,
+        "median_s": 8.28,
+        "n": 8,
+        "per_page_s": 8.242
+      },
+      "embed_share_of_page_s": 0.9797,
+      "page_s": 8.413,
+      "pages_per_min": 7.13,
+      "speedup_vs_batch_1": 1.0
+    },
+    {
+      "batch_size": 2,
+      "effective_batch_size": 1,
+      "requested_size_honoured": false,
+      "embed": {
+        "total_s": 78.7,
+        "mean_s": 9.838,
+        "median_s": 9.548,
+        "n": 8,
+        "per_page_s": 9.838
+      },
+      "embed_share_of_page_s": 0.983,
+      "page_s": 10.008,
+      "pages_per_min": 6.0,
+      "speedup_vs_batch_1": 0.84
+    },
+    {
+      "batch_size": 4,
+      "effective_batch_size": 1,
+      "requested_size_honoured": false,
+      "embed": {
+        "total_s": 96.593,
+        "mean_s": 12.074,
+        "median_s": 9.993,
+        "n": 8,
+        "per_page_s": 12.074
+      },
+      "embed_share_of_page_s": 0.9861,
+      "page_s": 12.245,
+      "pages_per_min": 4.9,
+      "speedup_vs_batch_1": 0.69
+    },
+    {
+      "batch_size": 8,
+      "effective_batch_size": 1,
+      "requested_size_honoured": false,
+      "embed": {
+        "total_s": 94.85,
+        "mean_s": 11.856,
+        "median_s": 11.446,
+        "n": 8,
+        "per_page_s": 11.856
+      },
+      "embed_share_of_page_s": 0.9858,
+      "page_s": 12.027,
+      "pages_per_min": 4.99,
+      "speedup_vs_batch_1": 0.7
+    }
+  ]
+}

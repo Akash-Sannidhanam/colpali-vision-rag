@@ -65,3 +65,17 @@ eval/reports/*
 # loaded, which a fresh clone does not have. The slate-diversity arms themselves are NOT kept:
 # they are deterministic and re-run from a one-line prefix.
 !eval/reports/probe_k50_retrieval.json
+
+# Ingest profiles (regenerate via scripts/profile_ingest.py). Same `reports/*`-not-`reports/`
+# form as above, for the same reason: git will not descend into an excluded directory.
+bench/reports/*
+# The pinned profile, kept because src/config.py and src/embedder.py cite its numbers - the
+# 98% embed share is what justifies batching the forward pass and ignoring every other stage.
+# Its arms are all DEGENERATE on purpose: it was measured on MPS + bfloat16, where the
+# batching self-check pins the process to single-page passes, so every arm reports
+# `effective_batch_size: 1` regardless of what it requested. That makes it evidence of two
+# things and not a third - it backs the 98% share and it records the self-check firing on a
+# real backend, but it is NOT a measurement of what batching buys. Four arms doing identical
+# batch-1 work spread 8.242 -> 12.074 s/page here, so it also pins this box's noise floor at
+# ~46%: anything under a 1.5x claim is unmeasurable on it. A CUDA run would supersede it.
+!bench/reports/ingest_baseline.json
