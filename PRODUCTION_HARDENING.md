@@ -707,3 +707,106 @@ judge_accuracy:0.87` → exit 0 at baseline. Most thresholds leave ~3 questions 
 0.1 on abstention). **`candidate_coverage_avg` is deliberately the tightest gate at one
 question of slack**: it is pure retrieval, measured identical across three runs here, so it
 needs no allowance for LLM variance — and it is the metric the next pass exists to move.
+
+---
+
+## Slate-diversity pass (follow-on) ◐ retrieval side done, judged run outstanding
+
+**The problem.** The attribution pass left one lever: `candidate_coverage_avg` (0.700) is a
+hard ceiling on `gold_coverage_avg` (0.675), and the mechanism is monopolisation — on three
+baseline rows the top-10 was **ten pages of a single PDF**, so the second gold document was
+shut out of the slate entirely rather than ranked just below it. No `RERANK_K` value can
+recover a page retrieval never offered.
+
+**The method is the reusable part: the fix was scored before it was written.** Because
+`candidate_pages` is stored per row and `gold_rank`/coverage are pure functions of
+(pages, gold), the `RETRIEVE_K=50` probe report is a **simulator for any slate policy**.
+Re-scoring it offline cost nothing and settled four things before a line of code existed:
+cap=4 is the optimum at k=10 (3 and 5 both score lower), a 2× fanout pool is sufficient
+(coverage saturates at pool=20 — 25/30/40/50 add nothing), round-robin interleave is far
+worse (0.575), and a demote-instead-of-drop variant is *exactly* equivalent (the demoted
+copy never re-enters a slate this deep). Every live arm then reproduced its simulated
+numbers to four decimal places. Simulate slate policy against a stored deep probe before
+running anything.
+
+**Shipped:**
+- **`vector_store._diversify(hits, cap, k)`** — pure, dicts in and a subsequence out, so it
+  unit-tests with no Qdrant. Applied **after** `search`'s payload/file validation loop, so a
+  hit dropped for a missing page image is backfilled from the wider pool instead of
+  shrinking the slate — a small robustness win the uncapped path never had.
+- **`MAX_PAGES_PER_DOC` (5) and `CANDIDATE_FANOUT` (2.0)**, env-overridable like the other
+  eval knobs. `MAX_PAGES_PER_DOC=0` restores the exact pre-diversity behaviour *including*
+  the narrower fetch, which is what makes the control arm a genuine control.
+- **`RETRIEVE_K` 10 → 12.**
+- **Both knobs in `run_eval`'s config snapshot** — without them `diff_reports` printed
+  "config changes: none" on precisely the comparison this pass exists to make.
+
+Rejected: Qdrant `query_points_groups(group_by="pdf")`. Server-only (`QdrantLocal` has no
+group support), so it would fork the two Qdrant modes inside the one function that already
+carries most of that complexity, and it reorders by group-best rather than by score.
+
+**The five arms** (`--retrieval-only`: no API key, no Gemini spend, and deterministic —
+re-running an arm reproduced it digit for digit):
+
+| arm | recall@1 | recall@3 | gold in slate | `cand_cov` | pages → rerank |
+| --- | --- | --- | --- | --- | --- |
+| control, k=10 | 0.7397 | 0.9041 | 0.9863 | 0.700 | 10 |
+| cap=4, k=10 | 0.7397 | 0.9041 | 0.9726 | 0.825 | 10 |
+| k=12, no cap | 0.7397 | 0.9041 | 0.9863 | 0.800 | 12 |
+| **cap=5, k=12** | 0.7397 | 0.9041 | **0.9863** | **0.825** | 12 |
+| cap=4, k=12 | 0.7397 | 0.9041 | 0.9726 | 0.850 | 12 |
+
+**Finding 1: widening did most of what the cap was credited with.** `RETRIEVE_K` 10 → 12
+alone is worth **0.100 of the 0.125**, at zero recall cost — and it was never tried, because
+the attribution pass framed the problem as diversity and went looking for a diversity fix.
+The `k=50` probe had the evidence for it all along. When a probe rules a *mechanism* in, it
+does not thereby rule out the boring lever that addresses the same symptom; measure both.
+
+**Finding 2: every cap=4 arm costs the same gold page, and it is a single-document row.**
+`colpali-avg-ndcg` ("What average nDCG@5 does ColPali achieve across ViDoRe?") is answered
+by `colpali.pdf` p7, which is the **5th** colpali page in the ranking — so any cap below 5
+evicts it and backfills the slate with six documents that have nothing to do with the
+question. This is the cap's cost concentrated in one place: on a single-document question
+diversity is pure loss, and 63 of the 83 questions are single-document. `cap=5` is the only
+setting that takes the full coverage win with nothing evicted, which is the same
+zero-regressions bar the `RERANK_K` decision was adopted on.
+
+**Finding 3: the one coverage regression is real, not an instrument artifact.**
+`xdoc-donut-encoder-layoutlm-embeddings` goes 1.0 → 0.5 because `donut.pdf`'s first four
+slots (p9, p10, p13, p11) are **all non-gold**: the cap spends the document's quota on wrong
+pages and evicts the right ones (p4, p8), while gaining a second `layoutlm.pdf` gold page.
+A rank-based cap cannot know which of a document's pages are the useful ones. Six rows gain
+coverage against this one loss, so it is a good trade — but it is the honest failure mode of
+capping by rank, and it is what a relevance-aware cap would have to beat.
+
+**What is not done: the judged run.** The `--judge` confirmation was started and aborted
+after ~90 seconds — Gemini returned `429 RESOURCE_EXHAUSTED` with *"Your prepayment credits
+are depleted"*, a hard billing stop that no backoff clears (57 429s against 28 successful
+calls). Aborted deliberately rather than left to finish: the degraded-run guard would have
+stamped it `degraded_run`, written `degraded_<utc>.json` and exited 2, which is the guard
+working, but a run that cannot be pinned is not worth 25 minutes. **No report was written**,
+so nothing here risks being mistaken for a baseline.
+
+The pinned baseline therefore remains `eval/reports/baseline_swept.json`, and the gates are
+unchanged. To finish the pass once credits are topped up:
+
+```bash
+PYTHONPATH=. uv run python eval/run_eval.py --judge --output eval/reports/baseline_diverse.json
+PYTHONPATH=. uv run python eval/diff_reports.py eval/reports/baseline_swept.json \
+  eval/reports/baseline_diverse.json --metric gold_doc_coverage
+```
+
+Check `degradation` is all zeros *before* reading any metric. What the run is being asked:
+`gold_coverage_avg` should rise from 0.675 now that its ceiling moved 0.700 → 0.825, and
+`citation_accuracy` / `judge_accuracy` should hold within the documented run-to-run variance
+while the reranker triages 12 thumbnails instead of 10 (~+20% rerank input, the one cost of
+this pass that the deterministic arms could not price). If it lands, re-pin and re-derive
+`candidate_coverage_avg`'s gate from 0.65 to ~0.75 — it stays the tightest gate at one
+question of slack, because it carries no LLM variance.
+
+**The remaining headroom after this pass.** `candidate_coverage_avg` 0.825 leaves 3.5 of 20
+cross-document rows uncovered. `xdoc-splade-vocab-dpr-dense`'s `dpr.pdf` page is outside the
+top-50 entirely and needs **query decomposition** (embed each half of a two-part question,
+union the candidates) — no slate policy reaches it.
+`xdoc-donut-encoder-layoutlm-embeddings` needs a **relevance-aware** cap rather than a
+rank-based one, per Finding 3.

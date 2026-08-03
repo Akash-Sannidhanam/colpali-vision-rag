@@ -51,3 +51,12 @@ eval/reports/*
 # the tests reads them.
 !eval/reports/arm_b_k3.json
 !eval/reports/arm_c_k3_adaptive.json
+# The k=50 retrieval probe, kept for the opposite reason to the arms above: it is perfectly
+# reproducible, but it is a *simulator*. With 50 candidates per row stored in
+# `candidate_pages`, and gold_rank/both coverages being pure functions of (pages, gold), any
+# slate policy can be scored against it offline with no model, no Qdrant and no API key - the
+# slate-diversity pass chose its cap, its fanout depth and its two rejected designs that way
+# before writing code. Regenerating it needs the full corpus ingested and the ~2B model
+# loaded, which a fresh clone does not have. The slate-diversity arms themselves are NOT kept:
+# they are deterministic and re-run from a one-line prefix.
+!eval/reports/probe_k50_retrieval.json

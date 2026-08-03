@@ -120,7 +120,18 @@ the reader) is complete, tested, and shipped. Captured here so they are not lost
   doing before `gold_doc_coverage` is trusted to adjudicate anything else.
 
 - **One document monopolizes the candidate slate on cross-document questions.**
-  _(new, measured, and the scope of the next pass.)_ With the attribution pair
+  _(◐ fixed on the retrieval side — `MAX_PAGES_PER_DOC=5` with `RETRIEVE_K=12` takes
+  `candidate_coverage_avg` 0.700 → 0.825 with no gold page evicted; the judged confirmation
+  is outstanding on Gemini credits. See the slate-diversity pass in PRODUCTION_HARDENING.md.)_
+  Two corrections to the note below, both from the arms. **Widening `RETRIEVE_K` 10 → 12 is
+  worth 0.100 of the 0.125 on its own** — the boring lever, never tried, because the
+  attribution pass framed the problem as diversity and went looking for a diversity fix. And
+  **the predicted cap of 4 is the wrong value**: it scores higher coverage (0.850) but evicts
+  `colpali.pdf` p7 — a *single*-document question's gold, the 5th colpali page in the ranking —
+  and backfills with six unrelated documents. A cap only pays where the question spans
+  documents, and 63 of the 83 questions do not. The original note follows.
+
+  With the attribution pair
   (`candidate_doc_coverage` vs `gold_doc_coverage`) in place, **11 of the 12 coverage
   misses are retrieval-side**: the reranker preserved coverage on every row where
   retrieval offered both documents, losing exactly one. Seven of those misses are the
