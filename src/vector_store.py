@@ -364,7 +364,10 @@ def search(query_multivector: list[list[float]], top_k: int = RETRIEVE_K) -> lis
     keeps the uncapped path identical to what it was before diversity existed.
     """
     client = get_client()
-    fetch_k = round(top_k * CANDIDATE_FANOUT) if MAX_PAGES_PER_DOC > 0 else top_k
+    # max(): a CANDIDATE_FANOUT below 1.0 is a misconfiguration, and the failure mode
+    # it would otherwise have is the worst kind - a silently *shrunken* slate, costing
+    # recall with nothing in the logs to say why. The knob only ever widens.
+    fetch_k = max(top_k, round(top_k * CANDIDATE_FANOUT)) if MAX_PAGES_PER_DOC > 0 else top_k
     response = client.query_points(
         collection_name = COLLECTION_NAME,
         query = query_multivector,

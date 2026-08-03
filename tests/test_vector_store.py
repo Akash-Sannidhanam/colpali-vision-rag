@@ -546,6 +546,12 @@ def test_search_fetch_width_follows_the_cap(monkeypatch, tmp_path):
     vector_store.search([[0.0] * 128], top_k=10)
     assert captured["limit"] == 20
 
+    # A fanout below 1.0 is a misconfiguration; it must never shrink the slate, which
+    # would cost recall silently.
+    monkeypatch.setattr(vector_store, "CANDIDATE_FANOUT", 0.5)
+    vector_store.search([[0.0] * 128], top_k=10)
+    assert captured["limit"] == 10
+
 
 def test_search_backfills_dropped_hits_from_the_wider_pool(monkeypatch, tmp_path):
     """A hit dropped for a missing page image costs a slot only when the cap is off.
