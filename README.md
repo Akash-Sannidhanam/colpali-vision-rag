@@ -67,13 +67,13 @@ PYTHONPATH=. uv run python src/main.py "What was the Q4 revenue in the chart?"
 
 The repo ships a small starter corpus in `pdfs/` — the generated sales report plus
 two arXiv papers (*Attention Is All You Need* and *ColPali*, ~43 pages total) — so
-the rerank step has a real 10-candidate pool to narrow out of the box. Drop your own
+the rerank step has a real 12-candidate pool to narrow out of the box. Drop your own
 PDFs into `pdfs/` and re-run the ingest to index them too.
 
 Step 2 is only needed to run the eval. It adds 16 more papers (~320 pages) chosen to
 be *confusable* with the two gold documents, because a 43-page corpus is too small to
-measure retrieval on at all: `RETRIEVE_K=10` over 43 pages returns a quarter of the
-index every query, so recall@10 cannot be anything but 1.0. See
+measure retrieval on at all: `RETRIEVE_K=12` over 43 pages returns more than a quarter
+of the index every query, so recall@12 cannot be anything but 1.0. See
 [Evaluation](#evaluation). Those PDFs are not committed — `eval/corpus_manifest.json`
 pins each by sha256 and the fetch script verifies them.
 
@@ -253,7 +253,7 @@ unencrypted hop is readable in transit). Note the `/images` exemption described 
 
 ## How it works
 
-1. **Retrieve** (`src/embedder.py`, `src/vector_store.py`): the query is embedded into ColQwen2's token-level multivectors and matched against per-page multivectors in a Qdrant server collection ranked by **MaxSim**. The vectors are **binary-quantized** (128-d → 128 bits, 32× smaller) and kept in RAM for a fast first pass; the top hits are then **rescored** against the full-precision vectors on disk to protect recall. The top `RETRIEVE_K` (default 12) candidate pages are returned — with no more than `MAX_PAGES_PER_DOC` (default 5) of them from any single PDF, because MaxSim on a two-part question is dominated by whichever document matches more query tokens and will otherwise take every slot, shutting the second document out of the answer entirely.
+1. **Retrieve** (`src/embedder.py`, `src/vector_store.py`): the query is embedded into ColQwen2's token-level multivectors and matched against per-page multivectors in a Qdrant server collection ranked by **MaxSim**. The vectors are **binary-quantized** (128-d → 128 bits, 32× smaller) and kept in RAM for a fast first pass; the top hits are then **rescored** against the full-precision vectors on disk to protect recall. Qdrant is asked for a wider pool — `RETRIEVE_K × CANDIDATE_FANOUT`, 24 points by default — and up to `RETRIEVE_K` (default 12) validated pages are returned from it, with no more than `MAX_PAGES_PER_DOC` (default 5) from any single PDF. The cap exists because MaxSim on a two-part question is dominated by whichever document matches more query tokens and will otherwise take every slot, shutting the second document out of the answer entirely; the extra pool depth is what lets a capped-out slot be backfilled instead of lost.
 2. **Rerank** (`src/reranker.py`): the candidates are sent to Gemini as **downscaled thumbnails** (a cheap triage pass), and it returns the `RERANK_K` (default 3) pages that actually help answer the question. This keeps the answer step focused and sharpens the citation, without paying full-resolution image cost just to sort candidates. If the call fails or returns junk, it falls back to the top pages by MaxSim score.
 3. **Answer** (`src/answerer.py`): the reranked **page images** are sent to Gemini at full resolution, which returns structured JSON: the `answer`, which `source_page` it came from, and a `box` in Gemini's native `[ymin, xmin, ymax, xmax]` convention normalized to a 0–1000 scale.
 4. **Highlight** (`src/highlight.py`): the box is converted to pixels against the real page PNG (with a little padding), then **cropped** and **annotated**, saved under `page_images/crops/`.

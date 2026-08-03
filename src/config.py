@@ -1,5 +1,6 @@
 """Central configuration: env vars, model names, paths, and Qdrant settings."""
 
+import math
 import os
 import shutil
 from pathlib import Path
@@ -149,7 +150,7 @@ TRUST_PROXY_HEADERS = os.getenv("TRUST_PROXY_HEADERS", "false").strip().lower() 
 
 
 def validate() -> None:
-    """Fail fast on missing required configuration.
+    """Fail fast on missing or unusable required configuration.
 
     Called by the CLIs / server at startup so a misconfiguration surfaces
     immediately with a clear message, instead of an opaque auth error at the
@@ -159,4 +160,12 @@ def validate() -> None:
         raise RuntimeError(
             "GEMINI_API_KEY is not set. Copy .env.example to .env and add your "
             "key (see README) before running the pipeline."
+        )
+    # float() happily parses "inf" and "nan", and round() raises on both - which would
+    # take out *every* search rather than failing once at startup. Checked here rather
+    # than at import so a bad value cannot break tooling that merely imports config.
+    if not math.isfinite(CANDIDATE_FANOUT):
+        raise RuntimeError(
+            f"CANDIDATE_FANOUT must be a finite number, got {CANDIDATE_FANOUT!r}. "
+            "It is a multiplier on RETRIEVE_K (2.0 = fetch twice the slate size)."
         )
