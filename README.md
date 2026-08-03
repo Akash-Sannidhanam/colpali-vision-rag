@@ -406,7 +406,7 @@ report carries `recall@12` and no `recall@10` — an old `--gate recall@10:...` 
 *missing metric* rather than as a regression.
 
 Reports land in `eval/reports/` (gitignored, except the pinned
-`baseline_desaturated.json`). Metrics:
+`baseline_decomposed.json`). Metrics:
 
 | family | question it answers |
 | --- | --- |

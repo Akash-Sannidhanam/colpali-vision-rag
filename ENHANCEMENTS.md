@@ -157,7 +157,7 @@ the reader) is complete, tested, and shipped. Captured here so they are not lost
   two-part question, union the candidates). Guard the change with the new
   `candidate_coverage_avg` gate — it is deterministic, so a diversity win shows up with no
   LLM variance and needs no judged run to see.
-- **Query decomposition for the one row no slate policy reaches.** _(✅ done — the
+- **Query decomposition for the one row that no slate policy can reach.** _(✅ done — the
   prescription in the note above was right. `QUERY_DECOMPOSE=true` +
   `DECOMPOSE_ORIGINAL_WEIGHT=0` took `candidate_coverage_avg` 0.825 → **0.850**,
   `rerank_recall` to **1.0**, citation 0.9315 → **0.9589** and judge 0.9178 → **0.9452**,

@@ -44,5 +44,8 @@ def retrieve(question: str) -> list[dict]:
         # Logged so a live split is auditable after the fact, the same way search's
         # dropped hits are - a splitter that fires on the wrong question is otherwise
         # invisible until it surfaces as a coverage number nobody can explain.
-        log.info("decomposed query", extra={"subqueries": queries})
+        log.info("decomposed query", extra={
+            "subquery_count": len(queries),
+            "subquery_lengths": [len(q) for q in queries]
+        })
     return search_multi([embed_query(q) for q in queries], weights=weights)
