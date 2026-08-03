@@ -1,12 +1,29 @@
-"""Tests for the per-node timing wrapper (src.graph._timed).
+"""Tests for the per-node timing wrapper (src.graph._timed) and retrieve_node's
+query-decomposition wiring.
 
 Pure logic: wraps a trivial function and asserts the start/end + latency_ms log
-lines. No graph compile, no langgraph invoke, no models or network.
+lines; retrieve_node's collaborators (embed_query, search_multi) are stubbed, so
+no graph compile, no langgraph invoke, no models or network.
 """
 
 import logging
 
 from src import graph, request_context
+
+
+def test_retrieve_publishes_candidates_alongside_retrieved(monkeypatch):
+    """`candidates` is what the eval scores recall@k on, and rerank overwrites
+    `retrieved` - so the node must publish both from the one retrieval.
+
+    Retrieval *policy* is tested in tests/test_retrieval.py; this covers only the
+    state plumbing the node is responsible for.
+    """
+    hits = [{"pdf": "a.pdf", "page_number": 1}]
+    monkeypatch.setattr(graph, "retrieve", lambda q: hits)
+
+    out = graph.retrieve_node({"question": "anything"})
+
+    assert out["retrieved"] == hits and out["candidates"] == hits
 
 
 def _capture(logger_name: str):

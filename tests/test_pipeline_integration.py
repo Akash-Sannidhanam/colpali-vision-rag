@@ -2,7 +2,7 @@
 
 These exercise the *compiled* LangGraph flow (`build_graph().invoke`) end to end,
 with every external boundary stubbed at the name-as-imported choke points -
-`graph.embed_query` / `graph.search`, `reranker.generate` / `reranker._candidate_part`,
+`graph.retrieve`, `reranker.generate` / `reranker._candidate_part`,
 `answerer.generate` / `answerer.image_part`, and `graph.crop_region` /
 `graph.annotate_page`. No model, API key, network, or PNGs - the suite verifies
 *wiring* (state flow, index alignment, degradation paths), not pixels.
@@ -52,8 +52,7 @@ def _answer_response(citation: Citation) -> SimpleNamespace:
 def pipeline(monkeypatch):
     """A compiled graph with all boundaries stubbed; `calls` records highlight IO."""
     calls = {"cropped": [], "annotated": []}
-    monkeypatch.setattr(graph, "embed_query", lambda q: [[0.0] * 128])
-    monkeypatch.setattr(graph, "search", lambda vec: [dict(h) for h in CANDIDATES])
+    monkeypatch.setattr(graph, "retrieve", lambda q: [dict(h) for h in CANDIDATES])
     monkeypatch.setattr(graph, "rerank", lambda q, pages: reranker.rerank(q, pages, k=2))
     monkeypatch.setattr(reranker, "_candidate_part", lambda path: f"thumb:{path}")
     monkeypatch.setattr(answerer, "image_part", lambda path: f"img:{path}")
@@ -175,7 +174,7 @@ def test_malformed_answer_json_degrades_to_not_found(pipeline, monkeypatch):
 
 def test_empty_retrieval_completes_cleanly(pipeline, monkeypatch):
     """An empty index completes without a Gemini call and without a crop."""
-    monkeypatch.setattr(graph, "search", lambda vec: [])
+    monkeypatch.setattr(graph, "retrieve", lambda q: [])
     not_found = _cite("No pages indexed.", False, 0, [])
     monkeypatch.setattr(answerer, "generate", lambda **kw: _answer_response(not_found))
     # rerank must pass [] through without a Gemini call; make one loud if attempted.

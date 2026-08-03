@@ -2,7 +2,7 @@
 
 Stubs the module's name-as-imported seams (`run_eval.generate`,
 `run_eval.list_documents`) and the pipeline entry points the run_* functions import
-lazily (`src.main.run_query`, `src.embedder.embed_query`, `src.vector_store.search`)
+lazily (`src.main.run_query`, `src.retrieval.retrieve`)
 per the repo convention - no network, key, or Qdrant. The orchestration tests cover
 the answerable-vs-unanswerable *row shapes*, which is where a scoring bug would hide;
 the live numbers still come from a real eval run.
@@ -152,8 +152,7 @@ def test_run_retrieval_only_does_not_score_unanswerable_rows(monkeypatch):
     gold_rank=None would count a correctly-unanswerable question as a recall miss.
     """
     searched = []
-    monkeypatch.setattr("src.embedder.embed_query", lambda q: [[0.1]])
-    monkeypatch.setattr("src.vector_store.search", lambda mv: searched.append(mv) or [
+    monkeypatch.setattr("src.retrieval.retrieve", lambda q: searched.append(q) or [
         {"pdf": "a.pdf", "page_number": 3, "image_path": "p3.png", "score": 0.9},
     ])
 
@@ -275,9 +274,8 @@ def test_run_full_stores_both_page_lists_for_offline_rescoring(monkeypatch):
 
 def test_run_retrieval_only_carries_candidate_coverage(monkeypatch):
     """The retrieval half of the attribution needs no API key and no Gemini spend."""
-    monkeypatch.setattr("src.embedder.embed_query", lambda q: [[0.1]])
-    monkeypatch.setattr("src.vector_store.search",
-                        lambda mv: [_page("a.pdf", 3), _page("b.pdf", 7)])
+    monkeypatch.setattr("src.retrieval.retrieve",
+                        lambda q: [_page("a.pdf", 3), _page("b.pdf", 7)])
 
     (row,) = run_eval.run_retrieval_only([_CROSS_ROW])
 
@@ -287,8 +285,7 @@ def test_run_retrieval_only_carries_candidate_coverage(monkeypatch):
 
 def test_run_retrieval_only_leaves_unanswerable_rows_unscored(monkeypatch):
     """Attribution must not leak into the negative rows' deliberately bare shape."""
-    monkeypatch.setattr("src.embedder.embed_query", lambda q: [[0.1]])
-    monkeypatch.setattr("src.vector_store.search", lambda mv: [_page("a.pdf", 3)])
+    monkeypatch.setattr("src.retrieval.retrieve", lambda q: [_page("a.pdf", 3)])
 
     (row,) = run_eval.run_retrieval_only([_unanswerable_row()])
 

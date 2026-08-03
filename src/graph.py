@@ -7,11 +7,10 @@ from langgraph.graph import END, START, StateGraph
 
 from src import request_context
 from src.answerer import answer as gemini_answer
-from src.embedder import embed_query
 from src.highlight import annotate_page, crop_region
 from src.logging_setup import get_logger
 from src.reranker import rerank
-from src.vector_store import search
+from src.retrieval import retrieve
 
 log = get_logger("graph")
 
@@ -38,8 +37,11 @@ def retrieve_node(state: RAGState) -> dict:
 
     `candidates` keeps the full pre-rerank top-k (rerank overwrites `retrieved`),
     so eval recall@k and a "retrieved N, used K" UI can see what retrieval produced.
+
+    Retrieval policy (including query decomposition) lives in `src.retrieval`, which
+    the eval harness calls too - this node is only the state plumbing around it.
     """
-    hits = search(embed_query(state["question"]))
+    hits = retrieve(state["question"])
     return {"retrieved": hits, "candidates": hits}
 
 def rerank_node(state: RAGState) -> dict:
