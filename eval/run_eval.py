@@ -127,9 +127,14 @@ def _pages_of(hits: list[dict]) -> list[dict]:
 
 
 def run_retrieval_only(dataset: list[dict]) -> list[dict]:
-    """Embed + search per question - no Gemini modules touched, no API key needed."""
-    from src.embedder import embed_query
-    from src.vector_store import search
+    """Retrieve per question - no Gemini modules touched, no API key needed.
+
+    Goes through the same `src.retrieval.retrieve` seam the graph's retrieve node
+    uses. Embedding and searching here directly is what once let a retrieval-policy
+    change (query decomposition) move the pipeline while this mode went on measuring
+    the old behaviour.
+    """
+    from src.retrieval import retrieve
 
     rows = []
     for item in dataset:
@@ -141,7 +146,7 @@ def run_retrieval_only(dataset: list[dict]) -> list[dict]:
             # correctly-unanswerable question as a retrieval miss.
             rows.append({"id": item["id"], "tags": item["tags"], "unanswerable": True})
             continue
-        hits = search(embed_query(item["question"]))
+        hits = retrieve(item["question"])
         rank = gold_rank(hits, item["gold"])
         # The retrieval top-1 makes a recall@1 miss auditable: it shows *which* page
         # out-ranked the gold page (kept in the report row, not the summary table).
@@ -260,6 +265,12 @@ def _config_snapshot(mode: str, dataset_path: str, use_judge: bool) -> dict:
         "rerank_adaptive": config.RERANK_ADAPTIVE,
         "max_pages_per_doc": config.MAX_PAGES_PER_DOC,
         "candidate_fanout": config.CANDIDATE_FANOUT,
+        # Both here for the reason the slate knobs are: without them diff_reports.py
+        # prints "config changes: none" on precisely the comparison this pass exists
+        # to make.
+        "query_decompose": config.QUERY_DECOMPOSE,
+        "max_subqueries": config.MAX_SUBQUERIES,
+        "decompose_original_weight": config.DECOMPOSE_ORIGINAL_WEIGHT,
         "rescore_oversampling": config.RESCORE_OVERSAMPLING,
         "gemini_model": config.GEMINI_MODEL,
         "rerank_model": config.RERANK_MODEL,

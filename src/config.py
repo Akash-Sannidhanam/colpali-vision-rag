@@ -86,6 +86,41 @@ MAX_PAGES_PER_DOC = int(os.getenv("MAX_PAGES_PER_DOC", "5"))
 # MAX_PAGES_PER_DOC is set; 2.0 is where coverage saturates on this corpus (a 20-deep
 # pool scores the same as 25/30/40/50).
 CANDIDATE_FANOUT = float(os.getenv("CANDIDATE_FANOUT", "2.0"))
+# Query decomposition: split a two-part question into halves, embed each, and fuse the
+# rankings (see src/query_decompose.py). MAX_PAGES_PER_DOC caps how much of the slate one
+# document may hold, but a cap cannot recover a page retrieval never ranked at all - and
+# xdoc-splade-vocab-dpr-dense's second gold document sits outside even the top-50. The
+# remaining coverage headroom after the slate-diversity pass is entirely retrieval-side,
+# and this is the only lever left for it.
+#
+# On: the judged run took citation_accuracy 0.9315 -> 0.9589, judge_accuracy 0.9178 ->
+# 0.9452 and rerank_recall to 1.0 (every answerable question's gold page now survives
+# into the answer step). It costs recall@1/@3 - the halves rank the top of the slate
+# worse than the whole question did - but that cost does not reach the answer, because
+# RERANK_K=3 picks from a 12-page slate and what matters is gold being *in* it.
+#
+# The splitter is a heuristic, and every cross-document question in eval/dataset.jsonl
+# happens to be phrased "<A>, and <B>?" - so a win on that slice alone would be
+# indistinguishable from memorising the dataset. eval/dataset_paraphrase.jsonl is the
+# hold-out that tells them apart: it moved coverage 0.7917 -> 0.8333 on deliberately
+# varied phrasings, from the 5 of 12 rows the splitter fires on at all.
+# See the query-decomposition pass in PRODUCTION_HARDENING.md.
+QUERY_DECOMPOSE = os.getenv("QUERY_DECOMPOSE", "true").strip().lower() in ("1", "true", "yes")
+# Most parts a question may be split into, beyond the original. Bounds how wide the
+# fused pool can get on a listy question; the whole question is always embedded too, so
+# a clause past the cap is no worse off than it is with decomposition off.
+MAX_SUBQUERIES = int(os.getenv("MAX_SUBQUERIES", "2"))
+# How much the *whole* question's ranking counts for when its halves are fused beside
+# it. Not cosmetic: RRF rewards agreement between rankings, so at weight 1.0 the query
+# that could not find the second document out-votes the half that could - measured, an
+# equal-weight fusion pushed dpr.pdf p3 (rank 4 in its own half's results) out of the
+# slate in favour of two dpr.pdf pages the whole question already ranked, and bought
+# *zero* coverage for 9 rows of worsened gold rank.
+#
+# 0, so the whole question is dropped from the fusion entirely and its embed skipped.
+# Kept as a knob rather than deleted because it is what makes the rejected equal-weight
+# design reproducible: DECOMPOSE_ORIGINAL_WEIGHT=1 restores it exactly.
+DECOMPOSE_ORIGINAL_WEIGHT = float(os.getenv("DECOMPOSE_ORIGINAL_WEIGHT", "0.0"))
 # Binary quantization is lossy; the fast quantized pass pulls RETRIEVE_K * this many
 # candidates, then rescores them against the full-precision vectors on disk. Higher
 # recovers recall@1 that quantization costs, at a little more disk I/O per query.

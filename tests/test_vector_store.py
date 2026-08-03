@@ -584,3 +584,97 @@ def test_search_backfills_dropped_hits_from_the_wider_pool(monkeypatch, tmp_path
     # a.pdf p2 was dropped, so the slate fills from deeper in the pool rather than
     # returning a single hit for a two-slot request.
     assert [(h["pdf"], h["page_number"]) for h in hits] == [("a.pdf", 1), ("b.pdf", 1)]
+
+
+# --- search_multi: one Qdrant query per sub-query, fused into one slate ---
+
+def _patch_multi_client(monkeypatch, responses, calls=None):
+    """Patch get_client with ONE client whose successive query_points calls return
+    successive response lists.
+
+    Built once and closed over deliberately: `get_client` is called per sub-query, so
+    handing back a fresh client each time would replay the first canned response to
+    every sub-query - which silently turns a two-sub-query test into the same query
+    twice, and lets a fusion test pass without fusing anything.
+    """
+    remaining = list(responses)
+
+    def query_points(**kw):
+        """Pop the next canned response, recording the kwargs it was asked with."""
+        if calls is not None:
+            calls.append(kw)
+        return SimpleNamespace(points=remaining.pop(0))
+
+    client = SimpleNamespace(query_points=query_points)
+    monkeypatch.setattr(vector_store, "get_client", lambda: client)
+
+
+def _point(pdf, page, score, img):
+    """One Qdrant point with a payload that passes search's validation loop."""
+    return SimpleNamespace(id=f"{pdf}-{page}", score=score,
+                           payload={"pdf": pdf, "page_number": page, "image_path": str(img)})
+
+
+def test_search_multi_issues_one_query_per_subquery(monkeypatch, tmp_path):
+    """Each sub-query gets its own Qdrant round-trip; nothing is batched or dropped."""
+    img = tmp_path / "p.png"
+    img.write_bytes(b"x")
+    calls: list = []
+    _patch_multi_client(monkeypatch, [[_point("a.pdf", 1, 0.9, img)],
+                                      [_point("b.pdf", 1, 0.8, img)]], calls)
+
+    vector_store.search_multi([[[0.0] * 128], [[1.0] * 128]], top_k=4)
+
+    assert len(calls) == 2
+
+
+def test_search_multi_surfaces_a_page_only_the_second_subquery_found(monkeypatch, tmp_path):
+    """The entire point of the pass: a document the whole question never ranks.
+
+    The first sub-query returns four pages of one PDF - the monopoly the slate pass
+    could only cap, not cure. The second sub-query is what puts b.pdf in the slate.
+    """
+    img = tmp_path / "p.png"
+    img.write_bytes(b"x")
+    monopoly = [_point("a.pdf", n, 1.0 - n / 100, img) for n in (1, 2, 3, 4)]
+    second = [_point("b.pdf", 7, 0.42, img)]
+    _patch_multi_client(monkeypatch, [monopoly, second])
+    monkeypatch.setattr(vector_store, "MAX_PAGES_PER_DOC", 0)  # isolate fusion from the cap
+
+    hits = vector_store.search_multi([[[0.0] * 128], [[1.0] * 128]], top_k=5)
+
+    assert ("b.pdf", 7) in [(h["pdf"], h["page_number"]) for h in hits]
+
+
+def test_search_multi_applies_the_per_document_cap_after_fusing(monkeypatch, tmp_path):
+    """Fusion widens the pool; the cap still governs the slate that comes out of it."""
+    img = tmp_path / "p.png"
+    img.write_bytes(b"x")
+    first = [_point("a.pdf", n, 1.0 - n / 100, img) for n in (1, 2, 3)]
+    second = [_point("a.pdf", n, 0.9 - n / 100, img) for n in (4, 5)] + \
+             [_point("b.pdf", 1, 0.5, img)]
+    _patch_multi_client(monkeypatch, [first, second])
+    monkeypatch.setattr(vector_store, "MAX_PAGES_PER_DOC", 2)
+    monkeypatch.setattr(vector_store, "CANDIDATE_FANOUT", 2.0)
+
+    hits = vector_store.search_multi([[[0.0] * 128], [[1.0] * 128]], top_k=4)
+
+    assert sum(h["pdf"] == "a.pdf" for h in hits) == 2
+
+
+def test_search_multi_with_one_subquery_matches_search(monkeypatch, tmp_path):
+    """The identity that keeps every undecomposed query byte-identical.
+
+    `search` delegates to `search_multi`, so if a lone ranking were reordered or
+    re-scored by fusion, all 63 single-document eval questions would move for no
+    reason. Asserted on the dicts, not just the order, because `score` is what
+    confidence.retrieval_confidence reads.
+    """
+    img = tmp_path / "p.png"
+    img.write_bytes(b"x")
+    points = [_point("a.pdf", 1, 0.99, img), _point("b.pdf", 2, 0.42, img)]
+    monkeypatch.setattr(vector_store, "get_client", lambda: _search_client(points))
+
+    assert (vector_store.search_multi([[[0.0] * 128]], top_k=5)
+            == vector_store.search([[0.0] * 128], top_k=5))
+    assert vector_store.search([[0.0] * 128], top_k=5)[0]["score"] == 0.99
