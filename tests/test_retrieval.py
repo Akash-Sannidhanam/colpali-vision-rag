@@ -108,8 +108,8 @@ def test_passes_one_multivector_per_query_to_search(monkeypatch):
     assert len(seen[0]) == 2
 
 
-def test_logs_the_split_it_used(monkeypatch):
-    """A live query's split has to be auditable from the logs, like dropped hits are."""
+def _capture(monkeypatch, level):
+    """Run retrieve(TWO_PART) at `level` and return the records the retrieval logger emitted."""
     monkeypatch.setattr(retrieval, "QUERY_DECOMPOSE", True)
     _stub(monkeypatch)
     records: list[logging.LogRecord] = []
@@ -117,14 +117,43 @@ def test_logs_the_split_it_used(monkeypatch):
     handler.emit = records.append  # type: ignore[method-assign]
     logger = logging.getLogger("retrieval")
     logger.addHandler(handler)
-    logger.setLevel(logging.INFO)
+    prev = logger.level
+    logger.setLevel(level)
     try:
         retrieval.retrieve(TWO_PART)
     finally:
         logger.removeHandler(handler)
+        logger.setLevel(prev)
+    return records
+
+
+def test_logs_the_shape_of_the_split_at_info(monkeypatch):
+    """A live split has to be visible in a production log, like dropped hits are."""
+    records = _capture(monkeypatch, logging.INFO)
+
+    shape = [r for r in records if getattr(r, "subquery_count", None)]
+    assert shape and shape[0].subquery_count == 2
+    assert shape[0].subquery_lengths == [54, 36]
+
+
+def test_does_not_log_question_text_at_info(monkeypatch):
+    """No other log line in this codebase emits question text; this one must not either."""
+    records = _capture(monkeypatch, logging.INFO)
+
+    assert not [r for r in records if getattr(r, "subqueries", None)]
+
+
+def test_logs_the_split_itself_at_debug(monkeypatch):
+    """Shape alone cannot tell a sensible split from a garbage one - count=2 with
+    plausible lengths is what a bad split looks like too. The actual split stays
+    available, one log level down."""
+    records = _capture(monkeypatch, logging.DEBUG)
 
     split = [r for r in records if getattr(r, "subqueries", None)]
-    assert split and len(split[0].subqueries) == 2
+    assert split and split[0].subqueries == [
+        "How many layers are in the Transformer's encoder stack",
+        "how many layers does BERT-base have?",
+    ]
 
 
 def test_returns_the_hits_search_produced(monkeypatch):

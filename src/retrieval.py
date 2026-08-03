@@ -41,11 +41,19 @@ def retrieve(question: str) -> list[dict]:
             queries = queries[1:]           # dropped outright, so its embed is skipped too
         else:
             weights = [DECOMPOSE_ORIGINAL_WEIGHT] + [1.0] * (len(queries) - 1)
-        # Logged so a live split is auditable after the fact, the same way search's
-        # dropped hits are - a splitter that fires on the wrong question is otherwise
-        # invisible until it surfaces as a coverage number nobody can explain.
+        # Two lines, because the two audiences want different things and only one of
+        # them should cost user content in a production log.
+        #
+        # INFO carries shape only. No other log line in this codebase emits question
+        # text (main.py logs latency and usage; server.py logs paths), and a retrieval
+        # helper is the wrong place to break that.
         log.info("decomposed query", extra={
             "subquery_count": len(queries),
-            "subquery_lengths": [len(q) for q in queries]
+            "subquery_lengths": [len(q) for q in queries],
         })
+        # DEBUG carries the split itself. Shape alone cannot tell a sensible split from
+        # a garbage one - count=2 with plausible lengths is exactly what a bad split
+        # looks like too - and "the splitter fired on the wrong question" is the failure
+        # mode this rule-based splitter actually has. Opt in with LOG_LEVEL=DEBUG.
+        log.debug("decomposed query parts", extra={"subqueries": queries})
     return search_multi([embed_query(q) for q in queries], weights=weights)
