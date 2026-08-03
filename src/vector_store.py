@@ -38,6 +38,7 @@ from src.config import (
     VECTOR_DIM,
 )
 from src.logging_setup import get_logger
+from src.query_decompose import fuse_rrf
 
 log = get_logger("qdrant")
 
@@ -353,8 +354,8 @@ def _diversify(hits: list[dict], cap: int, k: int) -> list[dict]:
     return kept
 
 
-def search(query_multivector: list[list[float]], top_k: int = RETRIEVE_K) -> list[dict]:
-    """Return the top_k pages for a query multivector, best score first.
+def _fetch(query_multivector: list[list[float]], fetch_k: int) -> list[dict]:
+    """Query Qdrant for one multivector and return its validated hits, best score first.
 
     Drops points whose payload is missing a required field (`pdf`, `page_number`,
     `image_path`) or whose page image is no longer on disk - which happens when the
@@ -362,17 +363,10 @@ def search(query_multivector: list[list[float]], top_k: int = RETRIEVE_K) -> lis
     a stale index stays visible rather than silently answering off a shrunken set;
     downstream (rerank/answer/highlight) can then assume every hit resolves to a page.
 
-    With MAX_PAGES_PER_DOC set, fetches a CANDIDATE_FANOUT-wider pool and caps each
-    document's share of the slate. The cap is applied *after* the validation loop, so a
-    hit dropped for a missing page image is backfilled from deeper in the pool instead
-    of shrinking the slate. With the cap off the fetch width is exactly top_k, which
-    keeps the uncapped path identical to what it was before diversity existed.
+    Split out of `search` so a decomposed question can issue one of these per sub-query
+    without duplicating the validation contract (see `search_multi`).
     """
     client = get_client()
-    # max(): a CANDIDATE_FANOUT below 1.0 is a misconfiguration, and the failure mode
-    # it would otherwise have is the worst kind - a silently *shrunken* slate, costing
-    # recall with nothing in the logs to say why. The knob only ever widens.
-    fetch_k = max(top_k, round(top_k * CANDIDATE_FANOUT)) if MAX_PAGES_PER_DOC > 0 else top_k
     response = client.query_points(
         collection_name = COLLECTION_NAME,
         query = query_multivector,
@@ -408,7 +402,48 @@ def search(query_multivector: list[list[float]], top_k: int = RETRIEVE_K) -> lis
                         extra={"point_id": p.id, "image_path": payload["image_path"]})
             continue
         hits.append({**payload, "score": round(p.score, 4)})
-    return _diversify(hits, MAX_PAGES_PER_DOC, top_k)
+    return hits
+
+
+def search_multi(
+    query_multivectors: list[list[list[float]]],
+    top_k: int = RETRIEVE_K,
+    weights: list[float] | None = None,
+) -> list[dict]:
+    """Return the top_k pages for one or more query multivectors, best first.
+
+    One Qdrant round-trip per multivector, fused by reciprocal rank
+    (`query_decompose.fuse_rrf`) and then capped per document. Fusing by rank rather
+    than by score is load-bearing: MaxSim magnitude scales with a query's token count,
+    so merging a long half's scores against a short half's would just hand the slate
+    back to the wordier one.
+
+    With MAX_PAGES_PER_DOC set, each sub-query fetches a CANDIDATE_FANOUT-wider pool
+    and the cap is applied to the *fused* list. The cap therefore still runs after the
+    validation loop, so a hit dropped for a missing page image is backfilled from
+    deeper in the pool instead of shrinking the slate. With the cap off the fetch width
+    is exactly top_k, which keeps that path identical to what it was before diversity
+    existed.
+
+    A single multivector is the undecomposed path and stays byte-identical to the old
+    `search`: fusion over one ranking preserves both its order and its raw scores.
+    """
+    # max(): a CANDIDATE_FANOUT below 1.0 is a misconfiguration, and the failure mode
+    # it would otherwise have is the worst kind - a silently *shrunken* slate, costing
+    # recall with nothing in the logs to say why. The knob only ever widens.
+    fetch_k = max(top_k, round(top_k * CANDIDATE_FANOUT)) if MAX_PAGES_PER_DOC > 0 else top_k
+    rankings = [_fetch(mv, fetch_k) for mv in query_multivectors]
+    return _diversify(fuse_rrf(rankings, weights), MAX_PAGES_PER_DOC, top_k)
+
+
+def search(query_multivector: list[list[float]], top_k: int = RETRIEVE_K) -> list[dict]:
+    """Return the top_k pages for a single query multivector, best score first.
+
+    The undecomposed entry point, kept because most callers (and every caller predating
+    decomposition) have exactly one query. Delegates to `search_multi`, which is a
+    no-op wrapper in the one-multivector case.
+    """
+    return search_multi([query_multivector], top_k)
 
 def document_index() -> dict[str, dict]:
     """Every indexed PDF -> {page_count, content_hash, embed_version}.
