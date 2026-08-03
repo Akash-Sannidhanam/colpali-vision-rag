@@ -32,13 +32,16 @@ pdfs/*.pdf
 # Note `reports/*`, not `reports/`: git never descends into an excluded *directory*, so
 # the trailing-slash form would make the negation below unreachable.
 eval/reports/*
-# The current baseline is `baseline_diverse.json` (83 questions at the shipped defaults:
-# RETRIEVE_K=12, MAX_PAGES_PER_DOC=5, RERANK_K=3). The other four are superseded but kept
-# because the write-ups cite their numbers: `baseline_swept.json` is the same questions at
-# RETRIEVE_K=10 with no cap, and is the correct thing to diff the slate-diversity pass
-# against; `baseline_rerank_k3.json` is that config on the pre-sweep labels;
-# `baseline_sharpened.json` is those 83 questions at RERANK_K=2, and doubles as arm A of the
-# RERANK_K experiment; `baseline_desaturated.json` is the older 69-question set.
+# The current baseline is `baseline_decomposed.json` (83 questions at the shipped defaults:
+# RETRIEVE_K=12, MAX_PAGES_PER_DOC=5, RERANK_K=3, QUERY_DECOMPOSE=true,
+# DECOMPOSE_ORIGINAL_WEIGHT=0). The other five are superseded but kept because the write-ups
+# cite their numbers: `baseline_diverse.json` is the same questions with decomposition off,
+# and is the correct thing to diff the query-decomposition pass against; `baseline_swept.json`
+# is them at RETRIEVE_K=10 with no cap, which the slate-diversity pass was measured against;
+# `baseline_rerank_k3.json` is that config on the pre-sweep labels; `baseline_sharpened.json`
+# is those 83 questions at RERANK_K=2, and doubles as arm A of the RERANK_K experiment;
+# `baseline_desaturated.json` is the older 69-question set.
+!eval/reports/baseline_decomposed.json
 !eval/reports/baseline_diverse.json
 !eval/reports/baseline_swept.json
 !eval/reports/baseline_rerank_k3.json
