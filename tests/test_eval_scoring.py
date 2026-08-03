@@ -160,38 +160,17 @@ def test_candidate_coverage_inherits_the_single_document_na_rule():
     assert gold_doc_coverage([_hit("a.pdf", 2), _hit("a.pdf", 5)], GOLD_A2) is None
 
 
-def test_coverage_pair_attributes_mixed_loss_to_both_stages():
-    """Candidates <1.0 and reranked even lower - both retrieval and rerank failed."""
-    candidates = [_hit("a.pdf", 2), _hit("c.pdf", 1), _hit("a.pdf", 3)]
-    reranked = [_hit("a.pdf", 2), _hit("c.pdf", 1)]
-    # Retrieval failed to get b.pdf at all (candidates = 0.5), and rerank didn't help.
-    # Since candidates (0.5) != reranked (0.5) would be equal, this tests the case where
-    # they ARE equal but both <1.0 - a retrieval-only failure.
-    assert gold_doc_coverage(candidates, CROSS_GOLD) == 0.5
-    assert gold_doc_coverage(reranked, CROSS_GOLD) == 0.5
+def test_coverage_pair_attributes_a_partial_loss_to_both_stages():
+    """Candidates 0.5 and reranked 0.0 - retrieval missed one document, rerank dropped
+    the other, and only the *decrease* distinguishes this from a retrieval-only loss.
 
-
-def test_coverage_pair_equal_below_one_is_retrieval_only():
-    """When candidate and reranked coverage are equal AND both <1.0, it's retrieval-only.
-
-    This is the corrected attribution rule: rerank was blameless because it didn't change
-    the coverage, so the loss is entirely on retrieval's side.
-    """
-    # b.pdf was never retrieved, so reranker had no chance to include it.
-    candidates = [_hit("a.pdf", 2), _hit("a.pdf", 3), _hit("c.pdf", 1)]
-    reranked = [_hit("a.pdf", 2), _hit("a.pdf", 3)]
-    assert gold_doc_coverage(candidates, CROSS_GOLD) == 0.5
-    assert gold_doc_coverage(reranked, CROSS_GOLD) == 0.5
-
-
-def test_coverage_pair_decrease_attributes_to_rerank_with_partial_retrieval():
-    """Candidates 0.5, reranked 0.0 - retrieval missed one doc, rerank dropped the other.
-
-    Both stages failed: retrieval never surfaced b.pdf, AND rerank dropped a.pdf. This is
-    NOT a retrieval-only loss because coverage decreased.
+    The third case, and the one a two-case reading of the pair gets wrong: "candidates
+    <1.0" alone does not mean rerank was blameless. Rerank is blameless only when the
+    two coverages are *equal*. No row in the current corpus is this case, which is why
+    the distinction is worth a test rather than a comment.
     """
     candidates = [_hit("a.pdf", 2), _hit("c.pdf", 1), _hit("a.pdf", 3)]
-    reranked = [_hit("c.pdf", 1), _hit("a.pdf", 4)]  # Lost the gold a.pdf page
+    reranked = [_hit("c.pdf", 1), _hit("a.pdf", 4)]  # dropped the gold a.pdf page
     assert gold_doc_coverage(candidates, CROSS_GOLD) == 0.5
     assert gold_doc_coverage(reranked, CROSS_GOLD) == 0.0
 
