@@ -21,6 +21,7 @@ physical collection transparently.
 
 import uuid
 from pathlib import Path
+from typing import Any
 
 from qdrant_client import QdrantClient
 from qdrant_client import models as qm
@@ -336,7 +337,11 @@ def _diversify(hits: list[dict], cap: int, k: int) -> list[dict]:
     if cap <= 0:
         return hits[:k]
     kept: list[dict] = []
-    per_pdf: dict[str, int] = {}
+    # Keyed by whatever `pdf` holds rather than `str`: hits are untyped dicts here, and
+    # `search` only calls this *after* its validation loop has already dropped anything
+    # without a string `pdf`. Coercing instead would quietly bucket every malformed hit
+    # together under one key.
+    per_pdf: dict[Any, int] = {}
     for hit in hits:
         pdf = hit.get("pdf")
         if per_pdf.get(pdf, 0) >= cap:
