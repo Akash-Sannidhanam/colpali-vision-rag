@@ -157,6 +157,24 @@ the reader) is complete, tested, and shipped. Captured here so they are not lost
   two-part question, union the candidates). Guard the change with the new
   `candidate_coverage_avg` gate — it is deterministic, so a diversity win shows up with no
   LLM variance and needs no judged run to see.
+- **Query decomposition for the one row no slate policy reaches.** _(✅ done — the
+  prescription in the note above was right. `QUERY_DECOMPOSE=true` +
+  `DECOMPOSE_ORIGINAL_WEIGHT=0` took `candidate_coverage_avg` 0.825 → **0.850**,
+  `rerank_recall` to **1.0**, citation 0.9315 → **0.9589** and judge 0.9178 → **0.9452**,
+  and fixed `xdoc-splade-vocab-dpr-dense`. See the query-decomposition pass in
+  PRODUCTION_HARDENING.md.)_ Three things the note above could not have known.
+  **"Union the candidates" is underspecified and two of its three readings lose.** Fusing
+  by score hands the slate to whichever half is wordier, because MaxSim sums over query
+  tokens. Fusing by rank while *also* including the whole question is worse than it sounds:
+  RRF rewards agreement, so the query that cannot find the second document out-votes the
+  half that can — that arm bought **zero** coverage for 9 rows of worsened gold rank.
+  Only halves-only RRF works.
+  **The recall proxies mispriced the change.** recall@1 0.7397 → 0.6712 and recall@3
+  0.9041 → 0.8493, while every answer-level metric improved — `RERANK_K=3` picks from a
+  12-page slate, so what gates the answer is whether gold is *in* it, not where. Both
+  floors had to be lowered; that is the honest cost of adopting.
+  **`gold_coverage_avg` did not follow its ceiling** (0.825 against 0.850), so the slate
+  pass's "rerank loses nothing" property no longer holds. That is now the sharpest open lead.
 - **The confidence signals carry almost no information.** _(new, measured.)_ The model
   self-reported `high` on most of the 73 answerable questions, showing some variance
   (high-confidence accuracy: 0.958, low-confidence: 0.0), but the deterministic

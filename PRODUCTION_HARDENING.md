@@ -844,3 +844,166 @@ top-50 entirely and needs **query decomposition** (embed each half of a two-part
 union the candidates) — no slate policy reaches it.
 `xdoc-donut-encoder-layoutlm-embeddings` needs a **relevance-aware** cap rather than a
 rank-based one, per Finding 3.
+
+---
+
+## Query-decomposition pass (follow-on) ✅ DONE
+
+**The problem.** The slate-diversity pass ended with `gold_coverage_avg` *equal* to
+`candidate_coverage_avg` (both 0.825): rerank was losing nothing, so every remaining
+point of headroom was retrieval-side. One row was named as unreachable by any slate
+policy — `xdoc-splade-vocab-dpr-dense`, whose gold `dpr.pdf` p3 is outside the whole
+question's top-**50**. The prescription written down then was query decomposition. This
+pass ran it, and the prescription was right.
+
+**Shipped:**
+- **`src/query_decompose.py`** — `decompose()` (pure, conservative splitter) and
+  `fuse_rrf()` (weighted reciprocal rank fusion). Plain strings and dicts in and out, so
+  the whole module unit-tests with no Qdrant, following the `_diversify` precedent.
+- **`src/retrieval.py`** — the question → candidates seam, shared by `graph.retrieve_node`
+  and `eval.run_eval.run_retrieval_only`. See "the arm that measured itself" below.
+- **`vector_store._fetch` / `search_multi`** — one Qdrant round-trip per sub-query, fused
+  then `_diversify`d. `search` delegates with a one-element list and is byte-identical:
+  fusion over a single ranking preserves both its order and its raw scores.
+- **`QUERY_DECOMPOSE` (on), `MAX_SUBQUERIES` (2), `DECOMPOSE_ORIGINAL_WEIGHT` (0)**,
+  env-overridable like the other eval knobs and all three in the report's config snapshot.
+- **`eval/dataset_paraphrase.jsonl`** — a 12-row hold-out, run via the existing `--dataset`
+  flag so the pinned baseline's denominators never move.
+
+### Three findings, in ascending order of how much they cost to learn
+
+**1. The arm that measured itself.** `run_retrieval_only` embedded and searched directly
+rather than going through the graph. That duplication was harmless while retrieval was one
+embed + one search, and stopped being harmless the moment decomposition made "how a
+question becomes candidates" a *policy*: the knob moved the pipeline while the eval went
+on measuring the old path. The first treatment arm came back byte-identical to its control
+on every metric — which read as "decomposition does nothing" and was in fact "the eval
+never ran it." **A config knob that changes a stage is only measurable if the harness and
+the pipeline reach that stage through the same seam.** Fixing it also caught two
+`test_run_eval` tests stubbing a path that no longer bound, which had been quietly hitting
+live Qdrant; the suite went 23s → 5s.
+
+**2. Fusing the whole question beside its halves actively suppresses the fix.** RRF rewards
+*agreement*: a page found by two rankings outranks a page found well by one. So including
+the whole question gives the query that **cannot** find the second document an equal vote,
+and the pages it already liked get double-counted. Measured, `dpr.pdf` p3 — rank **4** in
+its own half's results — lost its slate slot to `dpr.pdf` p1 and p9, which the whole
+question ranked 11th and 12th. The equal-weight arm bought **zero** coverage for 9 rows of
+worsened gold rank. Dropping the whole question from the fusion is what made the pass work.
+The design note that predicted keeping it was "strictly additive, therefore safer" was
+wrong, and wrong in a way only the arm could show.
+
+A contributing cause worth recording: **`_RRF_K = 60` is calibrated for TREC lists
+thousands deep.** Across a 12-page slate it flattens ranks 1–4 to within ~5% of each other,
+so mere co-occurrence dominates rank position. A smaller damping constant is an untried
+lever if fusion is revisited.
+
+**3. "Outside the top-50" was about a *page*, not a *document*.** `dpr.pdf` has 8 pages in
+the whole question's top-50 (ranks 14–41); only the gold page p3 is absent. That distinction
+is the whole reason a deeper slate and a looser cap both failed on this row, and `CLAUDE.md`
+had it as "document", which implies the opposite fix. Corrected.
+
+### The arms (`--retrieval-only`: no API key, no Gemini spend, deterministic)
+
+| arm | recall@1 | recall@3 | recall@12 | `cand_cov` |
+| --- | --- | --- | --- | --- |
+| control (off) | 0.7397 | 0.9041 | 0.9863 | 0.825 |
+| whole + halves (weight 1) | 0.6986 | 0.8630 | 0.9863 | 0.825 |
+| **halves only (weight 0)** | 0.6712 | 0.8493 | **1.0000** | **0.850** |
+
+Unlike the slate pass, these **cannot** be simulated from `probe_k50_retrieval.json`: that
+probe is a simulator for slate *policy*, and this changes the *query*, so there is nothing
+stored to re-score. Live arms are still free.
+
+### The hold-out — built before the arms, and it earned its keep
+
+Every cross-document row in `dataset.jsonl` is phrased `"<A>, and <B>?"`, so a splitter
+keyed on `", and "` would score beautifully and prove only that it had memorised the
+dataset. `dataset_paraphrase.jsonl` re-phrases 12 rows across five forms (sentence,
+versus, both, compare, semicolon) reusing the same gold.
+
+**The splitter fires on 5 of the 12.** It handles sentence boundaries and "versus"; it does
+not handle "For both X and Y…", "Compare X with Y", or a semicolon. That number was
+measured *before* the arms and the splitter was deliberately **not** edited afterwards —
+tuning it to the hold-out would have converted the hold-out into training data.
+
+On those 5 rows coverage still moved **0.7917 → 0.8333**, same direction and magnitude as
+the main slice, and the paraphrased target row `para-splade-vocab-dpr-dense` reproduced the
+fix (0.5 → 1.0) on a phrasing the splitter had never been shown. **The win generalises; its
+reach is ~40% of naturally-varied phrasings.** That reach, not the coverage number, is what
+an LLM splitter would have to beat to justify its extra call.
+
+### The judged run (`degradation` all zeros)
+
+| metric | `baseline_diverse` | **`baseline_decomposed`** |
+| --- | --- | --- |
+| recall@1 / recall@3 | 0.7397 / 0.9041 | 0.6712 / 0.8493 |
+| recall@12 / rerank_recall | 0.9863 / 0.9863 | **1.0000 / 1.0000** |
+| citation_accuracy | 0.9315 | **0.9589** |
+| substring_accuracy | 0.9444 | **0.9583** |
+| judge_accuracy / score | 0.9178 / 4.78 | **0.9452 / 4.85** |
+| gold_coverage_avg | 0.8250 | 0.8250 |
+| candidate_coverage_avg | 0.8250 | **0.8500** |
+| avg_latency_ms | 18049 | 18984 |
+
+**The retrieval-only arms priced a cost the pipeline does not pay.** recall@1 and recall@3
+both fell — the halves order the top of the slate worse than the whole question did — and
+*every* answer-level metric improved anyway. `RERANK_K=3` picks from a 12-page slate, so
+what gates the answer is whether gold is **in** the slate, and `rerank_recall` is now 1.0:
+every answerable question's gold page survives into the answer step. Retrieval-precision
+proxies are not answer quality, and on this pipeline they can move in opposite directions.
+
+**Audit of the flips** (23 of the 83 questions split, so only those can be affected):
+- **2 of the 6 judge flips are on questions that do not split** — `sales-q4-revenue`
+  (F→T) and `sales-q2-revenue` (T→F). Decomposition cannot have caused them; they are
+  run-to-run judge noise, and they cancel. Useful calibration: **~2 questions of judge
+  noise on identical retrieval**, which is why no LLM-dependent gate sits closer than 3.
+- **Citation: 4 genuine gains against 2 genuine losses.**
+- **`xdoc-splade-vocab-dpr-dense`, the target row, worked** — coverage 0.5 → 1.0, and it
+  now cites `dpr.pdf` p3, the gold page, where the baseline cited `colbertv2.pdf` p2 which
+  is not in gold at all. But its answer dropped the word "vocabulary" for "sparse
+  representations of terms", so `substring_match` and the judge both flipped False. Better
+  grounding, weaker wording, on the same row.
+- **`xdoc-donut-ocr-free-docvqa-questions` is a real citation regression, checked.**
+  `find_in_pdfs.py` confirms `donut.pdf` p8 contains **no** OCR mention, so this is not
+  under-labeled gold — it is the failure the slate pass also recorded, where rerank orders
+  a topical-but-unstating page first and the answer step points at it.
+
+### Two costs to carry forward
+
+**`gold_coverage_avg` did not follow its ceiling.** It stayed at 0.825 while
+`candidate_coverage_avg` rose to 0.850, so the slate pass's headline property — *rerank
+loses nothing* — no longer holds: rerank now drops a gold page it was offered. The
+attribution pair is doing exactly its job in flagging that, and it is the most concrete
+open lead in this file.
+
+**Latency +5.2%** (18.0 s → 19.0 s), from one extra embed and one extra Qdrant query on
+the 28% of questions that split. No extra Gemini tokens: the slate stays `RETRIEVE_K` wide
+however many sub-queries fed it.
+
+### Re-derived gates
+
+Adopting this **lowered two floors** — that is the real price. `recall@1` and `recall@3`
+are genuinely worse, and the guard on retrieval precision is correspondingly weaker; the
+trade is that six answer-level metrics are better and `rerank_recall` is perfect.
+
+```bash
+PYTHONPATH=. uv run python eval/run_eval.py --judge --gate recall@1:0.63 --gate recall@3:0.81 \
+  --gate recall@12:0.95 --gate rerank_recall:0.95 --gate citation_accuracy:0.91 \
+  --gate substring_accuracy:0.91 --gate abstention_accuracy:0.90 --gate gold_coverage_avg:0.67 \
+  --gate candidate_coverage_avg:0.80 --gate judge_accuracy:0.90
+```
+
+**Baseline:** `eval/reports/baseline_decomposed.json`. Diff against `baseline_diverse.json`,
+which is the same 83 questions with decomposition off.
+
+### What is left
+
+- **`gold_coverage_avg` vs its ceiling** (0.825 against 0.850) — rerank is losing a row it
+  is offered, for the first time since the slate pass closed that gap.
+- **The splitter reaches ~40% of phrasings.** "For both X and Y…", "Compare X with Y" and
+  semicolon-joined questions are not split. This is the measured bar an LLM splitter must
+  clear, and the reason to consider one is *reach*, not accuracy on what it already splits.
+- **`_RRF_K = 60` is untuned** for slates this shallow (see finding 2).
+- **`xdoc-donut-encoder-layoutlm-embeddings`** still needs a **relevance-aware** cap — a
+  rank-based one spends that document's quota on four non-gold pages. Unchanged by this pass.

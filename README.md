@@ -390,13 +390,20 @@ PYTHONPATH=. uv run python eval/run_eval.py --judge
 
 # CI gate: exit 1 if any watched metric drops below its floor (repeatable, one run)
 PYTHONPATH=. uv run python eval/run_eval.py --judge \
-  --gate recall@1:0.70 --gate recall@3:0.88 --gate citation_accuracy:0.91 \
-  --gate gold_coverage_avg:0.55 --gate abstention_accuracy:0.90
+  --gate recall@1:0.63 --gate recall@3:0.81 --gate recall@12:0.95 \
+  --gate rerank_recall:0.95 --gate citation_accuracy:0.91 --gate substring_accuracy:0.91 \
+  --gate abstention_accuracy:0.90 --gate gold_coverage_avg:0.67 \
+  --gate candidate_coverage_avg:0.80 --gate judge_accuracy:0.90
 ```
 
-Those floors sit ~3 questions below the pinned baseline. Note what is *not* gated:
-`recall@10` and `rerank_recall` are both still 1.0 and gating them would guard
-nothing — see below.
+Those floors sit ~3 questions below the pinned baseline — except
+`candidate_coverage_avg`, deliberately the tightest at ~1 question because it is pure
+retrieval and carries no LLM variance. Nothing sits at 1.0 any more except
+`abstention_accuracy`, so every one of them can now fail.
+
+**The gate names track `RETRIEVE_K`.** The harness derives `ks = {1, 3, RETRIEVE_K}`, so a
+report carries `recall@12` and no `recall@10` — an old `--gate recall@10:...` fails as a
+*missing metric* rather than as a regression.
 
 Reports land in `eval/reports/` (gitignored, except the pinned
 `baseline_desaturated.json`). Metrics:
@@ -419,20 +426,34 @@ latency/token/cost for free.
 
 ### Baseline
 
-`eval/reports/baseline_desaturated.json` is committed as the thing to diff against.
+`eval/reports/baseline_decomposed.json` is committed as the thing to diff against —
+83 questions over ~363 pages at the shipped defaults. `baseline_diverse.json` is the
+same 83 questions with query decomposition off, and is what the decomposition pass was
+measured against.
 
-| metric | 53 questions / 43 pages | 69 questions / 363 pages |
+| metric | `baseline_diverse` | **`baseline_decomposed`** (pinned) |
 | --- | --- | --- |
-| recall@1 | 0.8302 | 0.7627 |
-| recall@3 | 0.9623 | 0.9322 |
-| recall@10 | 1.0000 | 1.0000 |
-| rerank_recall | 1.0000 | 1.0000 |
-| citation_accuracy | 1.0000 | 1.0000 |
-| substring_accuracy | 1.0000 | 1.0000 |
-| judge_accuracy | 1.0000 | 0.9831 |
-| **gold_coverage_avg** | — | **0.7500** |
-| **abstention_accuracy** | — | **1.0000** (10/10) |
-| **confidence_separation** | — | *n/a this run* |
+| recall@1 | 0.7397 | 0.6712 |
+| recall@3 | 0.9041 | 0.8493 |
+| recall@12 | 0.9863 | **1.0000** |
+| rerank_recall | 0.9863 | **1.0000** |
+| citation_accuracy | 0.9315 | **0.9589** |
+| substring_accuracy | 0.9444 | **0.9583** |
+| judge_accuracy / score | 0.9178 / 4.78 | **0.9452 / 4.85** |
+| gold_coverage_avg | 0.8250 | 0.8250 |
+| candidate_coverage_avg | 0.8250 | **0.8500** |
+| abstention_accuracy | 1.0000 | 1.0000 (10/10) |
+| avg_latency_ms | 18049 | 18984 |
+
+**Why both recall floors went down.** Splitting a two-part question orders the top of the
+slate worse than the whole question did, so recall@1/@3 fall — and every answer-level
+metric rises anyway, because `RERANK_K=3` picks from a 12-page slate and what gates the
+answer is whether gold is *in* it. `rerank_recall` is now 1.0: every answerable question's
+gold page survives into the answer step. Retrieval-precision proxies are not answer
+quality, and here they moved in opposite directions.
+
+The sections below describe the **earlier de-saturation pass** and quote its
+69-question numbers; they are kept for the reasoning, not as current figures.
 
 **What the de-saturation actually found.** Not more retrieval headroom — on the
 *identical* 53 questions the 8× bigger corpus moved recall@1/@3/@10 by exactly zero,
