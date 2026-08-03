@@ -32,12 +32,14 @@ pdfs/*.pdf
 # Note `reports/*`, not `reports/`: git never descends into an excluded *directory*, so
 # the trailing-slash form would make the negation below unreachable.
 eval/reports/*
-# The current baseline is `baseline_swept.json` (83 questions, RERANK_K=3 - the shipped
-# default - with the cross-document gold labels swept). The other three are superseded but
-# kept because the write-ups cite their numbers: `baseline_rerank_k3.json` is the same
-# config on the pre-sweep labels; `baseline_sharpened.json` is those 83 questions at
-# RERANK_K=2, and doubles as arm A of the RERANK_K experiment; `baseline_desaturated.json`
-# is the older 69-question set.
+# The current baseline is `baseline_diverse.json` (83 questions at the shipped defaults:
+# RETRIEVE_K=12, MAX_PAGES_PER_DOC=5, RERANK_K=3). The other four are superseded but kept
+# because the write-ups cite their numbers: `baseline_swept.json` is the same questions at
+# RETRIEVE_K=10 with no cap, and is the correct thing to diff the slate-diversity pass
+# against; `baseline_rerank_k3.json` is that config on the pre-sweep labels;
+# `baseline_sharpened.json` is those 83 questions at RERANK_K=2, and doubles as arm A of the
+# RERANK_K experiment; `baseline_desaturated.json` is the older 69-question set.
+!eval/reports/baseline_diverse.json
 !eval/reports/baseline_swept.json
 !eval/reports/baseline_rerank_k3.json
 !eval/reports/baseline_sharpened.json
@@ -51,3 +53,12 @@ eval/reports/*
 # the tests reads them.
 !eval/reports/arm_b_k3.json
 !eval/reports/arm_c_k3_adaptive.json
+# The k=50 retrieval probe, kept for the opposite reason to the arms above: it is perfectly
+# reproducible, but it is a *simulator*. With 50 candidates per row stored in
+# `candidate_pages`, and gold_rank/both coverages being pure functions of (pages, gold), any
+# slate policy can be scored against it offline with no model, no Qdrant and no API key - the
+# slate-diversity pass chose its cap, its fanout depth and its two rejected designs that way
+# before writing code. Regenerating it needs the full corpus ingested and the ~2B model
+# loaded, which a fresh clone does not have. The slate-diversity arms themselves are NOT kept:
+# they are deterministic and re-run from a one-line prefix.
+!eval/reports/probe_k50_retrieval.json

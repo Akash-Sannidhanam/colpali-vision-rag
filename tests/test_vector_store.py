@@ -468,3 +468,119 @@ def test_search_returns_all_when_every_hit_is_valid(monkeypatch, tmp_path):
     hits = vector_store.search([[0.0] * 128])
 
     assert [h["page_number"] for h in hits] == [1, 2]
+
+
+# --- slate diversity (MAX_PAGES_PER_DOC) ---
+#
+# _diversify is pure, so these need no client at all: plain dicts in, a subsequence out.
+
+def _hit(pdf, page):
+    """A minimal hit dict - only `pdf` matters to the cap, `page_number` identifies it."""
+    return {"pdf": pdf, "page_number": page}
+
+
+def test_diversify_caps_each_document_and_keeps_score_order():
+    """No pdf exceeds the cap, and survivors stay in the order retrieval ranked them."""
+    hits = [_hit("a.pdf", n) for n in (1, 2, 3)] + [_hit("b.pdf", n) for n in (1, 2)]
+
+    kept = vector_store._diversify(hits, cap=2, k=10)
+
+    assert [(h["pdf"], h["page_number"]) for h in kept] == [
+        ("a.pdf", 1), ("a.pdf", 2), ("b.pdf", 1), ("b.pdf", 2),
+    ]  # a.pdf p3 is over quota; nothing is reordered
+
+
+def test_diversify_breaks_a_single_document_monopoly():
+    """The baseline failure: ten colpali pages shut paligemma out of the 10-slot slate."""
+    hits = [_hit("colpali.pdf", n) for n in range(1, 11)] + [_hit("paligemma.pdf", 4)]
+
+    kept = vector_store._diversify(hits, cap=4, k=10)
+
+    assert sum(1 for h in kept if h["pdf"] == "colpali.pdf") == 4
+    assert _hit("paligemma.pdf", 4) in kept  # the second gold document now gets a slot
+
+
+def test_diversify_returns_short_rather_than_readmitting_capped_pages():
+    """A cap that leaves fewer than k eligible pages yields a smaller slate, not a padded one."""
+    hits = [_hit("a.pdf", n) for n in (1, 2, 3, 4)]
+
+    kept = vector_store._diversify(hits, cap=2, k=10)
+
+    assert [h["page_number"] for h in kept] == [1, 2]
+
+
+def test_diversify_is_identity_when_disabled_or_slack():
+    """cap=0 (off) and cap>=k both reduce to a plain top-k truncation."""
+    hits = [_hit("a.pdf", n) for n in range(1, 6)]
+
+    assert vector_store._diversify(hits, cap=0, k=3) == hits[:3]
+    assert vector_store._diversify(hits, cap=3, k=3) == hits[:3]
+    assert vector_store._diversify(hits, cap=0, k=99) == hits
+
+
+def test_search_fetch_width_follows_the_cap(monkeypatch, tmp_path):
+    """The pool is CANDIDATE_FANOUT-wider only when the cap is on; off is exactly top_k.
+
+    Patch the by-value module globals, not src.config (see the note atop this file).
+    """
+    img = tmp_path / "p.png"
+    img.write_bytes(b"x")
+    captured: dict = {}
+
+    def query_points(**kw):
+        """Capture the search kwargs and return one valid hit."""
+        captured.update(kw)
+        return SimpleNamespace(points=[SimpleNamespace(
+            id=1, score=0.9,
+            payload={"pdf": "a.pdf", "page_number": 1, "image_path": str(img)})])
+
+    monkeypatch.setattr(vector_store, "get_client",
+                        lambda: SimpleNamespace(query_points=query_points))
+    monkeypatch.setattr(vector_store, "CANDIDATE_FANOUT", 2.0)
+
+    monkeypatch.setattr(vector_store, "MAX_PAGES_PER_DOC", 0)
+    vector_store.search([[0.0] * 128], top_k=10)
+    assert captured["limit"] == 10  # uncapped path is untouched by diversity
+
+    monkeypatch.setattr(vector_store, "MAX_PAGES_PER_DOC", 4)
+    vector_store.search([[0.0] * 128], top_k=10)
+    assert captured["limit"] == 20
+
+    # A fanout below 1.0 is a misconfiguration; it must never shrink the slate, which
+    # would cost recall silently.
+    monkeypatch.setattr(vector_store, "CANDIDATE_FANOUT", 0.5)
+    vector_store.search([[0.0] * 128], top_k=10)
+    assert captured["limit"] == 10
+
+
+def test_search_backfills_dropped_hits_from_the_wider_pool(monkeypatch, tmp_path):
+    """A hit dropped for a missing page image costs a slot only when the cap is off.
+
+    Diversity fetches a deeper pool, so the validation loop's drops are backfilled
+    instead of silently shrinking the slate below top_k.
+    """
+    imgs = {}
+    for n in (1, 2, 3):
+        p = tmp_path / f"p{n}.png"
+        p.write_bytes(b"x")
+        imgs[n] = p
+    points = [
+        SimpleNamespace(id=1, score=0.99,
+                        payload={"pdf": "a.pdf", "page_number": 1, "image_path": str(imgs[1])}),
+        SimpleNamespace(id=2, score=0.98,  # stale index: image gone from disk
+                        payload={"pdf": "a.pdf", "page_number": 2,
+                                 "image_path": str(tmp_path / "gone.png")}),
+        SimpleNamespace(id=3, score=0.97,
+                        payload={"pdf": "b.pdf", "page_number": 1, "image_path": str(imgs[2])}),
+        SimpleNamespace(id=4, score=0.96,
+                        payload={"pdf": "b.pdf", "page_number": 2, "image_path": str(imgs[3])}),
+    ]
+    monkeypatch.setattr(vector_store, "get_client", lambda: _search_client(points))
+    monkeypatch.setattr(vector_store, "MAX_PAGES_PER_DOC", 2)
+    monkeypatch.setattr(vector_store, "CANDIDATE_FANOUT", 2.0)
+
+    hits = vector_store.search([[0.0] * 128], top_k=2)
+
+    # a.pdf p2 was dropped, so the slate fills from deeper in the pool rather than
+    # returning a single hit for a two-slot request.
+    assert [(h["pdf"], h["page_number"]) for h in hits] == [("a.pdf", 1), ("b.pdf", 1)]

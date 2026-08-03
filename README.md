@@ -67,13 +67,13 @@ PYTHONPATH=. uv run python src/main.py "What was the Q4 revenue in the chart?"
 
 The repo ships a small starter corpus in `pdfs/` — the generated sales report plus
 two arXiv papers (*Attention Is All You Need* and *ColPali*, ~43 pages total) — so
-the rerank step has a real 10-candidate pool to narrow out of the box. Drop your own
+the rerank step has a real 12-candidate pool to narrow out of the box. Drop your own
 PDFs into `pdfs/` and re-run the ingest to index them too.
 
 Step 2 is only needed to run the eval. It adds 16 more papers (~320 pages) chosen to
 be *confusable* with the two gold documents, because a 43-page corpus is too small to
-measure retrieval on at all: `RETRIEVE_K=10` over 43 pages returns a quarter of the
-index every query, so recall@10 cannot be anything but 1.0. See
+measure retrieval on at all: `RETRIEVE_K=12` over 43 pages returns more than a quarter
+of the index every query, so recall@12 cannot be anything but 1.0. See
 [Evaluation](#evaluation). Those PDFs are not committed — `eval/corpus_manifest.json`
 pins each by sha256 and the fetch script verifies them.
 
@@ -105,7 +105,7 @@ The `crop` is a tight slice around the answer; the `annotated` page is the full 
 
 Try `"Which region had the highest growth?"` to hit the table page instead.
 
-`RETRIEVED PAGES` lists the pages kept *after* reranking. Retrieval pulls `RETRIEVE_K` (10) candidates from Qdrant and the rerank step narrows them to `RERANK_K` (2) before the answer step runs; on a corpus of ≤2 pages there is nothing to trim, so rerank passes straight through. The shipped ~43-page corpus exercises the full 10→2 path — e.g. `"What was the Q4 revenue in the chart?"` still lands on `sales_report.pdf` even though it is now 2 pages among ~43.
+`RETRIEVED PAGES` lists the pages kept *after* reranking. Retrieval pulls `RETRIEVE_K` (12) candidates from Qdrant and the rerank step narrows them to `RERANK_K` (3) before the answer step runs; on a corpus of ≤3 pages there is nothing to trim, so rerank passes straight through. The shipped ~43-page corpus exercises the full 12→3 path — e.g. `"What was the Q4 revenue in the chart?"` still lands on `sales_report.pdf` even though it is now 2 pages among ~43.
 
 ## Serving (HTTP API + UI)
 
@@ -253,8 +253,8 @@ unencrypted hop is readable in transit). Note the `/images` exemption described 
 
 ## How it works
 
-1. **Retrieve** (`src/embedder.py`, `src/vector_store.py`): the query is embedded into ColQwen2's token-level multivectors and matched against per-page multivectors in a Qdrant server collection ranked by **MaxSim**. The vectors are **binary-quantized** (128-d → 128 bits, 32× smaller) and kept in RAM for a fast first pass; the top hits are then **rescored** against the full-precision vectors on disk to protect recall. The top `RETRIEVE_K` (default 10) candidate pages are returned.
-2. **Rerank** (`src/reranker.py`): the candidates are sent to Gemini as **downscaled thumbnails** (a cheap triage pass), and it returns the `RERANK_K` (default 2) pages that actually help answer the question. This keeps the answer step focused and sharpens the citation, without paying full-resolution image cost just to sort candidates. If the call fails or returns junk, it falls back to the top pages by MaxSim score.
+1. **Retrieve** (`src/embedder.py`, `src/vector_store.py`): the query is embedded into ColQwen2's token-level multivectors and matched against per-page multivectors in a Qdrant server collection ranked by **MaxSim**. The vectors are **binary-quantized** (128-d → 128 bits, 32× smaller) and kept in RAM for a fast first pass; the top hits are then **rescored** against the full-precision vectors on disk to protect recall. Qdrant is asked for a wider pool — `RETRIEVE_K × CANDIDATE_FANOUT`, 24 points by default — and up to `RETRIEVE_K` (default 12) validated pages are returned from it, with no more than `MAX_PAGES_PER_DOC` (default 5) from any single PDF. The cap exists because MaxSim on a two-part question is dominated by whichever document matches more query tokens and will otherwise take every slot, shutting the second document out of the answer entirely; the extra pool depth is what lets a capped-out slot be backfilled instead of lost.
+2. **Rerank** (`src/reranker.py`): the candidates are sent to Gemini as **downscaled thumbnails** (a cheap triage pass), and it returns the `RERANK_K` (default 3) pages that actually help answer the question. This keeps the answer step focused and sharpens the citation, without paying full-resolution image cost just to sort candidates. If the call fails or returns junk, it falls back to the top pages by MaxSim score.
 3. **Answer** (`src/answerer.py`): the reranked **page images** are sent to Gemini at full resolution, which returns structured JSON: the `answer`, which `source_page` it came from, and a `box` in Gemini's native `[ymin, xmin, ymax, xmax]` convention normalized to a 0–1000 scale.
 4. **Highlight** (`src/highlight.py`): the box is converted to pixels against the real page PNG (with a little padding), then **cropped** and **annotated**, saved under `page_images/crops/`.
 
@@ -301,8 +301,10 @@ Knobs live in `src/config.py`:
 | `QDRANT_URL` | _(unset)_ | Qdrant server URL, e.g. `http://localhost:6333`; unset falls back to the embedded on-disk store. Set in `.env` |
 | `COLPALI_MODEL` | `vidore/colqwen2-v1.0` | swap to `vidore/colqwen2.5-v0.2` for higher chart/table accuracy on a bigger GPU |
 | `RENDER_DPI` | `150` | page render resolution |
-| `RETRIEVE_K` | `10` | candidate pages pulled from Qdrant per query |
-| `RERANK_K` | `2` | pages kept after the Gemini rerank, then sent to the answer step |
+| `RETRIEVE_K` | `12` | candidate pages pulled from Qdrant per query |
+| `RERANK_K` | `3` | pages kept after the Gemini rerank, then sent to the answer step |
+| `MAX_PAGES_PER_DOC` | `5` | most slots any one PDF may hold in the candidate slate; `0` disables the cap |
+| `CANDIDATE_FANOUT` | `2.0` | how much wider than `RETRIEVE_K` to fetch so capped-out slots are backfilled |
 | `RERANK_THUMBNAIL_EDGE` | `768` | long-edge px for rerank thumbnails; set `None` to rerank on full-res pages |
 | `GEMINI_MODEL` | `gemini-3.5-flash` | any vision-capable Gemini model (used for both rerank and answer) |
 | `RERANK_MODEL` | _(= `GEMINI_MODEL`)_ | override to point the coarser rerank triage at a cheaper/faster model |

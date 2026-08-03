@@ -1,5 +1,6 @@
 """Central configuration: env vars, model names, paths, and Qdrant settings."""
 
+import math
 import os
 import shutil
 from pathlib import Path
@@ -47,7 +48,11 @@ VECTOR_DIM = 128 # ColQwen emits one 128-d vector per patch
 # command-line prefix (`RERANK_K=3 uv run python eval/run_eval.py ...`), not a code
 # edit that has to be reverted before the comparison run. load_dotenv() does not
 # override an already-set variable, so the prefix wins over .env.
-RETRIEVE_K = int(os.getenv("RETRIEVE_K", "10"))  # candidate pages pulled from Qdrant per query
+# 12, not 10: two extra slots are the single cheapest lever on cross-document coverage
+# measured here - candidate_coverage_avg 0.700 -> 0.800 on their own, with recall@1/@3
+# flat and no gold page leaving the slate. MAX_PAGES_PER_DOC takes it the rest of the
+# way. See the slate-diversity pass in PRODUCTION_HARDENING.md.
+RETRIEVE_K = int(os.getenv("RETRIEVE_K", "12"))  # candidate pages pulled from Qdrant per query
 # 3, not 2: at 2 the reranker spent both slots inside one document on cross-document
 # questions, and the answer step filled the missing half from parametric memory - with
 # numbers that were plausible and *wrong* (BERT-base "108M" for 110M, BEIR "19 datasets"
@@ -61,6 +66,26 @@ RERANK_K = int(os.getenv("RERANK_K", "3"))       # pages kept after the Gemini r
 # a little predictability for answer precision. Off by default until an eval diff
 # proves it wins (PRODUCTION_HARDENING.md retrieval-quality pass).
 RERANK_ADAPTIVE = os.getenv("RERANK_ADAPTIVE", "false").strip().lower() in ("1", "true", "yes")
+# Slate diversity: the most pages any one pdf may occupy in the RETRIEVE_K candidate
+# slate (0 = no cap, today's behaviour). ColQwen2's MaxSim on a two-part question is
+# dominated by whichever document matches more query tokens, and it takes every slot -
+# on three baseline rows the top-10 was ten pages of a *single* PDF, shutting the second
+# gold document out entirely. That makes candidate_coverage_avg a hard ceiling on
+# gold_coverage_avg which no RERANK_K value can lift. See the slate-diversity pass in
+# PRODUCTION_HARDENING.md.
+#
+# 5, not 4: 4 scores higher coverage (0.850 vs 0.825) but evicts a gold page from the
+# slate entirely on every arm it was measured in. colpali-avg-ndcg is a *single*-document
+# question whose gold is the 5th colpali.pdf page in the ranking, so any cap below 5 drops
+# it and backfills with six documents that have nothing to do with the question. 5 takes
+# the full coverage win with zero gold pages lost - the same zero-regressions bar the
+# RERANK_K decision was adopted on.
+MAX_PAGES_PER_DOC = int(os.getenv("MAX_PAGES_PER_DOC", "5"))
+# How much wider than RETRIEVE_K to fetch when the cap is on, so capped-out pages are
+# backfilled from deeper in the ranking rather than shrinking the slate. Only read when
+# MAX_PAGES_PER_DOC is set; 2.0 is where coverage saturates on this corpus (a 20-deep
+# pool scores the same as 25/30/40/50).
+CANDIDATE_FANOUT = float(os.getenv("CANDIDATE_FANOUT", "2.0"))
 # Binary quantization is lossy; the fast quantized pass pulls RETRIEVE_K * this many
 # candidates, then rescores them against the full-precision vectors on disk. Higher
 # recovers recall@1 that quantization costs, at a little more disk I/O per query.
@@ -125,7 +150,7 @@ TRUST_PROXY_HEADERS = os.getenv("TRUST_PROXY_HEADERS", "false").strip().lower() 
 
 
 def validate() -> None:
-    """Fail fast on missing required configuration.
+    """Fail fast on missing or unusable required configuration.
 
     Called by the CLIs / server at startup so a misconfiguration surfaces
     immediately with a clear message, instead of an opaque auth error at the
@@ -135,4 +160,12 @@ def validate() -> None:
         raise RuntimeError(
             "GEMINI_API_KEY is not set. Copy .env.example to .env and add your "
             "key (see README) before running the pipeline."
+        )
+    # float() happily parses "inf" and "nan", and round() raises on both - which would
+    # take out *every* search rather than failing once at startup. Checked here rather
+    # than at import so a bad value cannot break tooling that merely imports config.
+    if not math.isfinite(CANDIDATE_FANOUT):
+        raise RuntimeError(
+            f"CANDIDATE_FANOUT must be a finite number, got {CANDIDATE_FANOUT!r}. "
+            "It is a multiplier on RETRIEVE_K (2.0 = fetch twice the slate size)."
         )
