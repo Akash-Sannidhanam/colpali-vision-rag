@@ -21,7 +21,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from src.config import EMBED_VERSION, PDFS_DIR, UPSERT_BATCH_SIZE
-from src.embedder import embed_image
+from src.embedder import iter_embedded
 from src.pdf_render import pdf_to_images, save_page_image
 from src.vector_store import (
     abort_ingest,
@@ -77,6 +77,16 @@ def ingest_pdf(
     (pdf name, page number) inside `build_point`, so a re-ingest overwrites pages in place
     rather than duplicating them. Emits a progress event at each render/embed/store step so
     a caller can stream per-page updates.
+
+    Pages are embedded up to EMBED_BATCH_SIZE at a time - the forward pass is 98% of a page's
+    cost and the only stage that batches. The `embed` events still fire once per page, in
+    page order; they just arrive in bursts, because a batch's pages all finish together. On a
+    backend that does not batch at all (MPS) the effective size is 1 and the events simply
+    stop bursting, which is why nothing here reads EMBED_BATCH_SIZE directly.
+
+    The whole page list goes to `iter_embedded` in one call, deliberately: it is what keeps
+    an out-of-memory backoff for the rest of the document instead of re-paying the failed
+    forward pass on every batch (see embedder.iter_embedded).
     """
     name = pdf_path.name
     progress({"phase": "render", "pdf": name})
@@ -86,19 +96,19 @@ def ingest_pdf(
 
     batch: list = []
     stored = 0
-    for offset, page in enumerate(pages):
-        page_number = offset + 1
-        image_path = save_page_image(page, name, page_number)
-        multivector = embed_image(page)
-        batch.append(build_point(
-            multivector, name, page_number, image_path, content_hash, EMBED_VERSION,
-        ))
-        progress({"phase": "embed", "pdf": name, "page": page_number, "total": total})
-        if len(batch) >= UPSERT_BATCH_SIZE:
-            upsert_pages(batch, collection_name=collection_name)
-            stored += len(batch)
-            progress({"phase": "stored", "pdf": name, "count": stored, "total": total})
-            batch = []
+    for start, multivectors in iter_embedded(pages):
+        for i, multivector in enumerate(multivectors):
+            page_number = start + i + 1
+            image_path = save_page_image(pages[start + i], name, page_number)
+            batch.append(build_point(
+                multivector, name, page_number, image_path, content_hash, EMBED_VERSION,
+            ))
+            progress({"phase": "embed", "pdf": name, "page": page_number, "total": total})
+            if len(batch) >= UPSERT_BATCH_SIZE:
+                upsert_pages(batch, collection_name=collection_name)
+                stored += len(batch)
+                progress({"phase": "stored", "pdf": name, "count": stored, "total": total})
+                batch = []
 
     upsert_pages(batch, collection_name=collection_name)  # flush the remainder
     if batch:

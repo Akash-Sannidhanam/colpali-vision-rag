@@ -1007,3 +1007,143 @@ which is the same 83 questions with decomposition off.
 - **`_RRF_K = 60` is untuned** for slates this shallow (see finding 2).
 - **`xdoc-donut-encoder-layoutlm-embeddings`** still needs a **relevance-aware** cap — a
   rank-based one spends that document's quota on four non-gold pages. Unchanged by this pass.
+
+---
+
+## Batch-embedder pass (follow-on) ✅ DONE
+
+**The lever.** Ingest is the slowest thing this project does. Nothing had ever measured
+*which stage* was slow, so `scripts/profile_ingest.py` was written to time all four
+(render / save / embed / upsert) before optimising any of them.
+
+The answer is unambiguous, and it is the only number here that generalises:
+
+| stage | per page | share |
+|---|---|---|
+| render (poppler) | 0.123 s | 1.5% |
+| save PNG | 0.047 s | 0.6% |
+| **embed (ColQwen2 forward)** | **8.242 s** | **98.0%** |
+| upsert | not measured (`--store` opt-in) | — |
+
+So the forward pass is the only stage worth touching, and batching it is the only thing
+that helps it. `embed_image` became `embedder.iter_embedded`, a generator yielding
+`(start_index, vectors)` per batch, and `ingest_pdf` consumes it.
+
+### The finding that changed the pass
+
+`--verify-equivalence` — the check that licenses keeping `EMBED_BATCH_SIZE` out of
+`EMBED_VERSION` — **failed on the first run**, at `max_abs_delta 0.451` against a 0.01
+tolerance, with every patch count matching. Padding was not the cause. Six experiments
+pinned it down:
+
+| experiment | result | rules out |
+|---|---|---|
+| same call twice, batch 1 | delta **0.000000** | model nondeterminism |
+| batch 1 vs 2 / 4 / 8 | 0.430 / 0.411 / 0.411 | — |
+| per-page breakdown | **page 1 only**; pages 2-4 bit-identical | uniform float noise |
+| reorder to `[p2,p1,p3,p4]` | **slot 0** corrupt, whichever page sits there | page content |
+| **same page twice in one batch** | slot0 vs slot1 = **0.378** | everything else |
+| **CPU float32**, batch 1 vs 2 | **0.00000000** | the batching code itself |
+
+The same image, in the same batch, produces different vectors at slot 0 than at slot 1.
+That is a computation bug in the backend, not precision loss — and it is **MPS + bfloat16
+specific**. `attn_implementation` is not the lever (`eager`, `sdpa` and the default all
+corrupt); **dtype is** (MPS float32 and CPU float32 are both exact). Compare
+pytorch/pytorch#162592 and #163597, on torch 2.11.0 / transformers 5.3.0.
+
+**What that would have shipped.** One page in every `EMBED_BATCH_SIZE` — 25% of the corpus
+at the default of 4 — silently poisoned, with no error, no NaN, correct patch counts, and a
+`content_hash` recording the document as current so no later sync would repair it. It would
+have degraded retrieval quietly and permanently. **No test that stubs the model could have
+caught it**, which is the argument for the gate existing at all.
+
+### The fix
+
+**Batching is disabled on MPS** — `embedder._batching_is_supported`, a device check
+evaluated once per process. Deliberately the blunt version rather than a runtime
+measurement, and the two costs of that are known and accepted:
+
+- **MPS float32 would batch correctly and is refused anyway.** Only bf16 is affected, and
+  bf16 is what `_device_and_dtype` selects on MPS, so in this codebase the device check and
+  the dtype check pick out the same configuration.
+- **A fixed torch will not re-enable batching by itself.** Someone has to delete the check.
+  `--verify-equivalence` is how you would discover it is safe again; it is the thing to
+  re-run after any dtype, device, model or torch change.
+
+A runtime self-check (embed a batch's first page alone, compare, fall back on disagreement)
+was built and then removed as not worth its complexity. One measurement from it is worth
+keeping, because it would trap anyone who rebuilds it: **it cannot be probed with a cheap
+synthetic image.** At 28-112 px the corruption does not reproduce at all — sequence lengths
+15-27 come back clean, against ~755 for a rendered page — so a throwaway-image probe returns
+a confident all-clear on exactly the configuration it exists to catch. It has to use real
+pages, which is most of why it cost more than it was worth.
+
+**Also rejected: a sacrificial slot-0 image.** Prepending a throwaway page to every batch
+would put real pages at slots >=1, which measured bit-identical to solo, and would keep
+batching on MPS for ~20-25% overhead. Rejected because it stakes index correctness on an
+unfixed upstream bug corrupting *exactly* slot 0 and nothing else — an assumption with no
+upstream guarantee, whose violation is again silent.
+
+### The other defect, found reading the interrupted code back
+
+`ingest_pdf` pre-chunked pages into `EMBED_BATCH_SIZE` windows and called the embedder once
+per window. The OOM backoff halves and *keeps* the smaller size — but only for the life of
+one call, so per-window calls threw that away and re-paid the failed forward pass on **every
+window**, precisely the failure the docstring claimed to avoid. Fixed by making the seam a
+generator spanning the whole document. `tests/test_ingest.py::test_the_whole_document_goes_to_one_embed_generator`
+is the guard, and it fails (`[4, 4, 2] != [10]`) against the old shape.
+
+### What this pass actually delivers
+
+**Correctness on Apple Silicon; throughput only on CUDA.** With batching disabled there,
+every arm of the sweep ran at an effective batch of 1:
+
+| requested | actual | embed/page | pages/min |
+|---|---|---|---|
+| 1 | 1 | 8.242 s | 7.13 |
+| 2 | **1** | 9.838 s | 6.00 |
+| 4 | **1** | 12.074 s | 4.90 |
+| 8 | **1** | 11.856 s | 4.99 |
+
+Read that table as a **noise floor, not a regression**: all four arms did identical batch-1
+work and still spread 8.242 → 12.074 s/page (+46%) through thermal drift over a ~20-minute
+run. Nothing under a ~1.5x claim is measurable on this box. The profiler now records
+`effective_batch_size` and `requested_size_honoured` per arm precisely so a degenerate arm
+cannot be read as a speedup number.
+
+`EMBED_BATCH_SIZE` therefore ships at **4, untuned and documented as such** — it engages only
+where batching verifies, which today means CUDA, and this machine cannot measure it.
+
+**Baseline:** `bench/reports/ingest_baseline.json` (pinned; MPS + bf16, so its arms are
+degenerate by construction — it is evidence for the 98% share and for the guard firing on a
+real backend, not for what batching buys). A CUDA run would supersede it.
+
+### What is left
+
+- **`EMBED_BATCH_SIZE` has never been measured on a backend that honours it.** The sweep on a
+  CUDA box is the missing experiment; the report already carries the fields to make it honest.
+- **MPS float32 is correct and could batch** — untested, and unlikely to pay on a 16 GB box:
+  ~8 GB of fp32 weights before activations, and fp32 MPS ops run ~2x slower than bf16, so
+  batching would have to win >2x just to break even.
+- **The equivalence gate is opt-in.** It needs the real model, so it cannot join `pytest`.
+  It is the one thing to run after any change to dtype, device, model or torch version.
+- **`EMBED_VERSION` does not capture processor version, device, or backend-specific behavior**
+  (found while verifying this pass, and *not* caused by it). Re-embedding `sales_report.pdf`
+  and comparing against the vectors Qdrant already holds gives a max delta of **0.00125** —
+  and `git show HEAD:src/embedder.py`'s `embed_image` reproduces that same delta exactly, while
+  the new path is bit-identical to it (`0.00000000`). The drift is between the environment now
+  and the one that built the index: transformers 5.3.0 warns that `Qwen2VLImageProcessor` "is
+  now loaded as a fast processor by default … may produce slightly different outputs". So the
+  fingerprint's blind spot is wider than the model-or-DPI case it was designed for: a
+  transformers upgrade silently changes embeddings while `content_hash` and `embed_version`
+  both still match, and no sync repairs it. Similarly, device/dtype changes (e.g., switching
+  from MPS to CUDA, or upgrading torch/transformers) are not tracked. Harmless at this
+  magnitude (0.001 on unit-norm vectors; the retrieval eval is unchanged to four decimals),
+  but a larger processor or backend change would not announce itself either.
+
+  **Remediation:** After any change to transformers version, torch version, device, dtype, or
+  `COLPALI_MODEL` beyond what `EMBED_VERSION` already captures, run `profile_ingest.py
+  --verify-equivalence` to check for drift. If vectors differ beyond the tolerance, update
+  `EMBED_VERSION` (e.g., append a numeric suffix) to force a full reindex, then run
+  `PYTHONPATH=. uv run python -m src.ingest` to rebuild the corpus. Document the required
+  reindex in deployment notes when changing these settings.
