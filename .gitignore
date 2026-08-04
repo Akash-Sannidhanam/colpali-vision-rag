@@ -65,6 +65,13 @@ eval/reports/*
 # loaded, which a fresh clone does not have. The slate-diversity arms themselves are NOT kept:
 # they are deterministic and re-run from a one-line prefix.
 !eval/reports/probe_k50_retrieval.json
+# The visual-token arm and its control (retrieval-only), committed for the same reason the
+# RERANK_K arms above are: the ingest-throughput pass write-up cites their numbers, and the
+# 512 arm is the evidence for a *rejection* - which is the easiest kind of result to lose.
+# `vt_control.json` doubles as the proof that pass changed no vectors: it re-scored the
+# pinned index under the new code and reproduced baseline_decomposed.json to four decimals.
+!eval/reports/vt_control.json
+!eval/reports/vt512.json
 
 # Ingest profiles (regenerate via scripts/profile_ingest.py). Same `reports/*`-not-`reports/`
 # form as above, for the same reason: git will not descend into an excluded directory.
@@ -79,3 +86,9 @@ bench/reports/*
 # batch-1 work spread 8.242 -> 12.074 s/page here, so it also pins this box's noise floor at
 # ~46%: anything under a 1.5x claim is unmeasurable on it. A CUDA run would supersede it.
 !bench/reports/ingest_baseline.json
+# NOT a baseline, and stamped `measurement_quality: CONTENDED` in its own config block. It is
+# the only run in the new preprocess/forward/decode + upsert format, taken on a box running
+# OneDrive Sync Service at 47-97% CPU, which inflated preprocess 0.304s -> 0.965s on the same
+# eight pages. Kept so the added fields have a worked example; pinning it would make every
+# future run look faster than it is. Re-pin ingest_baseline.json from a quiet box.
+!bench/reports/ingest_contended.json
