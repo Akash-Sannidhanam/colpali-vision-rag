@@ -135,7 +135,16 @@ def _physical_name(version: int) -> str:
     return f"{_PHYSICAL_PREFIX}{version}"
 
 def _list_physical_versions(client: QdrantClient) -> list[int]:
-    """Sorted integer suffixes of existing pdf_pages_<n> collections."""
+    """Sorted integer suffixes of existing pdf_pages_<n> collections.
+
+    **`isdigit()` is what keeps two COLLECTION_NAMEs from deleting each other's indexes.**
+    Since COLLECTION_NAME is env-overridable, a second arm may live in the same Qdrant, and
+    its physical collections share the default's prefix: `pdf_pages_vt512_1` starts with
+    `pdf_pages_`. Requiring the whole remaining suffix to be digits rejects it, so
+    `pdf_pages`'s orphan sweep leaves the arm alone (and vice versa - the arm's prefix is
+    `pdf_pages_vt512_`, which no default collection matches). `config.validate` refuses the
+    one name shape this cannot separate, an alias ending in _<digits>.
+    """
     versions: list[int] = []
     for c in client.get_collections().collections:
         suffix = c.name[len(_PHYSICAL_PREFIX):] if c.name.startswith(_PHYSICAL_PREFIX) else ""

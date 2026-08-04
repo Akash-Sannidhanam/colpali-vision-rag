@@ -2,6 +2,7 @@
 
 import math
 import os
+import re
 import shutil
 from pathlib import Path
 
@@ -42,7 +43,17 @@ RENDER_DPI = int(os.getenv("RENDER_DPI", "150"))
 # which a content hash alone would miss (see src/ingest.py).
 EMBED_VERSION = f"{COLPALI_MODEL}@{RENDER_DPI}"
 
-COLLECTION_NAME = "pdf_pages"
+# Env-overridable for the same reason the retrieval knobs are: an experiment arm should be a
+# command-line prefix, not a code edit. Here it is what lets an arm that needs its *own index*
+# (anything that changes EMBED_VERSION - a model, a DPI, a visual-token budget) be built and
+# evaluated without destroying the pinned one, and re-run later without re-ingesting:
+#   EMBED_VISUAL_TOKENS=512 COLLECTION_NAME=pdf_pages_vt512 ... src/ingest.py --rebuild
+#   EMBED_VISUAL_TOKENS=512 COLLECTION_NAME=pdf_pages_vt512 ... eval/run_eval.py
+# Arms cannot collide: vector_store derives its physical-collection prefix from this name and
+# only treats an all-digit suffix as a version, so `pdf_pages`'s sweep skips
+# `pdf_pages_vt512_1` and vice versa. See validate() for the one name shape that would break
+# that, and _list_physical_versions for the guard itself.
+COLLECTION_NAME = os.getenv("COLLECTION_NAME") or "pdf_pages"
 VECTOR_DIM = 128 # ColQwen emits one 128-d vector per patch
 # Both env-overridable for the same reason RENDER_DPI is: an eval arm should be a
 # command-line prefix (`RERANK_K=3 uv run python eval/run_eval.py ...`), not a code
@@ -227,6 +238,17 @@ def validate() -> None:
         raise RuntimeError(
             f"CANDIDATE_FANOUT must be a finite number, got {CANDIDATE_FANOUT!r}. "
             "It is a multiplier on RETRIEVE_K (2.0 = fetch twice the slate size)."
+        )
+    # `pdf_pages_7` is the shape vector_store gives a *physical* collection of the alias
+    # `pdf_pages`, so an alias by that name would be swept as a stale version of another
+    # alias mid-rebuild - silently deleting the arm you were measuring. Cheaper to refuse
+    # the name than to make the sweep clever enough to tell them apart.
+    if not COLLECTION_NAME or re.search(r"_\d+$", COLLECTION_NAME):
+        raise RuntimeError(
+            f"COLLECTION_NAME must be non-empty and must not end in _<digits>, got "
+            f"{COLLECTION_NAME!r}. That suffix is how vector_store names the physical "
+            "collections behind an alias, so such a name collides with another alias's "
+            "versions. Use e.g. 'pdf_pages_vt512' rather than 'pdf_pages_512'."
         )
     # Same rationale: a zero or negative batch would make the ingest loop embed nothing
     # and store an empty index, which is far worse than refusing to start.
