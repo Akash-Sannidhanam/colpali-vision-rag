@@ -1127,15 +1127,23 @@ real backend, not for what batching buys). A CUDA run would supersede it.
   batching would have to win >2x just to break even.
 - **The equivalence gate is opt-in.** It needs the real model, so it cannot join `pytest`.
   It is the one thing to run after any change to dtype, device, model or torch version.
-- **`EMBED_VERSION` does not capture the image-processor version** (found while verifying
-  this pass, and *not* caused by it). Re-embedding `sales_report.pdf` and comparing against
-  the vectors Qdrant already holds gives a max delta of **0.00125** — and `git show
-  HEAD:src/embedder.py`'s `embed_image` reproduces that same delta exactly, while the new
-  path is bit-identical to it (`0.00000000`). The drift is between the environment now and
-  the one that built the index: transformers 5.3.0 warns that `Qwen2VLImageProcessor` "is now
-  loaded as a fast processor by default … may produce slightly different outputs". So the
+- **`EMBED_VERSION` does not capture processor version, device, or backend-specific behavior**
+  (found while verifying this pass, and *not* caused by it). Re-embedding `sales_report.pdf`
+  and comparing against the vectors Qdrant already holds gives a max delta of **0.00125** —
+  and `git show HEAD:src/embedder.py`'s `embed_image` reproduces that same delta exactly, while
+  the new path is bit-identical to it (`0.00000000`). The drift is between the environment now
+  and the one that built the index: transformers 5.3.0 warns that `Qwen2VLImageProcessor` "is
+  now loaded as a fast processor by default … may produce slightly different outputs". So the
   fingerprint's blind spot is wider than the model-or-DPI case it was designed for: a
   transformers upgrade silently changes embeddings while `content_hash` and `embed_version`
-  both still match, and no sync repairs it. Harmless at this magnitude (0.001 on unit-norm
-  vectors; the retrieval eval is unchanged to four decimals), so it is recorded rather than
-  fixed — but a larger processor change would not announce itself either.
+  both still match, and no sync repairs it. Similarly, device/dtype changes (e.g., switching
+  from MPS to CUDA, or upgrading torch/transformers) are not tracked. Harmless at this
+  magnitude (0.001 on unit-norm vectors; the retrieval eval is unchanged to four decimals),
+  but a larger processor or backend change would not announce itself either.
+
+  **Remediation:** After any change to transformers version, torch version, device, dtype, or
+  `COLPALI_MODEL` beyond what `EMBED_VERSION` already captures, run `profile_ingest.py
+  --verify-equivalence` to check for drift. If vectors differ beyond the tolerance, update
+  `EMBED_VERSION` (e.g., append a numeric suffix) to force a full reindex, then run
+  `PYTHONPATH=. uv run python -m src.ingest` to rebuild the corpus. Document the required
+  reindex in deployment notes when changing these settings.

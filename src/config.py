@@ -133,11 +133,14 @@ UPSERT_BATCH_SIZE = 8    # pages per Qdrant upsert flush; small enough that a ba
 # 0.123 s render and 0.047 s save), so this is the one knob that moves indexing throughput;
 # everything else is rounding error.
 #
-# Deliberately NOT part of EMBED_VERSION. Batching is vector-identical *where it is used at
-# all* - the padded positions a batch introduces are trimmed back off with the attention
-# mask, so a page embedded at batch 8 is the same page embedded alone (embedder._embed_batch,
-# checked by `profile_ingest.py --verify-equivalence`). Folding it into the fingerprint would
-# re-embed the whole corpus every time someone tuned it, for no change in what is stored.
+# Deliberately NOT part of EMBED_VERSION. Batching SHOULD be vector-identical when the
+# batching implementation correctly trims padding via the attention mask (embedder._embed_batch).
+# However, backend-specific bugs (e.g., MPS + bfloat16) can violate this assumption, and
+# transformers processor upgrades can silently change embeddings. Verify equivalence with
+# `profile_ingest.py --verify-equivalence` after any change to device, dtype, model, torch
+# or transformers versions. Folding batch size into the fingerprint would re-embed the whole
+# corpus every time someone tuned it; processor/device settings are NOT captured and require
+# manual reindexing when changed (see PRODUCTION_HARDENING.md).
 #
 # **This value is untuned.** It cannot be measured on an Apple-Silicon box: MPS + bfloat16
 # miscomputes a batched forward pass, so embedder._batching_is_supported refuses to batch

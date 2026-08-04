@@ -30,7 +30,8 @@ Two deliberate choices in the method:
 - **`--store` is opt-in.** Measuring the upsert needs a live Qdrant. It is safe when on
   (point ids are `uuid5(pdf, page)`, so re-storing an indexed document overwrites in
   place with identical vectors) but it should never be a surprise, so the default run
-  touches nothing and records `"measured": false`.
+  skips only the Qdrant upsert (recording `"measured": false`) while still persisting
+  page images to disk via save_page_image.
 
 Unlike the other scripts here this one imports `src.`, so it needs `PYTHONPATH=.`.
 """
@@ -199,7 +200,13 @@ def verify_equivalence(pdf: Path, page_cap: int | None, batch_size: int) -> tupl
         pages = pages[:page_cap]
 
     single = [embed_image(p) for p in pages]
-    batched = embed_images(pages, batch_size=batch_size)
+    # Use iter_embedded to capture whether batching actually happened
+    batched_samples, batched, observed = _time_embed(pages, batch_size)
+
+    # Check if the requested batch size was actually used
+    batching_actually_ran = any(bs == batch_size for bs in observed)
+    # Both paths must produce the same number of pages
+    length_mismatch = len(single) != len(batched)
 
     counts = [(len(a), len(b)) for a, b in zip(single, batched)]
     mismatched = [i + 1 for i, (a, b) in enumerate(counts) if a != b]
@@ -209,10 +216,14 @@ def verify_equivalence(pdf: Path, page_cap: int | None, batch_size: int) -> tupl
             for x, y in zip(row_a, row_b):
                 max_delta = max(max_delta, abs(x - y))
 
-    ok = not mismatched and max_delta <= EQUIVALENCE_TOLERANCE
+    # Mark non-equivalent if batching didn't run or output counts differ
+    ok = batching_actually_ran and not length_mismatch and not mismatched and max_delta <= EQUIVALENCE_TOLERANCE
     return ok, {
         "pages": len(pages),
         "batch_size": batch_size,
+        "batching_actually_ran": batching_actually_ran,
+        "effective_batch_sizes": observed,
+        "output_length_mismatch": length_mismatch,
         "patch_counts": [a for a, _ in counts],
         "pages_with_mismatched_patch_counts": mismatched,
         "max_abs_delta": max_delta,
@@ -264,21 +275,27 @@ def build_report(
         embed_per_page = statistics.mean(samples) if samples else 0.0
         page_s = fixed_per_page + embed_per_page
         effective = max(observed) if observed else 0
+        # The largest document determines the maximum possible final batch
+        largest_doc_pages = max((d["pages_profiled"] for d in docs), default=0)
+        expected_max = min(size, largest_doc_pages)
         arms.append({
             "batch_size": size,
             # What the arm actually ran at. Below `batch_size` means iter_embedded refused
             # the requested size - an untrustworthy backend, or an OOM backoff. When these
             # differ, the arm is NOT a measurement of `batch_size`.
             "effective_batch_size": effective,
-            "requested_size_honoured": effective == size,
+            "requested_size_honoured": effective >= expected_max,
             "embed": {**_stats(samples), "per_page_s": round(embed_per_page, 3)},
             "embed_share_of_page_s": round(embed_per_page / page_s, 4) if page_s else 0.0,
             "page_s": round(page_s, 3),
             "pages_per_min": round(60.0 / page_s, 2) if page_s else 0.0,
         })
-    if arms and arms[0]["batch_size"] == 1:
+    # Find the batch-1 arm for speedup calculations (it may not be first)
+    batch_1_arm = next((a for a in arms if a["batch_size"] == 1), None)
+    if batch_1_arm:
+        baseline_page_s = batch_1_arm["page_s"]
         for arm in arms:
-            arm["speedup_vs_batch_1"] = round(arms[0]["page_s"] / arm["page_s"], 2) if arm["page_s"] else 0.0
+            arm["speedup_vs_batch_1"] = round(baseline_page_s / arm["page_s"], 2) if arm["page_s"] else 0.0
 
     return {
         "config": {
