@@ -1,5 +1,6 @@
 """ColPali (ColQwen2 / ColQwen2.5) visual embedder- reads pages by sight."""
 from collections.abc import Iterator
+from functools import cache
 
 import torch
 from colpali_engine.models import (
@@ -23,14 +24,6 @@ _processor: ColQwen2Processor | ColQwen2_5_Processor | None = None
 # Matched on the message so a genuine non-OOM RuntimeError is re-raised instead of being
 # silently retried at a smaller batch, which would hide a real bug as a slow ingest.
 _OOM_MARKERS = ("out of memory", "can't allocate", "cannot allocate")
-
-# How far two embeddings of the same page may drift before batching is called untrustworthy.
-# See _batching_is_trustworthy: correct backends land at 0 or ~1e-6, the known-bad one at ~0.4.
-BATCH_EQUIVALENCE_TOLERANCE = 1e-2
-
-# Cached verdict from _batching_is_trustworthy: None until the first real multi-page batch
-# has been checked. `False` permanently pins this process to single-page forward passes.
-_batching_verified: bool | None = None
 
 
 def _model_classes() -> tuple[
@@ -102,46 +95,38 @@ def _embed_batch(images: list[Image.Image]) -> list[list[list[float]]]:
     mask = inputs["attention_mask"].bool()  # (batch, padded_patches)
     return [_to_multivector(out[i][mask[i]]) for i in range(len(images))]
 
-def _vectors_agree(a: list[list[float]], b: list[list[float]]) -> bool:
-    """True when two embeddings of the same page match to within backend float noise.
+@cache
+def _batching_is_supported() -> bool:
+    """False on backends that miscompute a batched forward pass. Evaluated once per process.
 
-    The gap this separates is not subtle: a correct backend reproduces a batched page
-    bit-for-bit or within ~1e-6, while the corruption below rewrites components of a
-    unit-norm vector by ~0.4. BATCH_EQUIVALENCE_TOLERANCE sits three orders of magnitude
-    above the noise and two below the corruption, so it is not a threshold that needs tuning.
-    """
-    if len(a) != len(b):
-        return False
-    return all(abs(x - y) <= BATCH_EQUIVALENCE_TOLERANCE
-               for row_a, row_b in zip(a, b) for x, y in zip(row_a, row_b))
-
-def _batching_is_trustworthy(images: list[Image.Image], batched: list[list[list[float]]]) -> bool:
-    """Re-embed this batch's first page alone and check the batch agreed with it.
-
-    **Why this exists.** On MPS + bfloat16 (observed on torch 2.11.0 / transformers 5.3.0,
-    and independent of `attn_implementation` - eager, sdpa and the default all fail) a
-    batched forward pass silently corrupts the FIRST sequence in the batch. The same page
-    placed at slot 0 of a batch of two comes back ~0.4 per component away from the same page
-    embedded alone, while slots 1..n-1 are bit-identical to it. The same comparison on CPU
-    float32, and on MPS float32, is exact - so the arithmetic is fine and the batching code
-    is fine; the bf16 kernel is not. Compare pytorch/pytorch#162592 and #163597.
+    **MPS is excluded.** On MPS + bfloat16 (torch 2.11.0 / transformers 5.3.0, and
+    independent of `attn_implementation` - eager, sdpa and the default all fail) a batched
+    forward pass silently corrupts the FIRST sequence in the batch: the same page placed at
+    slot 0 of a batch of two comes back ~0.4 per component from the same page embedded alone,
+    while slots 1..n-1 are bit-identical to it. CPU float32 and MPS float32 are both exact, so
+    the arithmetic and this module are fine; the bf16 kernel is not. Compare
+    pytorch/pytorch#162592 and #163597.
 
     Nothing about that failure is visible from the outside: no error, no NaN, correct patch
     counts, and an ingest that writes a `content_hash` marking the document current. It would
-    poison one page in every EMBED_BATCH_SIZE of the index and no test that stubs the model
+    poison one page in every EMBED_BATCH_SIZE of the index, and no test that stubs the model
     could ever see it.
 
-    **Why it probes with real pages.** A cheap synthetic image cannot stand in: at 28-112 px
-    the corruption does not reproduce at all (sequence lengths 15-27 come back clean), while
-    a rendered page is ~755 tokens and does. A guard built on a throwaway image would return
-    a confident all-clear on exactly the configuration it exists to catch.
-
-    Costs one extra single-page forward pass per process, only when batching is actually
-    used, and the verdict is cached - so it is ~1 page per ingest run, not per batch or per
-    document. It is a measurement rather than a device blocklist, so a fixed torch turns
-    batching back on by itself.
+    This is a **device check, not a measurement** - deliberately the blunt version. Two things
+    follow from that and are the price of it being simple: MPS float32 would in fact batch
+    correctly and is refused anyway, and a torch release that fixes the kernel will not
+    re-enable batching until someone deletes this. `profile_ingest.py --verify-equivalence`
+    is how you would find out, and is what should be re-run on any dtype/device/torch change.
     """
-    return _vectors_agree(_embed_batch(images[:1])[0], batched[0])
+    device, _ = _device_and_dtype()
+    if device == "mps":
+        logger.warning(
+            "batching disabled: MPS miscomputes the first sequence of a batched forward "
+            "pass, so pages are embedded one at a time (EMBED_BATCH_SIZE is ignored here)",
+            extra={"device": device},
+        )
+        return False
+    return True
 
 def iter_embedded(
     images: list[Image.Image], batch_size: int | None = None,
@@ -164,33 +149,17 @@ def iter_embedded(
     Worth the handling: an ingest killed halfway leaves a truncated document that a later
     sync will consider current (see the fingerprint note in src/ingest.py).
 
-    The first real multi-page batch is checked against a single-page embedding of its own
-    first page before anything is yielded, because some backends corrupt a batched forward
-    pass outright - see `_batching_is_trustworthy`. A backend that fails drops to single-page
-    passes for the rest of the process and re-embeds the batch it was about to hand back, so
-    a poisoned vector is never yielded even once.
+    On a backend that miscomputes batched forward passes the size is forced to 1 up front,
+    so a corrupted vector is never produced in the first place - see `_batching_is_supported`.
     """
-    global _batching_verified
     size = max(1, batch_size or EMBED_BATCH_SIZE)
-    if _batching_verified is False:
+    if size > 1 and not _batching_is_supported():
         size = 1
     start = 0
     while start < len(images):
         chunk = images[start:start + size]
         try:
             vectors = _embed_batch(chunk)
-            if len(chunk) > 1 and _batching_verified is None:
-                _batching_verified = _batching_is_trustworthy(chunk, vectors)
-                if not _batching_verified:
-                    size = 1
-                    logger.error(
-                        "batched embedding does not match single-page embedding on this "
-                        "backend; falling back to one page per forward pass for this process",
-                        extra={"device": str(load_model()[0].device),
-                               "dtype": str(load_model()[0].dtype),
-                               "batch_size": len(chunk)},
-                    )
-                    continue  # same pages, one at a time - never yield the suspect vectors
         except (RuntimeError, MemoryError) as exc:
             if size == 1 or not _is_oom(exc):
                 raise

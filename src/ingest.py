@@ -81,8 +81,8 @@ def ingest_pdf(
     Pages are embedded up to EMBED_BATCH_SIZE at a time - the forward pass is 98% of a page's
     cost and the only stage that batches. The `embed` events still fire once per page, in
     page order; they just arrive in bursts, because a batch's pages all finish together. On a
-    backend whose batching cannot be trusted the effective size drops to 1 and the events
-    simply stop bursting, which is why nothing here reads EMBED_BATCH_SIZE directly.
+    backend that does not batch at all (MPS) the effective size is 1 and the events simply
+    stop bursting, which is why nothing here reads EMBED_BATCH_SIZE directly.
 
     The whole page list goes to `iter_embedded` in one call, deliberately: it is what keeps
     an out-of-memory backoff for the rest of the document instead of re-paying the failed

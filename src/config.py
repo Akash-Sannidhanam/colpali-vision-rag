@@ -140,10 +140,9 @@ UPSERT_BATCH_SIZE = 8    # pages per Qdrant upsert flush; small enough that a ba
 # re-embed the whole corpus every time someone tuned it, for no change in what is stored.
 #
 # **This value is untuned.** It cannot be measured on an Apple-Silicon box: MPS + bfloat16
-# miscomputes a batched forward pass, so embedder._batching_is_trustworthy detects that at
-# runtime and pins the process to single-page passes - every arm of the sweep here ran at an
-# effective batch of 1. 4 is therefore a middle guess that only ever engages on a backend
-# where batching has been verified (in practice CUDA). To actually tune it, run
+# miscomputes a batched forward pass, so embedder._batching_is_supported refuses to batch
+# there at all and every arm of the sweep here ran at an effective batch of 1. 4 is therefore
+# a middle guess that only ever engages off MPS (in practice CUDA). To actually tune it, run
 #   PYTHONPATH=. uv run python scripts/profile_ingest.py --batch-sizes 1,2,4,8,16
 # on a CUDA box and read `effective_batch_size` in the report - an arm whose effective size
 # is below its requested one is not a measurement of that size. Too large is self-correcting:

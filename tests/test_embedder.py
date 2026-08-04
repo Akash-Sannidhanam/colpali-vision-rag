@@ -69,32 +69,23 @@ class _FakeModel:
         return rows.unsqueeze(0).expand(batch, width, DIM).clone()
 
 
-def _install(monkeypatch, model, processor, verified: bool | None = True):
-    """Install a stub model, and say what the backend's batching has already been found to be.
+@pytest.fixture(autouse=True)
+def _clear_batching_cache():
+    """`_batching_is_supported` is functools.cache'd, so a verdict would otherwise leak from
+    one test into the next (same reasoning as the vector_store._client note)."""
+    embedder._batching_is_supported.cache_clear()
+    yield
+    embedder._batching_is_supported.cache_clear()
 
-    `verified` seeds the cached self-check verdict (a module global, so it is patched rather
-    than left to leak between tests - same reasoning as the vector_store._client note).
-    It defaults to True because most tests here are about chunking and OOM backoff, not about
-    the check, and an unverified backend would insert a probe forward pass into every one of
-    their expected batch sequences. The tests that exercise the check pass `verified=None`.
+
+def _install(monkeypatch, model, processor, device: str = "cpu"):
+    """Install a stub model and pin the device batching support is decided from.
+
+    Defaults to a device that batches, because most tests here are about chunking and OOM
+    backoff; the ones about the MPS exclusion pass `device="mps"`.
     """
     monkeypatch.setattr(embedder, "load_model", lambda: (model, processor))
-    monkeypatch.setattr(embedder, "_batching_verified", verified)
-
-
-class _SlotZeroCorruptingModel(_FakeModel):
-    """Reproduces the MPS+bf16 failure: the first sequence of a multi-page batch is wrong.
-
-    Slots 1..n-1 come back correct, patch counts are right, and nothing raises - which is
-    exactly why the corruption is invisible without an explicit check.
-    """
-
-    def __call__(self, **kwargs):
-        out = super().__call__(**kwargs)
-        if out.shape[0] > 1:
-            out = out.clone()
-            out[0] += 0.4     # ~ the observed per-component drift on unit-norm vectors
-        return out
+    monkeypatch.setattr(embedder, "_device_and_dtype", lambda: (device, torch.float32))
 
 
 def test_padding_is_trimmed_off_each_page(monkeypatch):
@@ -218,73 +209,61 @@ def test_no_pages_means_no_forward_pass(monkeypatch):
     assert model.batch_sizes == []
 
 
-# --- the batching self-check (see embedder._batching_is_trustworthy) ---
+# --- the MPS batching exclusion (see embedder._batching_is_supported) ---
 
-def test_a_corrupting_backend_never_yields_a_poisoned_vector(monkeypatch):
-    """The whole point: a backend that miscomputes batch slot 0 must not reach the index.
+def test_batching_is_disabled_on_mps(monkeypatch):
+    """MPS miscomputes slot 0 of a batched pass, so pages must go one at a time there.
 
-    Every page must come back matching what a single-page pass produces, because that is
-    what actually gets stored - a vector that is silently 0.4 off per component retrieves
-    wrongly forever and the ingest still records the document as current.
+    The failure it avoids is silent - right patch counts, no error, and an ingest that
+    records the document as current - so nothing downstream would ever notice it.
     """
-    model = _SlotZeroCorruptingModel()
-    _install(monkeypatch, model, _FakeProcessor({}), verified=None)
-
-    pages = [f"p{i}" for i in range(6)]
-    got = [v for _, batch in embedder.iter_embedded(pages, batch_size=3) for v in batch]
-    reference = [[[float(i)] * DIM for i in range(2)]] * 6   # what a batch of one produces
-
-    assert got == reference          # nothing corrupted made it out
-    assert embedder._batching_verified is False
-
-
-def test_the_check_pins_the_process_to_single_pages_after_it_fails(monkeypatch):
-    """One failed check, not one per batch or per document - the verdict is cached."""
-    model = _SlotZeroCorruptingModel()
-    _install(monkeypatch, model, _FakeProcessor({}), verified=None)
-
-    list(embedder.iter_embedded([f"p{i}" for i in range(4)], batch_size=4))
-    first_run = list(model.batch_sizes)
-    model.batch_sizes.clear()
-    list(embedder.iter_embedded([f"q{i}" for i in range(4)], batch_size=4))
-
-    # First run: the batch of 4, the single-page probe, then 4 single passes.
-    assert first_run == [4, 1, 1, 1, 1, 1]
-    # Second run: already knows the backend is bad, so no batch and no re-probe.
-    assert model.batch_sizes == [1, 1, 1, 1]
-
-
-def test_a_healthy_backend_is_checked_once_and_keeps_batching(monkeypatch):
-    """The guard must not cost a probe per batch on a backend that is fine."""
     model = _FakeModel()
-    _install(monkeypatch, model, _FakeProcessor({}), verified=None)
+    _install(monkeypatch, model, _FakeProcessor({}), device="mps")
 
-    out = embedder.embed_images([f"p{i}" for i in range(9)], batch_size=3)
+    out = embedder.embed_images([f"p{i}" for i in range(5)], batch_size=4)
 
-    assert len(out) == 9
-    # 3 batches of 3, plus exactly one single-page probe on the first of them.
-    assert model.batch_sizes == [3, 1, 3, 3]
-    assert embedder._batching_verified is True
+    assert len(out) == 5                        # every page still embedded, in order
+    assert model.batch_sizes == [1, 1, 1, 1, 1]  # but never more than one per forward pass
+    assert embedder._batching_is_supported() is False
 
 
-def test_single_page_work_is_never_probed(monkeypatch):
-    """embed_image and embed_query paths batch nothing, so they must pay nothing."""
+def test_batching_is_kept_on_other_backends(monkeypatch):
+    """The exclusion is MPS-only: cpu and cuda must still get the batched path."""
+    for device in ("cpu", "cuda"):
+        model = _FakeModel()
+        _install(monkeypatch, model, _FakeProcessor({}), device=device)
+        embedder._batching_is_supported.cache_clear()  # or the 2nd arm reuses the 1st verdict
+
+        embedder.embed_images([f"p{i}" for i in range(5)], batch_size=4)
+
+        assert model.batch_sizes == [4, 1], device
+        assert embedder._batching_is_supported() is True, device
+
+
+def test_the_device_is_only_inspected_once(monkeypatch):
+    """The verdict is cached, so a long ingest does not re-derive it per batch."""
+    calls = []
     model = _FakeModel()
-    _install(monkeypatch, model, _FakeProcessor({"solo": 4}), verified=None)
+    _install(monkeypatch, model, _FakeProcessor({}), device="mps")
+    monkeypatch.setattr(embedder, "_device_and_dtype",
+                        lambda: calls.append(1) or ("mps", torch.float32))
+
+    embedder.embed_images([f"p{i}" for i in range(6)], batch_size=3)
+    embedder.embed_images([f"q{i}" for i in range(6)], batch_size=3)
+
+    assert len(calls) == 1
+
+
+def test_single_page_work_skips_the_check_entirely(monkeypatch):
+    """embed_image/embed_query batch nothing, so they must not even ask."""
+    calls = []
+    _install(monkeypatch, _FakeModel(), _FakeProcessor({"solo": 4}))
+    monkeypatch.setattr(embedder, "_device_and_dtype",
+                        lambda: calls.append(1) or ("cpu", torch.float32))
 
     embedder.embed_image("solo")
 
-    assert model.batch_sizes == [1]              # no probe forward pass
-    assert embedder._batching_verified is None   # and no verdict claimed either way
-
-
-def test_vectors_agree_rejects_a_patch_count_mismatch():
-    """A different number of patches is a padding bug, not drift - never tolerate it."""
-    assert not embedder._vectors_agree([[0.0] * DIM], [[0.0] * DIM, [0.0] * DIM])
-    assert embedder._vectors_agree([[0.0] * DIM], [[0.0] * DIM])
-    # Float noise passes, the observed corruption does not.
-    assert embedder._vectors_agree([[0.0] * DIM], [[1e-6] * DIM])
-    assert not embedder._vectors_agree([[0.0] * DIM], [[0.4] * DIM])
+    assert calls == []
 
 
 @pytest.mark.parametrize("message", ["CUDA out of memory", "can't allocate memory"])

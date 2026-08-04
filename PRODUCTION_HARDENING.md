@@ -1057,30 +1057,32 @@ at the default of 4 — silently poisoned, with no error, no NaN, correct patch 
 have degraded retrieval quietly and permanently. **No test that stubs the model could have
 caught it**, which is the argument for the gate existing at all.
 
-### The guard
+### The fix
 
-`embedder._batching_is_trustworthy` re-embeds a batch's first page alone, compares, and pins
-the process to single-page passes if they disagree. Three design points, each of which cost
-something to learn:
+**Batching is disabled on MPS** — `embedder._batching_is_supported`, a device check
+evaluated once per process. Deliberately the blunt version rather than a runtime
+measurement, and the two costs of that are known and accepted:
 
-- **It probes with real pages.** The obvious cheap design — one throwaway synthetic image at
-  load time — was built and then measured: at 28-112 px the corruption **does not reproduce**
-  (sequence lengths 15-27 come back clean, against ~755 for a rendered page). A synthetic
-  probe would have returned a confident all-clear on exactly the configuration it exists to
-  catch, which is worse than no guard.
-- **It is a measurement, not a device blocklist.** `if device == "mps": batch = 1` would be
-  wrong the day the kernel is fixed, and wrong already for MPS float32, which is correct.
-- **It never yields a suspect vector.** The check runs before the first batch is handed back;
-  a failure re-embeds those pages one at a time rather than emitting and repairing later.
+- **MPS float32 would batch correctly and is refused anyway.** Only bf16 is affected, and
+  bf16 is what `_device_and_dtype` selects on MPS, so in this codebase the device check and
+  the dtype check pick out the same configuration.
+- **A fixed torch will not re-enable batching by itself.** Someone has to delete the check.
+  `--verify-equivalence` is how you would discover it is safe again; it is the thing to
+  re-run after any dtype, device, model or torch change.
 
-Cost: one extra forward pass per process, cached, and only when batching is actually used.
-`embed_image`/`embed_query` are single-page and pay nothing.
+A runtime self-check (embed a batch's first page alone, compare, fall back on disagreement)
+was built and then removed as not worth its complexity. One measurement from it is worth
+keeping, because it would trap anyone who rebuilds it: **it cannot be probed with a cheap
+synthetic image.** At 28-112 px the corruption does not reproduce at all — sequence lengths
+15-27 come back clean, against ~755 for a rendered page — so a throwaway-image probe returns
+a confident all-clear on exactly the configuration it exists to catch. It has to use real
+pages, which is most of why it cost more than it was worth.
 
-**Rejected: a sacrificial slot-0 image.** Prepending a throwaway page to every batch would
-put real pages at slots ≥1, which measured bit-identical to solo, and would keep batching on
-MPS for ~20-25% overhead. Rejected because it stakes index correctness on an unfixed upstream
-bug corrupting *exactly* slot 0 and nothing else — an assumption with no upstream guarantee,
-whose violation is again silent.
+**Also rejected: a sacrificial slot-0 image.** Prepending a throwaway page to every batch
+would put real pages at slots >=1, which measured bit-identical to solo, and would keep
+batching on MPS for ~20-25% overhead. Rejected because it stakes index correctness on an
+unfixed upstream bug corrupting *exactly* slot 0 and nothing else — an assumption with no
+upstream guarantee, whose violation is again silent.
 
 ### The other defect, found reading the interrupted code back
 
@@ -1093,8 +1095,8 @@ is the guard, and it fails (`[4, 4, 2] != [10]`) against the old shape.
 
 ### What this pass actually delivers
 
-**Correctness on Apple Silicon; throughput only on CUDA.** With the guard active, every arm
-of the sweep ran at an effective batch of 1:
+**Correctness on Apple Silicon; throughput only on CUDA.** With batching disabled there,
+every arm of the sweep ran at an effective batch of 1:
 
 | requested | actual | embed/page | pages/min |
 |---|---|---|---|
