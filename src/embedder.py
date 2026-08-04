@@ -13,7 +13,7 @@ from colpali_engine.models import (
 )
 from PIL import Image
 
-from src.config import COLPALI_MODEL, EMBED_BATCH_SIZE
+from src.config import COLPALI_MODEL, EMBED_BATCH_SIZE, EMBED_VISUAL_TOKENS
 from src.logging_setup import get_logger
 
 logger = get_logger(__name__)
@@ -59,7 +59,12 @@ def load_model() -> tuple[ColQwen2 | ColQwen2_5, ColQwen2Processor | ColQwen2_5_
     model_cls, processor_cls = _model_classes()
     _model = model_cls.from_pretrained(
         COLPALI_MODEL, torch_dtype=dtype, device_map=device).eval()
-    _processor = processor_cls.from_pretrained(COLPALI_MODEL)
+    # Omitted entirely when unset, rather than passed as the checkpoint's own value: the
+    # processor only overrides `max_pixels` when the kwarg is present, so this keeps the
+    # unset path byte-identical to what built the existing index (see EMBED_VISUAL_TOKENS).
+    budget = ({"max_num_visual_tokens": EMBED_VISUAL_TOKENS}
+              if EMBED_VISUAL_TOKENS is not None else {})
+    _processor = processor_cls.from_pretrained(COLPALI_MODEL, **budget)
     print(f"Loaded {COLPALI_MODEL} on {device} ({dtype})")
     return _model, _processor
 

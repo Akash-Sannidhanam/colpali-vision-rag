@@ -57,6 +57,7 @@ from src.config import (
     COLPALI_MODEL,
     EMBED_BATCH_SIZE,
     EMBED_VERSION,
+    EMBED_VISUAL_TOKENS,
     PDFS_DIR,
     RENDER_DPI,
     UPSERT_BATCH_SIZE,
@@ -349,6 +350,9 @@ def build_report(
         "config": {
             "colpali_model": COLPALI_MODEL,
             "render_dpi": RENDER_DPI,
+            # None = the checkpoint's own budget. Read it together with each arm's
+            # `visual_tokens_per_page`, which is what the model actually saw.
+            "embed_visual_tokens": EMBED_VISUAL_TOKENS,
             "batch_sizes": batch_sizes,
             "upsert_batch_size": UPSERT_BATCH_SIZE,
             "device": device,

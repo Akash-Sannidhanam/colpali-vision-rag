@@ -68,3 +68,26 @@ def test_validate_allows_a_non_numeric_arm_suffix(monkeypatch):
     monkeypatch.setattr(config, "COLLECTION_NAME", "pdf_pages_vt512")
 
     assert config.validate() is None
+
+
+@pytest.mark.parametrize("bad", [0, -1])
+def test_validate_rejects_a_visual_token_budget_below_one(monkeypatch, bad):
+    """A budget under one patch cannot describe a page, and the failure would be silent-ish.
+
+    The processor would either raise deep inside a forward pass or hand back something empty
+    that indexes perfectly cleanly - an index of nothing, recorded as current.
+    """
+    _ok(monkeypatch)
+    monkeypatch.setattr(config, "EMBED_VISUAL_TOKENS", bad)
+
+    with pytest.raises(RuntimeError, match="EMBED_VISUAL_TOKENS"):
+        config.validate()
+
+
+def test_validate_allows_an_unset_visual_token_budget(monkeypatch):
+    """Unset means the checkpoint's own budget, which is what the stored vectors were built
+    with - so it must stay a legal value rather than being normalised to a number."""
+    _ok(monkeypatch)
+    monkeypatch.setattr(config, "EMBED_VISUAL_TOKENS", None)
+
+    assert config.validate() is None
