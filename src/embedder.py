@@ -1,4 +1,5 @@
 """ColPali (ColQwen2 / ColQwen2.5) visual embedder- reads pages by sight."""
+import time
 from collections.abc import Iterator
 from functools import cache
 
@@ -76,8 +77,33 @@ def _release_memory() -> None:
     elif torch.backends.mps.is_available():
         torch.mps.empty_cache()
 
-def _embed_batch(images: list[Image.Image]) -> list[list[list[float]]]:
-    """One forward pass over several pages, trimmed back to each page's own patches.
+def _synchronize() -> None:
+    """Block until queued GPU work has actually finished.
+
+    Only ever called while collecting `stats`. CUDA and MPS both dispatch asynchronously, so
+    `model(**inputs)` returns long before the compute does and the wait is instead paid by
+    the first thing that touches the result - the `.cpu()` inside `_to_multivector`. Timing
+    the two halves without this would charge nearly all of the GPU's time to the decode and
+    report a forward pass that looks ~free, which is precisely backwards.
+    """
+    if torch.cuda.is_available():
+        torch.cuda.synchronize()
+    elif torch.backends.mps.is_available():
+        torch.mps.synchronize()
+
+def preprocess(images: list[Image.Image]) -> object:
+    """The CPU half of a forward pass: resize, patchify and pad a batch of pages.
+
+    Split from `forward` because it is the only part that never touches the GPU, which is
+    what lets ingest run it on a producer thread while the GPU is still busy with the
+    previous batch (see `ingest.ingest_pdf`), and what lets the profiler charge the two
+    halves separately. Returns the processor's batch, still on the CPU.
+    """
+    _, processor = load_model()
+    return processor.process_images(images)
+
+def forward(inputs, stats: dict | None = None) -> list[list[list[float]]]:
+    """The GPU half: run the model over a preprocessed batch, trimmed to each page's patches.
 
     **The trim is not optional.** `process_images` pads the batch to its longest member
     (`padding="longest"`, `padding_side="left"`) and ColQwen2's forward *zeroes* the pad
@@ -87,13 +113,42 @@ def _embed_batch(images: list[Image.Image]) -> list[list[list[float]]]:
     a zero vector wins that max whenever every real dot is negative. Indexing the
     attention mask drops exactly the padding, leaving the same vectors a batch of one
     produces - which is what lets EMBED_BATCH_SIZE stay out of EMBED_VERSION.
+
+    The batch size is read off the attention mask rather than passed in, so a caller that
+    hands work across a thread boundary need only carry the preprocessed batch.
     """
-    model, processor = load_model()
-    inputs = processor.process_images(images).to(model.device)
+    model, _ = load_model()
+    inputs = inputs.to(model.device)
     with torch.no_grad():
         out = model(**inputs)  # (batch, padded_patches, 128)
     mask = inputs["attention_mask"].bool()  # (batch, padded_patches)
-    return [_to_multivector(out[i][mask[i]]) for i in range(len(images))]
+    if stats is not None:
+        _synchronize()  # see _synchronize: otherwise the decode is charged for the GPU
+        stats["forward_s"] = stats.get("forward_s", 0.0) + (time.perf_counter() - stats["_t"])
+        stats["_t"] = time.perf_counter()
+    vectors = [_to_multivector(out[i][mask[i]]) for i in range(mask.shape[0])]
+    if stats is not None:
+        stats["decode_s"] = stats.get("decode_s", 0.0) + (time.perf_counter() - stats["_t"])
+        stats["patches"] = stats.get("patches", 0) + sum(len(v) for v in vectors)
+    return vectors
+
+def _embed_batch(
+    images: list[Image.Image], stats: dict | None = None,
+) -> list[list[list[float]]]:
+    """One forward pass over several pages: `preprocess` then `forward`.
+
+    `stats`, when given, accumulates `preprocess_s` / `forward_s` / `decode_s` / `patches`
+    across every batch it is passed to. Production callers pass nothing; it exists so
+    `scripts/profile_ingest.py` can charge the three sub-stages separately without a second
+    copy of this function drifting away from the one ingest actually runs.
+    """
+    if stats is None:
+        return forward(preprocess(images))
+    stats["_t"] = time.perf_counter()
+    inputs = preprocess(images)
+    stats["preprocess_s"] = stats.get("preprocess_s", 0.0) + (time.perf_counter() - stats["_t"])
+    stats["_t"] = time.perf_counter()
+    return forward(inputs, stats)
 
 @cache
 def _batching_is_supported() -> bool:
@@ -129,7 +184,7 @@ def _batching_is_supported() -> bool:
     return True
 
 def iter_embedded(
-    images: list[Image.Image], batch_size: int | None = None,
+    images: list[Image.Image], batch_size: int | None = None, stats: dict | None = None,
 ) -> Iterator[tuple[int, list[list[list[float]]]]]:
     """Embed page images a batch at a time, yielding `(start_index, vectors)` per batch.
 
@@ -151,6 +206,8 @@ def iter_embedded(
 
     On a backend that miscomputes batched forward passes the size is forced to 1 up front,
     so a corrupted vector is never produced in the first place - see `_batching_is_supported`.
+
+    `stats` is profiling-only and passed straight through to `_embed_batch`; see there.
     """
     size = max(1, batch_size or EMBED_BATCH_SIZE)
     if size > 1 and not _batching_is_supported():
@@ -159,7 +216,7 @@ def iter_embedded(
     while start < len(images):
         chunk = images[start:start + size]
         try:
-            vectors = _embed_batch(chunk)
+            vectors = _embed_batch(chunk, stats)
         except (RuntimeError, MemoryError) as exc:
             if size == 1 or not _is_oom(exc):
                 raise

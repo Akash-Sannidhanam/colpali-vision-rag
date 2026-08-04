@@ -6,15 +6,21 @@ Four candidates, and the answer picks the optimisation:
 
 - **render**  `pdf_render.pdf_to_images` (poppler), one call per document
 - **save**    `pdf_render.save_page_image`, one PNG per page
-- **embed**   the ColQwen2 forward pass, one page per call today
+- **embed**   the ColQwen2 forward pass, split into preprocess / forward / decode
 - **upsert**  `vector_store.upsert_pages`, one round-trip per UPSERT_BATCH_SIZE pages
 
     PYTHONPATH=. uv run python scripts/profile_ingest.py                       # default doc
     PYTHONPATH=. uv run python scripts/profile_ingest.py pdfs/colpali.pdf --pages 8
-    PYTHONPATH=. uv run python scripts/profile_ingest.py --store               # incl. Qdrant
+    PYTHONPATH=. uv run python scripts/profile_ingest.py --no-store            # skip Qdrant
     PYTHONPATH=. uv run python scripts/profile_ingest.py --batch-sizes 1,2,4,8 # the sweep
     PYTHONPATH=. uv run python scripts/profile_ingest.py --verify-equivalence  # batching is safe?
     PYTHONPATH=. uv run python scripts/profile_ingest.py --output bench/reports/ingest.json
+
+**embed is three stages, not one**, and they respond to different fixes: `preprocess` is CPU
+(resize/patchify), `forward` is the GPU, `decode` is the GPU->CPU copy. Only `forward` gets
+faster from a bigger batch or a smaller image; the other two get faster only by running while
+the GPU is busy with something else. Timing them as one number is why an earlier pass
+concluded "batch the forward pass" and stopped there.
 
 The numbers are **machine-specific and contention-sensitive** - device, unified-memory
 pressure and thermal state all move them. Compare runs on the same box, and run them on a
@@ -27,11 +33,12 @@ Two deliberate choices in the method:
   kernel compile for that input shape. Timing it would make the first document look 10x
   slower than the second and hide the steady-state cost, which is the one that matters.
   A new batch size is a new shape, so the sweep warms up once per arm, not once per run.
-- **`--store` is opt-in.** Measuring the upsert needs a live Qdrant. It is safe when on
-  (point ids are `uuid5(pdf, page)`, so re-storing an indexed document overwrites in
-  place with identical vectors) but it should never be a surprise, so the default run
-  skips only the Qdrant upsert (recording `"measured": false`) while still persisting
-  page images to disk via save_page_image.
+- **The upsert is measured by default** (`--no-store` opts out). It needs a live Qdrant, and
+  it is safe: point ids are `uuid5(pdf, page)`, so re-storing an indexed document overwrites
+  in place with identical vectors. It was opt-in originally, which is exactly how it stayed
+  unmeasured through a whole ingest-optimisation pass while sitting inline in the embed loop.
+  An unreachable Qdrant degrades to a skip with a recorded reason rather than aborting the
+  run, so a missing server never costs you the embed numbers.
 
 Unlike the other scripts here this one imports `src.`, so it needs `PYTHONPATH=.`.
 """
@@ -84,13 +91,20 @@ def _stats(samples: list[float]) -> dict:
     }
 
 
-def _time_embed(pages: list, batch_size: int) -> tuple[list[float], list, list[int]]:
+def _time_embed(pages: list, batch_size: int) -> tuple[list[float], list, list[int], dict]:
     """Embed `pages` at one batch size, timing each forward pass.
 
-    Returns `(samples, vectors, observed_batch_sizes)`. The third is what the arm *actually*
-    ran at, which is not always what was asked for: `iter_embedded` refuses to batch on a
-    backend that miscomputes it, and halves on an OOM. An arm that reports `batch_size: 8`
-    while every pass ran at 1 would be a fabricated speedup number, so the report carries both.
+    Returns `(samples, vectors, observed_batch_sizes, stats)`. The third is what the arm
+    *actually* ran at, which is not always what was asked for: `iter_embedded` refuses to
+    batch on a backend that miscomputes it, and halves on an OOM. An arm that reports
+    `batch_size: 8` while every pass ran at 1 would be a fabricated speedup number, so the
+    report carries both.
+
+    The fourth is `embedder`'s own sub-stage accounting for the arm - preprocess (CPU) vs
+    forward (GPU) vs decode (GPU->CPU) - which is what says whether the answer to a slow
+    ingest is a bigger batch, a smaller image, or getting the CPU off the GPU's path. It is
+    collected from the same `_embed_batch` ingest runs rather than a parallel copy of it,
+    so the split cannot drift from the thing being measured.
 
     A sample is one *batch*, charged to the pages it covered, so the per-page figures stay
     comparable across arms. The arm is warmed up first: on MPS a batch size is an input
@@ -107,13 +121,15 @@ def _time_embed(pages: list, batch_size: int) -> tuple[list[float], list, list[i
     samples: list[float] = []
     vectors: list = []
     observed: list[int] = []
+    stats: dict = {}
     t = time.perf_counter()
-    for _, batch in iter_embedded(pages, batch_size=batch_size):
+    for _, batch in iter_embedded(pages, batch_size=batch_size, stats=stats):
         samples.extend([(time.perf_counter() - t) / len(batch)] * len(batch))
         vectors.extend(batch)
         observed.append(len(batch))
         t = time.perf_counter()   # restart after the yield: don't charge the caller's work
-    return samples, vectors, observed
+    stats.pop("_t", None)  # bookkeeping cursor, not a measurement
+    return samples, vectors, observed, stats
 
 
 def profile_document(pdf: Path, page_cap: int | None, store: bool, batch_sizes: list[int]) -> dict:
@@ -148,9 +164,12 @@ def profile_document(pdf: Path, page_cap: int | None, store: bool, batch_sizes: 
 
     embed_samples: dict[int, list[float]] = {}
     embed_observed: dict[int, list[int]] = {}
+    embed_stats: dict[int, dict] = {}
     vectors: list = []
     for size in batch_sizes:
-        embed_samples[size], vectors, embed_observed[size] = _time_embed(pages, size)
+        embed_samples[size], vectors, embed_observed[size], embed_stats[size] = _time_embed(
+            pages, size,
+        )
 
     upsert_samples: list[float] = []
     if store:
@@ -179,6 +198,7 @@ def profile_document(pdf: Path, page_cap: int | None, store: bool, batch_sizes: 
         "save": save_samples,
         "embed": embed_samples,
         "embed_observed": embed_observed,
+        "embed_stats": embed_stats,
         "upsert": upsert_samples,
     }
 
@@ -248,7 +268,7 @@ def verify_equivalence(pdf: Path, page_cap: int | None, batch_size: int) -> tupl
 
 def build_report(
     docs: list[dict], store: bool, batch_sizes: list[int],
-    model_load_s: float, device: str, dtype: str,
+    model_load_s: float, device: str, dtype: str, upsert_skipped: str = "",
 ) -> dict:
     """Fold the per-document samples into the pinned report shape.
 
@@ -282,7 +302,7 @@ def build_report(
         },
     }
 
-    arms = []
+    arms: list[dict] = []
     for size in batch_sizes:
         samples = [s for d in docs for s in d["embed"][size]]
         observed = [n for d in docs for n in d["embed_observed"][size]]
@@ -292,6 +312,15 @@ def build_report(
         # The largest document determines the maximum possible final batch
         largest_doc_pages = max((d["pages_profiled"] for d in docs), default=0)
         expected_max = min(size, largest_doc_pages)
+        # Sub-stage split, summed across documents and charged per page. `patches` is the
+        # visual-token count the model actually saw, which is the number the embed cost
+        # tracks - not RENDER_DPI, since the processor downscales to its own pixel budget
+        # long before the model sees a page (see EMBED_VISUAL_TOKENS in src/config.py).
+        stats = [d["embed_stats"][size] for d in docs]
+        totals = {
+            key: sum(s.get(key, 0.0) for s in stats)
+            for key in ("preprocess_s", "forward_s", "decode_s", "patches")
+        }
         arms.append({
             "batch_size": size,
             # What the arm actually ran at. Below `batch_size` means iter_embedded refused
@@ -300,6 +329,11 @@ def build_report(
             "effective_batch_size": effective,
             "requested_size_honoured": effective >= expected_max,
             "embed": {**_stats(samples), "per_page_s": round(embed_per_page, 3)},
+            "embed_stages": {
+                stage: round(totals[f"{stage}_s"] / pages, 3) if pages else 0.0
+                for stage in ("preprocess", "forward", "decode")
+            },
+            "visual_tokens_per_page": round(totals["patches"] / pages) if pages else 0,
             "embed_share_of_page_s": round(embed_per_page / page_s, 4) if page_s else 0.0,
             "page_s": round(page_s, 3),
             "pages_per_min": round(60.0 / page_s, 2) if page_s else 0.0,
@@ -323,6 +357,9 @@ def build_report(
             "platform": platform.platform(),
             "python": platform.python_version(),
             "upsert_measured": store,
+            # Why, when it wasn't. An unexplained `false` is what let the upsert stay
+            # invisible through a whole optimisation pass.
+            "upsert_skipped": upsert_skipped,
         },
         "documents": [
             {"pdf": d["pdf"], "pages_rendered": d["pages_rendered"],
@@ -343,7 +380,7 @@ def _print_report(report: dict) -> None:
     print(f"model load: {report['model_load_s']}s (excluded from the timings below)")
     print(f"{report['pages']} pages profiled\n")
 
-    upsert_note = "" if cfg["upsert_measured"] else "   (not measured; --store to include)"
+    upsert_note = "" if cfg["upsert_measured"] else f"   (not measured: {cfg['upsert_skipped']})"
     print("fixed per-page cost")
     for stage in ("render", "save", "upsert"):
         note = upsert_note if stage == "upsert" else ""
@@ -360,12 +397,21 @@ def _print_report(report: dict) -> None:
         print("\n! = the backend refused the requested batch size (untrusted batching, or an\n"
               "    OOM backoff). Those arms measure the size under 'actual', not 'batch'.")
 
+    # The split inside embed: what a bigger batch can help (forward) vs what only getting the
+    # CPU off the GPU's path can (preprocess, decode).
+    print(f"\n{'batch':<8}{'tokens':>8}{'preprocess':>12}{'forward':>10}{'decode':>9}")
+    for arm in report["arms"]:
+        st = arm["embed_stages"]
+        print(f"{arm['batch_size']:<8}{arm['visual_tokens_per_page']:>8}"
+              f"{st['preprocess']:>11.3f}s{st['forward']:>9.3f}s{st['decode']:>8.3f}s")
+
 
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("pdfs", nargs="*", type=Path, help="PDFs to profile (default: a demo document)")
     parser.add_argument("--pages", type=int, default=None, help="profile at most N pages per document")
-    parser.add_argument("--store", action="store_true", help="also time the Qdrant upsert (needs a live server)")
+    parser.add_argument("--no-store", action="store_true",
+                        help="skip the Qdrant upsert timing (it is measured by default)")
     parser.add_argument("--batch-sizes", default=str(EMBED_BATCH_SIZE),
                         help="comma-separated embed batch sizes to sweep (default: EMBED_BATCH_SIZE)")
     parser.add_argument("--verify-equivalence", action="store_true",
@@ -390,8 +436,21 @@ def main(argv: list[str]) -> int:
         print("--batch-sizes entries must all be at least 1", file=sys.stderr)
         return 1
 
-    if args.store:
-        ping()  # fail fast with a clear message rather than mid-profile
+    # Measured by default: the upsert sits inline in ingest's embed loop, so leaving it
+    # opt-in is how it stayed unmeasured through an entire ingest-optimisation pass. But an
+    # unreachable Qdrant must not cost you the embed numbers you actually came for, so this
+    # degrades to an explained skip rather than the fail-fast the opt-in version could afford.
+    store = not args.no_store
+    upsert_skipped = ""
+    if store:
+        try:
+            ping()
+        except Exception as exc:
+            store = False
+            upsert_skipped = f"Qdrant unreachable ({type(exc).__name__})"
+            print(f"upsert not measured: {upsert_skipped}", file=sys.stderr)
+    else:
+        upsert_skipped = "--no-store"
 
     t = time.perf_counter()
     model, _ = load_model()
@@ -415,13 +474,14 @@ def main(argv: list[str]) -> int:
     embed_image(pdf_to_images(pdfs[0])[0])
 
     try:
-        docs = [profile_document(pdf, args.pages, args.store, batch_sizes) for pdf in pdfs]
+        docs = [profile_document(pdf, args.pages, store, batch_sizes) for pdf in pdfs]
     finally:
-        if args.store:
+        if store:
             close_client()
 
     report = build_report(
-        docs, args.store, batch_sizes, model_load_s, str(model.device), str(model.dtype),
+        docs, store, batch_sizes, model_load_s, str(model.device), str(model.dtype),
+        upsert_skipped,
     )
     _print_report(report)
 
