@@ -144,10 +144,12 @@ class _StoreWorker:
 
     def _run(self) -> None:
         batch: list = []
+        stopping = False   # the sentinel is only ever delivered once - see the drain below
         try:
             while True:
                 item = self._queue.get()
                 if item is None:
+                    stopping = True
                     break
                 page_number, image, multivector = item
                 image_path = save_page_image(image, self._name, page_number)
@@ -166,8 +168,14 @@ class _StoreWorker:
             # hangs is worse than one that crashes, because `document_index` fingerprints a
             # document from its first indexed page, so a killed run strands a truncated
             # document that the next sync considers current.
-            while self._queue.get() is not None:
-                pass
+            #
+            # **Only when the sentinel is still coming.** The remainder flush above runs
+            # *after* it has been consumed, so draining on a failure there would block
+            # forever on a second sentinel that is never sent - and `__exit__`'s join()
+            # would hang the whole ingest on the exact path this drain exists to protect.
+            if not stopping:
+                while self._queue.get() is not None:
+                    pass
 
 
 def ingest_pdf(

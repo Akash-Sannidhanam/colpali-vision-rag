@@ -7,6 +7,8 @@ default (no callback) path still prints for the CLI, and that the sync path re-e
 exactly the documents whose bytes or embedding config changed.
 """
 
+import threading
+
 import pytest
 
 from src import ingest
@@ -349,3 +351,35 @@ def test_every_page_reaches_qdrant_exactly_once(monkeypatch, tmp_path):
     ingest.run_ingest([_pdf(tmp_path)])
 
     assert sum(upserted) == 10
+
+
+def test_a_failure_in_the_final_flush_does_not_hang(monkeypatch, tmp_path):
+    """The remainder flush runs *after* the sentinel, so it must not drain for another one.
+
+    Draining unconditionally blocks forever here - the sentinel is delivered once - and
+    `__exit__`'s join() then hangs the whole ingest on the very path the drain exists to
+    protect. Run on a thread with a join timeout so a regression fails rather than wedging
+    the suite.
+    """
+    _stub_pipeline(monkeypatch, pages_per_pdf=10)   # flushes at 8, remainder of 2
+
+    def _fail_on_the_remainder(batch, collection_name):
+        if len(batch) < 8:
+            raise RuntimeError("remainder flush failed")
+
+    monkeypatch.setattr(ingest, "upsert_pages", _fail_on_the_remainder)
+    pdf = _pdf(tmp_path)
+    caught: list = []
+
+    def _run():
+        try:
+            ingest.run_ingest([pdf])
+        except BaseException as exc:   # noqa: BLE001 - recorded, asserted on below
+            caught.append(exc)
+
+    worker = threading.Thread(target=_run, daemon=True)
+    worker.start()
+    worker.join(timeout=10)
+
+    assert not worker.is_alive(), "ingest hung on a failure in the final flush"
+    assert isinstance(caught[0], RuntimeError)
