@@ -1307,12 +1307,24 @@ which is a stronger justification than the one it shipped with.
 ### What is left
 
 - **`bench/reports/ingest_baseline.json` was NOT re-pinned, and still predates the sub-stage
-  split.** Every attempt to re-pin landed on a box running OneDrive Sync Service at 47–97%
-  CPU, which inflated preprocess from 0.304 s to 0.965 s on the same eight pages. Pinning
-  that would make every future run look faster than it is. `ingest_contended.json` is the
-  new-format run, stamped `measurement_quality: CONTENDED`, kept only to exercise the added
-  fields. **Re-pin from a quiet box** — this is the one piece of the pass left undone, and
-  the sub-stage figures quoted throughout this section come from the cleaner earlier runs.
+  split.** Five attempts, all on a box where OneDrive Sync Service ran at 40–98% CPU
+  (`SIGSTOP` does not hold it — it is a LaunchAgent, so `launchd` resumes it). Arms doing
+  *identical* batch-1 work measured 4.96, 5.58, 5.87, 11.23 and 17.12 s/page — a **3.5×
+  spread**, far worse than the ~46% the old baseline pins. Nothing measured under that is
+  worth pinning. `ingest_contended.json` is the new-format run kept only to exercise the
+  added fields. **Re-pin from a genuinely quiet box.**
+
+- **Read `preprocess` in any post-pipelining profile as a thread measurement, not a cost.**
+  This bit the re-pin attempt and is worth stating plainly, because the first reading of it
+  here was wrong. Part 1 measured preprocess at **0.304 s serially**, before the lookahead
+  existed. Every profile since runs it on the prefetch thread *while the GPU is busy*, where
+  GIL contention stretches its wall time to **~0.9–1.2 s** — by design, and hidden as long
+  as it stays under the forward pass. The 3-arm attribution isolates it cleanly on one box
+  in one process with no load change: serial 0.165–0.177 s against pipelined 0.810–0.843 s.
+  So a jump from 0.304 s to ~0.9 s across that change is **the overlap, not contention**,
+  and it was briefly mis-recorded here as evidence of a noisy box. The two numbers answer
+  different questions: ~0.3 s is what preprocessing costs, ~0.9 s is how long it takes when
+  it no longer matters.
 - **`EMBED_VISUAL_TOKENS` has never been swept on a corpus that is mostly prose.** The 512
   arm lost 4 table rows and gained 10 others; a corpus without dense numeric tables is the
   case where this knob is free speed, and this eval cannot see it.

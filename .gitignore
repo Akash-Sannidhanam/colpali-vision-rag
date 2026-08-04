@@ -87,8 +87,10 @@ bench/reports/*
 # ~46%: anything under a 1.5x claim is unmeasurable on it. A CUDA run would supersede it.
 !bench/reports/ingest_baseline.json
 # NOT a baseline, and stamped `measurement_quality: CONTENDED` in its own config block. It is
-# the only run in the new preprocess/forward/decode + upsert format, taken on a box running
-# OneDrive Sync Service at 47-97% CPU, which inflated preprocess 0.304s -> 0.965s on the same
-# eight pages. Kept so the added fields have a worked example; pinning it would make every
-# future run look faster than it is. Re-pin ingest_baseline.json from a quiet box.
+# the only run in the new preprocess/forward/decode + upsert format, kept so the added fields
+# have a worked example. Do not read its `preprocess` as contention: preprocess runs on the
+# prefetch thread now, so GIL contention stretches its wall time to ~0.9-1.2s against the
+# 0.304s it cost serially - that gap is the overlap working, not a noisy box. What does make
+# it unpinnable is the spread: arms doing identical batch-1 work measured 4.96 to 17.12 s/page
+# across attempts. Re-pin ingest_baseline.json from a genuinely quiet box.
 !bench/reports/ingest_contended.json

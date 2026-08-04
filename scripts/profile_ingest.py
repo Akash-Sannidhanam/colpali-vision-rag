@@ -408,6 +408,11 @@ def _print_report(report: dict) -> None:
         st = arm["embed_stages"]
         print(f"{arm['batch_size']:<8}{arm['visual_tokens_per_page']:>8}"
               f"{st['preprocess']:>11.3f}s{st['forward']:>9.3f}s{st['decode']:>8.3f}s")
+    # Stated because it has already been misread once as evidence of a contended box.
+    print("\npreprocess is measured on the prefetch thread, overlapped with the GPU, so its\n"
+          "wall time is stretched by GIL contention (~3-5x its serial cost) and these\n"
+          "columns legitimately sum to more than 'page'. That gap IS the overlap. Compare it\n"
+          "only against another pipelined run, never against a serial measurement.")
 
 
 def main(argv: list[str]) -> int:
