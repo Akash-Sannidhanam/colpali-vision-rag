@@ -1153,3 +1153,173 @@ real backend, not for what batching buys). A CUDA run would supersede it.
   `EMBED_VERSION` (e.g., append a numeric suffix) to force a full reindex, then run
   `PYTHONPATH=. uv run python -m src.ingest` to rebuild the corpus. Document the required
   reindex in deployment notes when changing these settings.
+
+---
+
+## Ingest-throughput pass (follow-on) ✅ DONE
+
+Work on branch **`perf/ingest-throughput`**. The batch-embedder pass left ingest
+effectively unimproved on Apple Silicon — batching is disabled on MPS by design, so every
+page still went through the model alone at ~8 s, and the 363-page corpus took ~38 minutes.
+
+**The finding that reframed the pass.** That pass measured *which stage* was slow (embed,
+98%) but never measured *inside* it. Splitting embed into its three sub-stages changes the
+conclusion: page-at-a-time is not what makes ingest slow, **755 visual tokens per page** is.
+
+| stage | per page | on the GPU's thread? |
+|---|---|---|
+| render (poppler) | 0.132 s | yes |
+| **preprocess (CPU)** | **0.304 s** | yes — was invisible inside "embed" |
+| **forward (GPU)** | **5.451 s** | yes |
+| decode (GPU→CPU) | 0.046 s | yes |
+| save PNG | 0.044 s | yes |
+| **upsert** | **0.264 s** | yes — and had *never* been measured |
+
+The upsert is the sharper indictment: `profile_ingest.py`'s `--store` was opt-in, so the
+pinned baseline carried `upsert_measured: false` through an entire ingest-optimisation pass
+while `upsert_pages` sat inline in the embed loop. It is measured by default now.
+
+### The lever: `EMBED_VISUAL_TOKENS`
+
+The checkpoint caps pages at 768 visual tokens (`max_pixels=602112`), and
+`ColQwen2Processor.from_pretrained` accepts a `max_num_visual_tokens` kwarg the code never
+passed. ViT attention is quadratic in patch count, so the budget pays **superlinearly**:
+
+| budget | patches | forward | pages/min | speedup |
+|---|---|---|---|---|
+| **768 (checkpoint default)** | 755 | 6.48 s | 9.3 | 1.00× |
+| 512 | 486 | 3.18 s | 18.9 | **2.04×** |
+| 384 | 385 | 2.60 s | 23.1 | 2.49× |
+| 256 | 263 | 1.64 s | 36.6 | 3.95× |
+
+**Two levers that look obvious and do nothing**, recorded so they are not retried:
+
+- **`RENDER_DPI` cannot speed up embedding.** A 150-DPI page is 1275×1650 = 2.1 MP and
+  `smart_resize` hands the model 672×868 — it already reads pages at ~79 DPI equivalent. DPI
+  buys render time and disk, and the page PNGs still need it for the full-res answer step.
+- **dtype is not it.** fp16 vs bf16 measured 6.5 s vs 6.5 s, inside this box's ~46% noise floor.
+
+**MRL was investigated and does not apply, twice over.** ColQwen2-v1.0 is a LoRA adapter over
+`vidore/colqwen2-base` with a fixed-width `custom_text_proj` and no matryoshka config, so
+truncating dimensions would degrade unpredictably rather than gracefully. More fundamentally
+it targets the 1536→128 projection, not the 2.25B backbone, so it cannot move the forward
+pass at all — and as a storage lever `BinaryQuantization` already beats it 32× to 2–4×.
+
+### The arm: 512 tokens ✗ REJECTED (and *why* is the useful part)
+
+`COLLECTION_NAME` became env-overridable so the arm could be built and scored without
+destroying the pinned index. The control re-scored `pdf_pages` under the new code and
+reproduced `baseline_decomposed.json` exactly — which is also the proof that the pipelining
+below changed no vectors.
+
+| metric | 768 (control) | 512 | Δ |
+|---|---|---|---|
+| recall@1 | 0.6712 | 0.6438 | −0.0274 |
+| recall@3 | 0.8493 | 0.8082 | −0.0411 |
+| **recall@12** | **1.0000** | **0.9315** | **−0.0685** |
+| candidate_coverage_avg | 0.8500 | 0.8500 | 0.0000 |
+
+Rejected under the adoption rule (quality first, zero regression), and it fails the pinned
+`recall@12:0.95` gate outright. **But the degradation is not uniform, and its shape is the
+finding:** 10 rows improved and 5 lost gold from the slate entirely — and **4 of those 5 are
+`table` rows** (`attn-big-params`, `colpali-avg-ndcg`, `colpali-ndcg-ai-task`,
+`colpali-ndcg-tabfquad`). At 486 patches the model can no longer resolve digits in a dense
+numeric table. **Dense-table reading is precisely what pays for the speed**, so a corpus of
+prose would likely take this trade happily — which is exactly why the knob ships rather than
+the number.
+
+384 and 256 were **not run**: they strictly reduce the information reaching the model, so
+they cannot pass a zero-regression rule that 512 already fails, and they would hit those same
+table rows harder. `eval/reports/vt_control.json` and `vt512.json` are kept as the evidence.
+
+**Shipped opt-in.** `EMBED_VISUAL_TOKENS` unset means "the checkpoint's own budget", which is
+what every stored vector was built with — so adding the knob did not invalidate the index.
+Setting it, even to 768, changes `EMBED_VERSION` and re-embeds: erring toward a needless
+re-ingest over silently keeping vectors built at a different budget. It goes *into*
+`EMBED_VERSION` for the exact reason `EMBED_BATCH_SIZE` stays out.
+
+### Getting the CPU off the GPU's thread — worth less than its serial cost
+
+`iter_embedded` now preprocesses the next batch while the GPU runs the current one, and
+`ingest._StoreWorker` takes the PNG save and the Qdrant upsert onto a worker thread. Both are
+vector-identical (`--verify-equivalence` reports `max_abs_delta 0.0`).
+
+Measured as **GPU-busy fraction, not s/page** — s/page spreads 50% *within* a single arm
+here, while the ratio survives thermal drift because both arms run the identical forward
+pass. Three interleaved rounds:
+
+| arm | GPU idle | rounds won vs serial |
+|---|---|---|
+| serial | 9.7% | — |
+| store worker only | 10.0% | **0 of 3** |
+| + preprocess lookahead | **7.0%** | **3 of 3** |
+
+0.61 s/page of serial work bought only 2.7 points of GPU idle, because **background Python
+threads contend with the GPU dispatch thread for the GIL**. `build_point` is pure-Python, so
+the store worker's GIL traffic costs the main thread about what moving the work off it saves
+— visible as the main thread's own preprocess inflating 0.177 s → 0.313 s when only that
+changed. Kept anyway, because its share grows as the forward pass shrinks (0.31 s against
+5.45 s is 6%; against 2.7 s it is 11%), and flagged in its docstring as the piece to
+re-measure and delete if it stays flat.
+
+**A deadlock found by reading the code back, not by testing it.** The store worker drains its
+queue to the sentinel on failure, so a producer blocked on a full bounded queue is released
+rather than waiting on a dead worker. But the sentinel arrives exactly once, and the
+*remainder* flush — the tail pages past the last full `UPSERT_BATCH_SIZE` — runs after it has
+been consumed. A failure there sent the worker into a drain that could never terminate and
+hung the whole ingest, on precisely the path the drain was added to protect, for every
+document whose page count is not a multiple of 8. The test runs the ingest on a thread with a
+join timeout so a regression fails instead of wedging the suite.
+
+### Batching on MPS: the corruption is fixable, the batching still is not ✗ REJECTED
+
+The bf16 bug corrupts **only slot 0**, so batching can be recovered by prepending a
+throwaway page and discarding output index 0. Verified directly, using a duplicate of the
+batch's first real page so the padding cannot shift:
+
+```
+naive batch of 3 vs solo:   slot 0 delta 0.411133  <-- CORRUPT
+                            slot 1 delta 0.000000
+                            slot 2 delta 0.000000
+sacrificial pad, slot 0 discarded:  all three pages delta 0.000000
+```
+
+**So the correctness objection is answerable — and it does not matter, because batching is
+slower than batch-1 on this box anyway**, before paying anything for the wasted slot. Median
+of three interleaved rounds, per *useful* page:
+
+| batch | median s/page | vs batch 1 | wasted slot |
+|---|---|---|---|
+| **1** | **8.367** | **1.000×** | — |
+| 2 | 11.539 | 0.725× | 33% |
+| 4 | 10.921 | 0.766× | 20% |
+
+Batch 1 won 2 of 3 rounds outright. It lost round 3, where it measured 17.190 s/page — but
+that round inflated *all three* arms, so it is thermal drift rather than a real crossover;
+this is the same 46% within-arm spread that forced the GPU-idle metric above.
+
+Note what this does *not* establish: whether a 755-token forward already saturates the
+device, or whether larger batches hit memory pressure on 16 GB, is not separated by this
+measurement — only that there is no throughput to win here. Nothing was implemented.
+`_batching_is_supported`'s blunt MPS device check turns out to cost this hardware nothing,
+which is a stronger justification than the one it shipped with.
+
+### What is left
+
+- **`bench/reports/ingest_baseline.json` was NOT re-pinned, and still predates the sub-stage
+  split.** Every attempt to re-pin landed on a box running OneDrive Sync Service at 47–97%
+  CPU, which inflated preprocess from 0.304 s to 0.965 s on the same eight pages. Pinning
+  that would make every future run look faster than it is. `ingest_contended.json` is the
+  new-format run, stamped `measurement_quality: CONTENDED`, kept only to exercise the added
+  fields. **Re-pin from a quiet box** — this is the one piece of the pass left undone, and
+  the sub-stage figures quoted throughout this section come from the cleaner earlier runs.
+- **`EMBED_VISUAL_TOKENS` has never been swept on a corpus that is mostly prose.** The 512
+  arm lost 4 table rows and gained 10 others; a corpus without dense numeric tables is the
+  case where this knob is free speed, and this eval cannot see it.
+- **A CUDA box would change three conclusions at once** — batching, the GIL contention, and
+  the token-budget trade all measured against a saturated MPS device.
+- **Escaping the GIL for preprocess** with a process pool rather than a thread pool, at the
+  cost of pickling ~5 MB of `pixel_values` per batch. Worth it only if a profile still shows
+  preprocess inflating the measured forward time.
+- **The store worker is on probation** — 0 of 3 rounds today, kept on the argument that its
+  share grows as the forward pass shrinks. Re-measure it; delete it if it stays flat.

@@ -40,6 +40,48 @@ the reader) is complete, tested, and shipped. Captured here so they are not lost
   keeps the atomic wholesale path. `DELETE /corpus/{pdf}` (+ a remove action in the
   corpus rail) drops a document's vectors, page images, crops, and source PDF.
 
+## Ingest throughput
+
+- **The lever was the visual-token budget, not batching.** _(✅ done — see the
+  ingest-throughput pass in PRODUCTION_HARDENING.md.)_ The batch-embedder pass measured
+  *which stage* was slow (embed, 98%) but never measured *inside* it, and that changed the
+  conclusion. Splitting embed into preprocess / forward / decode showed the forward pass is
+  ~5.45 s of a 6.24 s page — and it is slow because the model sees **755 visual tokens**,
+  not because pages go one at a time. The checkpoint caps at 768 (`max_pixels=602112`) and
+  `ColQwen2Processor.from_pretrained` takes a `max_num_visual_tokens` kwarg the code never
+  passed. ViT attention is quadratic in patch count, so the budget pays superlinearly:
+  512 tokens is **2.04×**, 256 is **3.95×**. Now `EMBED_VISUAL_TOKENS`, in `EMBED_VERSION`
+  (it changes every vector — the exact inverse of `EMBED_BATCH_SIZE`, which stays out
+  because batching is vector-identical).
+- **Two levers that look obvious and do nothing**, recorded so they are not retried.
+  Lowering `RENDER_DPI` cannot speed up embedding — `smart_resize` downscales a 2.1 MP page
+  to 672×868 before the model sees it, so the model already reads pages at ~79 DPI
+  equivalent; DPI buys render time and disk, and the page PNGs still need it for the
+  full-res answer step. And fp16 vs bf16 measured 6.5 s vs 6.5 s, inside the noise floor.
+- **MRL is the wrong tool here, twice over.** _(investigated, not scoped.)_ ColQwen2-v1.0 is
+  a LoRA adapter over `vidore/colqwen2-base` with a fixed-width `custom_text_proj` and no
+  matryoshka config, so truncating dimensions would degrade unpredictably rather than
+  gracefully. More fundamentally it targets the 1536→128 projection, not the 2.25B backbone,
+  so it cannot move the forward pass at all — it is a storage lever, and
+  `vector_store.ensure_collection` already pulls a harder one (`BinaryQuantization` at 32×
+  against MRL's 2–4×).
+- **The upsert was on the critical path and had never been measured.** _(✅ fixed.)_
+  `upsert_pages` and `save_page_image` ran inline in the embed loop, and the profiler's
+  `--store` was opt-in, so `bench/reports/ingest_baseline.json` carried
+  `upsert_measured: false` through an entire ingest-optimisation pass. Measured: 0.264 s/page.
+  It is measured by default now, and both it and the preprocess run off the GPU's thread.
+- **Getting the CPU off the GPU's path is worth less than its serial cost suggests.**
+  _(measured, and the reason is the point.)_ GPU idle went 9.7% → 7.0%, not the ~13% the
+  stage costs predicted, because background Python threads contend with the GPU dispatch
+  thread for the GIL. Attributed: the preprocess lookahead won 3 of 3 interleaved rounds,
+  the store worker **0 of 3** — its own GIL traffic costs the main thread about what moving
+  the work off it saves. The store worker is kept only because its share grows as the
+  forward pass shrinks; re-measure and delete it if it stays flat.
+- **Escaping the GIL for preprocess.** _(open.)_ A process pool rather than a thread pool
+  would remove the contention above, at the cost of pickling ~5 MB of `pixel_values` per
+  batch across the boundary. Worth trying only if a profile shows preprocess still inflating
+  the measured forward time after the token budget lands.
+
 ## Robustness
 
 - **Harden structured-output parsing.** _(✅ done in Hardening Phase 1.)_
