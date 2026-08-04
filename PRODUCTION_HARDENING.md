@@ -1126,7 +1126,13 @@ real backend, not for what batching buys). A CUDA run would supersede it.
   ~8 GB of fp32 weights before activations, and fp32 MPS ops run ~2x slower than bf16, so
   batching would have to win >2x just to break even.
 - **The equivalence gate is opt-in.** It needs the real model, so it cannot join `pytest`.
-  It is the one thing to run after any change to dtype, device, model or torch version.
+  It is the one thing to run after any change to dtype, device, model or torch version. Its
+  verdict is three-valued: `corrupt` (exit 1, the only failure), `equivalent`, and
+  `not_applicable` (exit 0 - the backend never batched, so the stored vectors are right but
+  batching is untested). **On MPS it always returns `not_applicable`**, because batching is
+  disabled there by design. `tests/test_profile_ingest.py` pins that distinction: a gate that
+  ANDs "did batching run" into "did batching change the vectors" reports the correct
+  configuration as corruption on every Apple Silicon machine.
 - **`EMBED_VERSION` does not capture processor version, device, or backend-specific behavior**
   (found while verifying this pass, and *not* caused by it). Re-embedding `sales_report.pdf`
   and comparing against the vectors Qdrant already holds gives a max delta of **0.00125** —

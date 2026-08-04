@@ -84,14 +84,13 @@ def _stats(samples: list[float]) -> dict:
     }
 
 
-def _time_embed(pages: list, batch_size: int) -> tuple[list[float], list]:
-    """Embed `pages` at one batch size, timing each forward pass; return (samples, vectors).
+def _time_embed(pages: list, batch_size: int) -> tuple[list[float], list, list[int]]:
+    """Embed `pages` at one batch size, timing each forward pass.
 
     Returns `(samples, vectors, observed_batch_sizes)`. The third is what the arm *actually*
-    ran at, which is not always what was asked for: `iter_embedded` drops to single pages on
-    a backend whose batched forward pass it cannot trust, and halves on an OOM. An arm that
-    reports `batch_size: 8` while every pass ran at 1 would be a fabricated speedup number,
-    so the report carries both.
+    ran at, which is not always what was asked for: `iter_embedded` refuses to batch on a
+    backend that miscomputes it, and halves on an OOM. An arm that reports `batch_size: 8`
+    while every pass ran at 1 would be a fabricated speedup number, so the report carries both.
 
     A sample is one *batch*, charged to the pages it covered, so the per-page figures stay
     comparable across arms. The arm is warmed up first: on MPS a batch size is an input
@@ -184,30 +183,38 @@ def profile_document(pdf: Path, page_cap: int | None, store: bool, batch_sizes: 
     }
 
 
-def verify_equivalence(pdf: Path, page_cap: int | None, batch_size: int) -> tuple[bool, dict]:
-    """Check that batching leaves the stored vectors unchanged. Returns (ok, detail).
+def verify_equivalence(pdf: Path, page_cap: int | None, batch_size: int) -> tuple[str, dict]:
+    """Check that batching leaves the stored vectors unchanged. Returns (verdict, detail).
 
-    This is what licenses keeping EMBED_BATCH_SIZE out of EMBED_VERSION. If it fails, the
+    This is what licenses keeping EMBED_BATCH_SIZE out of EMBED_VERSION. On `"corrupt"`, the
     mask trim in embedder._embed_batch is wrong and the index is being silently corrupted -
     fix the trim; do not paper over it by bumping the fingerprint.
 
     bfloat16 reductions are order-sensitive, so the arms are compared against a tolerance
     rather than for bit-equality. Patch *counts* must match exactly - a count mismatch means
     padding is being stored, which is the specific failure this guards.
+
+    **Three verdicts, not two.** "Did batching change the vectors?" and "did batching run at
+    all?" are separate questions, and collapsing them makes the correct configuration look
+    like the broken one: `embedder._batching_is_supported` disables batching on MPS by
+    design, so on Apple Silicon nothing is ever batched and the comparison is vacuously
+    exact. Reporting that as failure cries wolf on every Mac; reporting it as success
+    overclaims a check that never ran. Hence `"not_applicable"`, which is a pass (the stored
+    vectors are right) that refuses to claim batching was verified.
     """
     pages = pdf_to_images(pdf)
     if page_cap is not None:
         pages = pages[:page_cap]
 
     single = [embed_image(p) for p in pages]
-    # Use iter_embedded to capture whether batching actually happened
-    batched_samples, batched, observed = _time_embed(pages, batch_size)
+    batched: list = []
+    observed: list[int] = []
+    for _, chunk in iter_embedded(pages, batch_size=batch_size):
+        batched.extend(chunk)
+        observed.append(len(chunk))
 
-    # Check if the requested batch size was actually used
-    batching_actually_ran = any(bs == batch_size for bs in observed)
-    # Both paths must produce the same number of pages
-    length_mismatch = len(single) != len(batched)
-
+    # A document shorter than the batch cannot reach it, so compare against what was possible.
+    batching_ran = max(observed, default=1) > 1
     counts = [(len(a), len(b)) for a, b in zip(single, batched)]
     mismatched = [i + 1 for i, (a, b) in enumerate(counts) if a != b]
     max_delta = 0.0
@@ -216,19 +223,26 @@ def verify_equivalence(pdf: Path, page_cap: int | None, batch_size: int) -> tupl
             for x, y in zip(row_a, row_b):
                 max_delta = max(max_delta, abs(x - y))
 
-    # Mark non-equivalent if batching didn't run or output counts differ
-    ok = batching_actually_ran and not length_mismatch and not mismatched and max_delta <= EQUIVALENCE_TOLERANCE
-    return ok, {
+    vectors_agree = (len(single) == len(batched) and not mismatched
+                     and max_delta <= EQUIVALENCE_TOLERANCE)
+    if not vectors_agree:
+        verdict = "corrupt"
+    elif not batching_ran:
+        verdict = "not_applicable"
+    else:
+        verdict = "equivalent"
+
+    return verdict, {
         "pages": len(pages),
         "batch_size": batch_size,
-        "batching_actually_ran": batching_actually_ran,
+        "batching_ran": batching_ran,
         "effective_batch_sizes": observed,
-        "output_length_mismatch": length_mismatch,
+        "output_length_mismatch": len(single) != len(batched),
         "patch_counts": [a for a, _ in counts],
         "pages_with_mismatched_patch_counts": mismatched,
         "max_abs_delta": max_delta,
         "tolerance": EQUIVALENCE_TOLERANCE,
-        "equivalent": ok,
+        "verdict": verdict,
     }
 
 
@@ -384,10 +398,18 @@ def main(argv: list[str]) -> int:
     model_load_s = time.perf_counter() - t
 
     if args.verify_equivalence:
-        ok, detail = verify_equivalence(pdfs[0], args.pages, max(batch_sizes))
+        verdict, detail = verify_equivalence(pdfs[0], args.pages, max(batch_sizes))
         print(json.dumps(detail, indent=2))
-        print("\nbatching is vector-equivalent" if ok else "\nBATCHING CHANGED THE VECTORS")
-        return 0 if ok else 1
+        # "not_applicable" exits 0 - the stored vectors are right - but must never read as a
+        # green light on batching, which is why it does not say "equivalent".
+        print({
+            "equivalent": "\nbatching is vector-equivalent",
+            "not_applicable": "\nNOT VERIFIED: this backend never batched (see "
+                              "embedder._batching_is_supported), so there was nothing to "
+                              "compare. The stored vectors are correct; batching is untested.",
+            "corrupt": "\nBATCHING CHANGED THE VECTORS",
+        }[verdict])
+        return 1 if verdict == "corrupt" else 0
 
     # Warm up outside the timers: the first forward pass pays a one-off kernel compile.
     embed_image(pdf_to_images(pdfs[0])[0])
