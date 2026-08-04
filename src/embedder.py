@@ -1,6 +1,7 @@
 """ColPali (ColQwen2 / ColQwen2.5) visual embedder- reads pages by sight."""
 import time
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from functools import cache
 
 import torch
@@ -91,16 +92,28 @@ def _synchronize() -> None:
     elif torch.backends.mps.is_available():
         torch.mps.synchronize()
 
-def preprocess(images: list[Image.Image]) -> object:
+def _record(stats: dict | None, key: str, value: float) -> None:
+    """Accumulate one sub-stage measurement. No-op when not profiling.
+
+    Safe to call from the prefetch thread and the GPU thread at once: each only ever
+    touches its own keys, so the read-modify-write below never races on the same entry.
+    """
+    if stats is not None:
+        stats[key] = stats.get(key, 0.0) + value
+
+def preprocess(images: list[Image.Image], stats: dict | None = None) -> object:
     """The CPU half of a forward pass: resize, patchify and pad a batch of pages.
 
     Split from `forward` because it is the only part that never touches the GPU, which is
-    what lets ingest run it on a producer thread while the GPU is still busy with the
-    previous batch (see `ingest.ingest_pdf`), and what lets the profiler charge the two
-    halves separately. Returns the processor's batch, still on the CPU.
+    what lets `iter_embedded` run it a batch ahead while the GPU is still busy, and what
+    lets the profiler charge the two halves separately. Returns the processor's batch,
+    still on the CPU.
     """
+    t = time.perf_counter()
     _, processor = load_model()
-    return processor.process_images(images)
+    out = processor.process_images(images)
+    _record(stats, "preprocess_s", time.perf_counter() - t)
+    return out
 
 def forward(inputs, stats: dict | None = None) -> list[list[list[float]]]:
     """The GPU half: run the model over a preprocessed batch, trimmed to each page's patches.
@@ -117,6 +130,7 @@ def forward(inputs, stats: dict | None = None) -> list[list[list[float]]]:
     The batch size is read off the attention mask rather than passed in, so a caller that
     hands work across a thread boundary need only carry the preprocessed batch.
     """
+    t = time.perf_counter()
     model, _ = load_model()
     inputs = inputs.to(model.device)
     with torch.no_grad():
@@ -124,31 +138,25 @@ def forward(inputs, stats: dict | None = None) -> list[list[list[float]]]:
     mask = inputs["attention_mask"].bool()  # (batch, padded_patches)
     if stats is not None:
         _synchronize()  # see _synchronize: otherwise the decode is charged for the GPU
-        stats["forward_s"] = stats.get("forward_s", 0.0) + (time.perf_counter() - stats["_t"])
-        stats["_t"] = time.perf_counter()
+        _record(stats, "forward_s", time.perf_counter() - t)
+        t = time.perf_counter()
     vectors = [_to_multivector(out[i][mask[i]]) for i in range(mask.shape[0])]
-    if stats is not None:
-        stats["decode_s"] = stats.get("decode_s", 0.0) + (time.perf_counter() - stats["_t"])
-        stats["patches"] = stats.get("patches", 0) + sum(len(v) for v in vectors)
+    _record(stats, "decode_s", time.perf_counter() - t)
+    _record(stats, "patches", sum(len(v) for v in vectors))
     return vectors
 
 def _embed_batch(
     images: list[Image.Image], stats: dict | None = None,
 ) -> list[list[list[float]]]:
-    """One forward pass over several pages: `preprocess` then `forward`.
+    """One forward pass over several pages, serially: `preprocess` then `forward`.
 
-    `stats`, when given, accumulates `preprocess_s` / `forward_s` / `decode_s` / `patches`
-    across every batch it is passed to. Production callers pass nothing; it exists so
-    `scripts/profile_ingest.py` can charge the three sub-stages separately without a second
-    copy of this function drifting away from the one ingest actually runs.
+    The unpipelined path, kept for `embed_image` and the profiler's warm-up. `iter_embedded`
+    does not go through it - it overlaps the two halves - so this is also what a caller uses
+    to measure their serial cost.
+
+    `stats`, when given, accumulates `preprocess_s` / `forward_s` / `decode_s` / `patches`.
     """
-    if stats is None:
-        return forward(preprocess(images))
-    stats["_t"] = time.perf_counter()
-    inputs = preprocess(images)
-    stats["preprocess_s"] = stats.get("preprocess_s", 0.0) + (time.perf_counter() - stats["_t"])
-    stats["_t"] = time.perf_counter()
-    return forward(inputs, stats)
+    return forward(preprocess(images, stats), stats)
 
 @cache
 def _batching_is_supported() -> bool:
@@ -207,28 +215,57 @@ def iter_embedded(
     On a backend that miscomputes batched forward passes the size is forced to 1 up front,
     so a corrupted vector is never produced in the first place - see `_batching_is_supported`.
 
-    `stats` is profiling-only and passed straight through to `_embed_batch`; see there.
+    **The next batch is preprocessed while the GPU runs the current one.** `preprocess` is
+    pure CPU (resize, patchify, pad) and measured at 0.30 s/page against a 5.45 s forward,
+    so running it inline left the GPU idle for ~5% of every page - and a far larger share
+    once the forward pass shrinks. One batch of lookahead is enough to hide it completely;
+    more would only buy memory pressure, since a preprocessed batch is a dense pixel tensor.
+
+    This is **vector-identical** - the same `preprocess` output reaches the same `forward` in
+    the same order - so it changes no stored embedding and needs no EMBED_VERSION bump.
+
+    `stats` is profiling-only. Note that with the overlap the sub-stage times legitimately
+    sum to more than the wall clock: that gap *is* the overlap being measured.
     """
     size = max(1, batch_size or EMBED_BATCH_SIZE)
     if size > 1 and not _batching_is_supported():
         size = 1
     start = 0
-    while start < len(images):
-        chunk = images[start:start + size]
-        try:
-            vectors = _embed_batch(chunk, stats)
-        except (RuntimeError, MemoryError) as exc:
-            if size == 1 or not _is_oom(exc):
-                raise
-            size = size // 2
-            _release_memory()
-            logger.warning(
-                "embed batch ran out of memory; retrying smaller",
-                extra={"batch_size": size, "pages_remaining": len(images) - start},
-            )
-            continue  # same pages, smaller batch
-        yield start, vectors
-        start += len(chunk)
+    # max_workers=1 keeps preprocessing strictly one batch ahead and in page order; the
+    # generator owns the pool so an abandoned iterator cannot leak the thread.
+    with ThreadPoolExecutor(max_workers=1, thread_name_prefix="embed-preprocess") as pool:
+        pending = pool.submit(preprocess, images[start:start + size], stats)
+        while start < len(images):
+            chunk_len = min(size, len(images) - start)
+            # A failure here is CPU-side and re-raises through `.result()`: no smaller GPU
+            # batch would fix it, so it must not fall into the backoff below.
+            inputs = pending.result()
+            # Queue the *next* batch before occupying the GPU, which is the whole point. On
+            # the final batch there is nothing to queue and `pending` is simply never read
+            # again - the loop exits first.
+            nxt = start + chunk_len
+            if nxt < len(images):
+                pending = pool.submit(preprocess, images[nxt:nxt + size], stats)
+            try:
+                vectors = forward(inputs, stats)
+            except (RuntimeError, MemoryError) as exc:
+                if size == 1 or not _is_oom(exc):
+                    raise
+                size = size // 2
+                _release_memory()
+                logger.warning(
+                    "embed batch ran out of memory; retrying smaller",
+                    extra={"batch_size": size, "pages_remaining": len(images) - start},
+                )
+                # The in-flight lookahead was preprocessed at the old size and starts at the
+                # wrong page now, so it is abandoned and re-submitted from `start`. Its
+                # result is discarded rather than waited on; the pool is serial, so the
+                # resubmission simply queues behind it. One wasted batch on a path that
+                # fires at most log2(EMBED_BATCH_SIZE) times per document.
+                pending = pool.submit(preprocess, images[start:start + size], stats)
+                continue  # same pages, smaller batch
+            yield start, vectors
+            start = nxt
 
 def embed_images(
     images: list[Image.Image], batch_size: int | None = None,

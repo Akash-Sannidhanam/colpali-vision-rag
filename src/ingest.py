@@ -16,9 +16,12 @@ wholesale (`--rebuild`), never inferred from a file's absence.
 """
 
 import hashlib
+import queue
 import sys
+import threading
 from collections.abc import Callable
 from pathlib import Path
+from typing import Literal
 
 from src.config import EMBED_VERSION, PDFS_DIR, UPSERT_BATCH_SIZE
 from src.embedder import iter_embedded
@@ -66,6 +69,107 @@ def _fingerprint(pdf_path: Path) -> str:
     return digest.hexdigest()
 
 
+class _StoreWorker:
+    """Writes embedded pages to disk and Qdrant on a worker thread.
+
+    Everything *after* the forward pass - the PNG save, `build_point`, and the Qdrant
+    upsert - is CPU and network work that used to run inline in the embed loop, so the GPU
+    idled through all of it: 0.044 s (save) + 0.264 s (upsert) per page.
+
+    **On this box that reclaims nothing, and the reason is worth knowing.** Attributed over
+    three interleaved rounds, GPU idle went 9.7% serial -> 10.0% with this worker alone ->
+    7.0% with it plus the preprocess lookahead in `embedder.iter_embedded`. The worker won
+    0 of 3 rounds on its own: `build_point` is pure-Python, so the thread's GIL traffic
+    costs the main thread roughly what moving the work off it saves (visible as the main
+    thread's own preprocess inflating 0.177 s -> 0.313 s when only this changed).
+
+    Kept because that balance is a function of how big the forward pass is - 0.31 s against
+    a 5.45 s forward is 6%, against a 2.7 s one it is 11% - and because a remote Qdrant or a
+    slower disk moves it the same way. It is the piece to re-measure and delete if a future
+    profile still shows it flat.
+
+    One worker draining a FIFO queue, so pages are stored in page order and the `stored`
+    events keep the sequence the SSE consumer has always seen. The queue is bounded: a
+    page's multivector is several MB of Python floats and the GPU can produce them faster
+    than Qdrant accepts them, so an unbounded one would trade GPU stalls for memory growth.
+
+    The `embed` events stay on the caller's thread, fired the moment a page comes off the
+    GPU, because that is what drives the UI's progress bar - routing them through here would
+    make the bar lag a whole upsert batch behind the work it reports.
+    """
+
+    def __init__(self, name: str, collection_name: str, content_hash: str,
+                 total: int, progress: Progress):
+        self._name = name
+        self._collection = collection_name
+        self._content_hash = content_hash
+        self._total = total
+        self._progress = progress
+        # Two upsert batches: one being uploaded while the next fills, so a batched forward
+        # pass never blocks on the previous flush.
+        self._queue: queue.Queue = queue.Queue(maxsize=UPSERT_BATCH_SIZE * 2)
+        self._error: BaseException | None = None
+        self.stored = 0
+        self._thread = threading.Thread(target=self._run, name="ingest-store", daemon=True)
+
+    def __enter__(self) -> "_StoreWorker":
+        self._thread.start()
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> Literal[False]:
+        self._queue.put(None)   # sentinel: finish the pending batch, then stop
+        self._thread.join()
+        # Only surface a worker failure when the body succeeded; otherwise the body's own
+        # exception (an OOM, say) is the real story and must not be masked by this one.
+        if exc_type is None:
+            self._raise_if_failed()
+        return False
+
+    def submit(self, page_number: int, image, multivector) -> None:
+        """Hand one embedded page to the worker, blocking while the queue is full."""
+        self._raise_if_failed()  # fail fast rather than embed a whole document into a corpse
+        self._queue.put((page_number, image, multivector))
+
+    def _raise_if_failed(self) -> None:
+        if self._error is not None:
+            raise self._error
+
+    def _flush(self, batch: list) -> None:
+        if not batch:
+            return
+        upsert_pages(batch, collection_name=self._collection)
+        self.stored += len(batch)
+        self._progress({"phase": "stored", "pdf": self._name,
+                        "count": self.stored, "total": self._total})
+
+    def _run(self) -> None:
+        batch: list = []
+        try:
+            while True:
+                item = self._queue.get()
+                if item is None:
+                    break
+                page_number, image, multivector = item
+                image_path = save_page_image(image, self._name, page_number)
+                batch.append(build_point(
+                    multivector, self._name, page_number, image_path,
+                    self._content_hash, EMBED_VERSION,
+                ))
+                if len(batch) >= UPSERT_BATCH_SIZE:
+                    self._flush(batch)
+                    batch = []
+            self._flush(batch)  # the remainder
+        except BaseException as exc:
+            self._error = exc
+            # Keep draining to the sentinel. A producer blocked on a full queue would
+            # otherwise wait forever for a worker that has already died - an ingest that
+            # hangs is worse than one that crashes, because `document_index` fingerprints a
+            # document from its first indexed page, so a killed run strands a truncated
+            # document that the next sync considers current.
+            while self._queue.get() is not None:
+                pass
+
+
 def ingest_pdf(
     pdf_path: Path, collection_name: str, progress: Progress, content_hash: str = "",
 ) -> int:
@@ -78,7 +182,7 @@ def ingest_pdf(
     rather than duplicating them. Emits a progress event at each render/embed/store step so
     a caller can stream per-page updates.
 
-    Pages are embedded up to EMBED_BATCH_SIZE at a time - the forward pass is 98% of a page's
+    Pages are embedded up to EMBED_BATCH_SIZE at a time - the forward pass is the dominant
     cost and the only stage that batches. The `embed` events still fire once per page, in
     page order; they just arrive in bursts, because a batch's pages all finish together. On a
     backend that does not batch at all (MPS) the effective size is 1 and the events simply
@@ -87,6 +191,12 @@ def ingest_pdf(
     The whole page list goes to `iter_embedded` in one call, deliberately: it is what keeps
     an out-of-memory backoff for the rest of the document instead of re-paying the failed
     forward pass on every batch (see embedder.iter_embedded).
+
+    **The GPU is the only serial resource, so nothing else runs on its thread.**
+    `iter_embedded` preprocesses the next batch ahead of the current forward pass, and
+    `_StoreWorker` takes the PNG save and the Qdrant upsert behind it. This loop does the
+    forward pass and nothing more. Measured: GPU idle 9.7% -> 7.0%, the lookahead earning
+    all of it (see `_StoreWorker` for the per-half attribution).
     """
     name = pdf_path.name
     progress({"phase": "render", "pdf": name})
@@ -94,26 +204,12 @@ def ingest_pdf(
     total = len(pages)
     progress({"phase": "pages", "pdf": name, "total": total})
 
-    batch: list = []
-    stored = 0
-    for start, multivectors in iter_embedded(pages):
-        for i, multivector in enumerate(multivectors):
-            page_number = start + i + 1
-            image_path = save_page_image(pages[start + i], name, page_number)
-            batch.append(build_point(
-                multivector, name, page_number, image_path, content_hash, EMBED_VERSION,
-            ))
-            progress({"phase": "embed", "pdf": name, "page": page_number, "total": total})
-            if len(batch) >= UPSERT_BATCH_SIZE:
-                upsert_pages(batch, collection_name=collection_name)
-                stored += len(batch)
-                progress({"phase": "stored", "pdf": name, "count": stored, "total": total})
-                batch = []
-
-    upsert_pages(batch, collection_name=collection_name)  # flush the remainder
-    if batch:
-        stored += len(batch)
-        progress({"phase": "stored", "pdf": name, "count": stored, "total": total})
+    with _StoreWorker(name, collection_name, content_hash, total, progress) as store:
+        for start, multivectors in iter_embedded(pages):
+            for i, multivector in enumerate(multivectors):
+                page_number = start + i + 1
+                store.submit(page_number, pages[start + i], multivector)
+                progress({"phase": "embed", "pdf": name, "page": page_number, "total": total})
 
     return total
 
