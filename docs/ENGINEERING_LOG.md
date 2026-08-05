@@ -1279,7 +1279,7 @@ The bf16 bug corrupts **only slot 0**, so batching can be recovered by prependin
 throwaway page and discarding output index 0. Verified directly, using a duplicate of the
 batch's first real page so the padding cannot shift:
 
-```
+```text
 naive batch of 3 vs solo:   slot 0 delta 0.411133  <-- CORRUPT
                             slot 1 delta 0.000000
                             slot 2 delta 0.000000
