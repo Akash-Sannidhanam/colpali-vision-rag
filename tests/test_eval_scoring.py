@@ -8,6 +8,7 @@ orchestration (Qdrant, Gemini judge) is exercised separately.
 import pytest
 
 from eval.scoring import (
+    MIN_CALIBRATION_N,
     abstention_correct,
     aggregate,
     citation_correct,
@@ -446,35 +447,112 @@ def test_aggregate_candidate_coverage_is_none_when_no_row_carries_it():
     assert aggregate(rows, ks=(1,))["candidate_coverage_avg"] is None
 
 
+def _conf_rows(correct: list[float], wrong: list[float], level: str = "high") -> list[dict]:
+    """Calibration rows: one per confidence value, split by citation correctness."""
+    return (
+        [{"id": f"r{i}", "tags": [], "citation_correct": True, "retrieval_confidence": v,
+          "self_confidence": level} for i, v in enumerate(correct)]
+        + [{"id": f"w{i}", "tags": [], "citation_correct": False, "retrieval_confidence": v,
+            "self_confidence": level} for i, v in enumerate(wrong)]
+    )
+
+
 def test_aggregate_confidence_separation_splits_on_citation_correctness():
     """Calibration reports the gap between confidence on right vs wrong citations."""
-    rows = [
-        {"id": "a", "tags": [], "citation_correct": True, "retrieval_confidence": 0.9,
-         "self_confidence": "high"},
-        {"id": "b", "tags": [], "citation_correct": True, "retrieval_confidence": 0.7,
-         "self_confidence": "high"},
-        {"id": "c", "tags": [], "citation_correct": False, "retrieval_confidence": 0.3,
-         "self_confidence": "low"},
-    ]
-    summary = aggregate(rows, ks=(1,))
-    assert summary["retrieval_conf_correct_avg"] == 0.8
-    assert summary["retrieval_conf_wrong_avg"] == 0.3
+    summary = aggregate(_conf_rows([0.9] * 5, [0.4] * 5), ks=(1,))
+    assert summary["retrieval_conf_correct_avg"] == 0.9
+    assert summary["retrieval_conf_wrong_avg"] == 0.4
     assert summary["confidence_separation"] == 0.5
-    assert summary["self_conf_high_acc"] == 1.0
-    assert summary["self_conf_low_acc"] == 0.0
+    assert summary["self_conf_high_acc"] == 0.5
     assert summary["self_conf_medium_acc"] is None
 
 
 def test_aggregate_confidence_separation_is_none_without_both_sides():
     """A slice with no wrong citations has no separation to report - the saturated case."""
-    rows = [
-        {"id": "a", "tags": [], "citation_correct": True, "retrieval_confidence": 0.9},
-        {"id": "b", "tags": [], "citation_correct": True, "retrieval_confidence": 0.7},
-    ]
-    summary = aggregate(rows, ks=(1,))
-    assert summary["retrieval_conf_correct_avg"] == 0.8
+    summary = aggregate(_conf_rows([0.9, 0.7, 0.8, 0.6, 0.5], []), ks=(1,))
+    assert summary["retrieval_conf_correct_avg"] == 0.7
     assert summary["retrieval_conf_wrong_avg"] is None
     assert summary["confidence_separation"] is None
+
+
+def test_aggregate_confidence_separation_is_none_below_the_sample_floor():
+    """The defect this floor exists for: 70 correct citations against one wrong.
+
+    `baseline_decomposed.json` reported -0.0062 to four decimals from exactly this
+    shape. One row is not a measurement, so the difference is withheld while the two
+    honest means keep reporting.
+    """
+    summary = aggregate(_conf_rows([0.11] * 70, [0.12]), ks=(1,))
+    assert summary["confidence_separation"] is None
+    assert summary["retrieval_conf_correct_avg"] == 0.11
+    assert summary["retrieval_conf_wrong_avg"] == 0.12
+
+
+def test_aggregate_carries_calibration_denominators():
+    """Both counts ride along, so the separation can never be quoted without its n."""
+    summary = aggregate(_conf_rows([0.9] * 6, [0.4] * 2), ks=(1,))
+    assert summary["n_conf_correct"] == 6
+    assert summary["n_conf_wrong"] == 2
+    # Withheld at n_wrong=2, and the count is what says why.
+    assert summary["confidence_separation"] is None
+
+
+def test_aggregate_self_conf_bucket_is_none_below_the_sample_floor():
+    """`self_conf_low_acc` read 0.0 from two rows, both of them declines.
+
+    `answerer._normalize` pins "low" on every not-found answer and a declined
+    answerable row scores citation_correct=False, so the bucket is forced to 0.0 by
+    the code. The floor is what stops that tautology being reported as calibration.
+    """
+    rows = _conf_rows([0.9] * 5, [], level="high") + _conf_rows([], [0.2] * 2, level="low")
+    summary = aggregate(rows, ks=(1,))
+    assert summary["self_conf_low_acc"] is None
+    assert summary["n_self_conf_low"] == 2
+    assert summary["self_conf_high_acc"] == 1.0
+    assert summary["n_self_conf_high"] == 5
+
+
+def _decisive_rows(hits: list[float], misses: list[float]) -> list[dict]:
+    """Retrieval-only rows carrying top-1 decisiveness, split by whether gold ranked 1."""
+    return (
+        [{"id": f"h{i}", "tags": [], "gold_rank": 1, "top1_decisiveness": v}
+         for i, v in enumerate(hits)]
+        + [{"id": f"m{i}", "tags": [], "gold_rank": 4, "top1_decisiveness": v}
+           for i, v in enumerate(misses)]
+    )
+
+
+def test_aggregate_decisiveness_separation_splits_on_whether_gold_ranked_first():
+    """The deterministic pairing: does a decisive slate mean the top page was right?
+
+    Free and high-N where `confidence_separation` is neither - it needs no Gemini call
+    and every answerable row is a data point, not just the ones the pipeline got wrong.
+    """
+    summary = aggregate(_decisive_rows([0.30] * 5, [0.10] * 5), ks=(1,))
+    assert summary["decisiveness_separation"] == 0.2
+    assert summary["n_decisive_hit"] == 5
+    assert summary["n_decisive_miss"] == 5
+
+
+def test_aggregate_decisiveness_separation_is_none_when_retrieval_never_missed():
+    """No recall@1 misses means no separation to report - not a separation of zero."""
+    summary = aggregate(_decisive_rows([0.30] * 8, []), ks=(1,))
+    assert summary["decisiveness_separation"] is None
+    assert summary["n_decisive_miss"] == 0
+
+
+def test_aggregate_decisiveness_ignores_rows_with_no_gold_rank():
+    """An unanswerable row has no gold page to rank, so it is not a decisiveness miss."""
+    rows = _decisive_rows([0.30] * 5, [0.10] * 5)
+    rows.append({"id": "abstain", "tags": [], "unanswerable": True, "top1_decisiveness": 0.9})
+    summary = aggregate(rows, ks=(1,))
+    assert summary["n_decisive_hit"] == 5
+    assert summary["n_decisive_miss"] == 5
+
+
+def test_min_calibration_n_is_above_one():
+    """The floor exists to reject n=1; a floor of 1 would re-admit the original defect."""
+    assert MIN_CALIBRATION_N > 1
 
 
 def test_aggregate_average_latency():

@@ -9,7 +9,7 @@ Row shape consumed by `aggregate` / `format_table` (keys absent or None = N/A,
 excluded from that metric's denominator):
     id, tags, gold_rank, rerank_hit, citation_correct, candidate_doc_coverage,
     gold_doc_coverage, substring_match, abstention_correct, retrieval_confidence,
-    self_confidence, judge {correct, score}, latency_ms
+    top1_decisiveness, self_confidence, judge {correct, score}, latency_ms
 
 Every metric is computed over applicable rows only, which is what lets one dataset
 hold questions of different kinds: an unanswerable row carries `abstention_correct`
@@ -207,11 +207,45 @@ def substring_match(
     return all(_comparable(s) in lowered for s in (expected_all or []))
 
 
+MIN_CALIBRATION_N = 5
+"""Rows a calibration slice needs on each side before its comparison is reported.
+
+Not a statistical threshold, a defence against one specific way this eval lied. Every
+calibration figure here is a *difference between two groups*, and the pipeline getting
+better shrinks one of the groups toward zero - so the metric degrades exactly when the
+system it measures improves. `baseline_decomposed.json` reported
+`confidence_separation: -0.0062` to four decimals off **one** wrong citation in 73 rows,
+and `baseline_diverse` / `baseline_swept` reported the same quantity with the opposite
+sign off two and three. All three were noise being read as a finding.
+
+`_rate` and `_mean` already withhold a figure whose denominator is empty; this is the
+same rule at a threshold that is not zero. It applies only to the *comparisons* - the
+per-group means keep reporting, because a mean over 1 row is still that row's value.
+"""
+
+
 def _rate(values: list) -> float | None:
     """Fraction of truthy values; None when no row was applicable."""
     if not values:
         return None
     return round(sum(1 for v in values if v) / len(values), 4)
+
+
+def _floored_rate(values: list) -> float | None:
+    """`_rate`, withheld below MIN_CALIBRATION_N (see that constant)."""
+    return _rate(values) if len(values) >= MIN_CALIBRATION_N else None
+
+
+def _separation(high: list[float], low: list[float]) -> float | None:
+    """mean(high) - mean(low), withheld unless both sides clear MIN_CALIBRATION_N.
+
+    Positive means the signal is informative, ~0 means it is noise, negative means it
+    is actively misleading - but only once both groups are big enough to say so.
+    """
+    if len(high) < MIN_CALIBRATION_N or len(low) < MIN_CALIBRATION_N:
+        return None
+    hi, lo = _mean(high), _mean(low)
+    return None if hi is None or lo is None else round(hi - lo, 4)
 
 
 def _mean(values: list[float]) -> float | None:
@@ -224,32 +258,61 @@ def _mean(values: list[float]) -> float | None:
 def _calibration(rows: list[dict], out: dict) -> None:
     """Add the confidence-calibration metrics for one slice of rows, in place.
 
-    A confidence signal is useful only if it *separates*: correct citations should
-    carry higher confidence than wrong ones. Report that separation directly rather
-    than an invented calibration error, for both signals the pipeline produces - the
-    deterministic retrieval decisiveness (`src/confidence.py`) and the model's own
-    high/medium/low self-report. `confidence_separation` is the headline: positive
-    means the signal is informative, ~0 means it is noise, negative means it is
-    actively misleading.
+    A confidence signal is useful only if it *separates*: the confident cases should
+    come out better than the unconfident ones. Report that separation directly rather
+    than an invented calibration error. Every figure here is withheld below
+    MIN_CALIBRATION_N, and every one ships with the counts it was computed from, so it
+    can never again be quoted without its denominator.
+
+    **Two pairings, against different labels and at very different sample sizes.**
+
+    `confidence_separation` asks whether retrieval confidence on the *cited* page
+    predicts whether that citation was right. Well-posed, and starved: its negative
+    class is the pipeline's own mistakes, so it shrinks as the pipeline improves and
+    costs a judged run to refresh. On the pinned baseline it is one row.
+
+    `decisiveness_separation` asks the cheaper, higher-N version of the same question
+    about the same formula - does a decisive slate mean retrieval's *top* page was
+    right? The negative class is recall@1 misses, which are deterministic, need no API
+    key, and number 24 where wrong citations number 1. This is the one that can
+    actually adjudicate whether `src/confidence.py` carries information.
+
+    `self_conf_*_acc` buckets citation accuracy by the model's own self-report. Read
+    `self_conf_low_acc` with care even above the floor: `answerer._normalize` pins
+    "low" onto every not-found answer, and a declined answerable row scores
+    citation_correct=False, so that bucket is partly a tautology rather than a
+    measurement of the model's calibration.
     """
     scored = [r for r in rows
               if r.get("citation_correct") is not None and r.get("retrieval_confidence") is not None]
     right = [r["retrieval_confidence"] for r in scored if r["citation_correct"]]
     wrong = [r["retrieval_confidence"] for r in scored if not r["citation_correct"]]
-    correct_avg, wrong_avg = _mean(right), _mean(wrong)
-    out["retrieval_conf_correct_avg"] = correct_avg
-    out["retrieval_conf_wrong_avg"] = wrong_avg
-    # Needs both sides to mean anything - a slice with no wrong citations has no
-    # separation to report, which is exactly the saturated case this eval exists to avoid.
-    out["confidence_separation"] = (
-        round(correct_avg - wrong_avg, 4)
-        if correct_avg is not None and wrong_avg is not None else None
-    )
+    # The per-group means keep reporting unfloored: a mean over one row is still that
+    # row's value, and hiding it would hide the evidence for why the difference is gone.
+    out["retrieval_conf_correct_avg"] = _mean(right)
+    out["retrieval_conf_wrong_avg"] = _mean(wrong)
+    out["n_conf_correct"] = len(right)
+    out["n_conf_wrong"] = len(wrong)
+    out["confidence_separation"] = _separation(right, wrong)
+
+    # `gold_rank` is absent on unanswerable rows by construction (run_full omits it so a
+    # correct refusal can never read as a retrieval miss), which also keeps them out of
+    # this denominator - they have no gold page whose rank could be hit or missed.
+    decisive = [r for r in rows
+                if r.get("gold_rank") is not None and r.get("top1_decisiveness") is not None]
+    hit = [r["top1_decisiveness"] for r in decisive if r["gold_rank"] == 1]
+    miss = [r["top1_decisiveness"] for r in decisive if r["gold_rank"] != 1]
+    out["decisiveness_hit_avg"] = _mean(hit)
+    out["decisiveness_miss_avg"] = _mean(miss)
+    out["n_decisive_hit"] = len(hit)
+    out["n_decisive_miss"] = len(miss)
+    out["decisiveness_separation"] = _separation(hit, miss)
+
     for level in ("high", "medium", "low"):
-        out[f"self_conf_{level}_acc"] = _rate(
-            [r["citation_correct"] for r in rows
-             if r.get("self_confidence") == level and r.get("citation_correct") is not None]
-        )
+        bucket = [r["citation_correct"] for r in rows
+                  if r.get("self_confidence") == level and r.get("citation_correct") is not None]
+        out[f"self_conf_{level}_acc"] = _floored_rate(bucket)
+        out[f"n_self_conf_{level}"] = len(bucket)
 
 
 def _metrics(rows: list[dict], ks: tuple) -> dict:
