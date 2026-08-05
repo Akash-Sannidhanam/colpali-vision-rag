@@ -143,10 +143,12 @@ def profile_document(pdf: Path, page_cap: int | None, store: bool, batch_sizes: 
     """
     name = pdf.name
     collection = live_collection() if store else ""
-    # The document's real fingerprint, not a placeholder: `--store` overwrites live points
-    # in place, and an empty content_hash there would make the next sync think the document
-    # had changed and re-embed the whole thing.
-    content_hash = _fingerprint(pdf) if store else ""
+    # When profiling a capped subset of pages, use a non-matching content_hash to prevent
+    # marking the document as current with only partial coverage. The upsert is still
+    # measured for the profiled pages, but the next sync will correctly re-embed the full
+    # document. When no page cap is requested, use the real fingerprint so overwrites
+    # happen in place with identical vectors.
+    content_hash = _fingerprint(pdf) if (store and page_cap is None) else ""
 
     t0 = time.perf_counter()
     pages = pdf_to_images(pdf)
@@ -456,7 +458,7 @@ def main(argv: list[str]) -> int:
             ping()
         except Exception as exc:
             store = False
-            upsert_skipped = f"Qdrant unreachable ({type(exc).__name__})"
+            upsert_skipped = f"Qdrant unreachable ({type(exc).__name__}: {exc})"
             print(f"upsert not measured: {upsert_skipped}", file=sys.stderr)
     else:
         upsert_skipped = "--no-store"

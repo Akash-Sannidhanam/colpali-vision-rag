@@ -1192,6 +1192,8 @@ passed. ViT attention is quadratic in patch count, so the budget pays **superlin
 | 384 | 385 | 2.60 s | 23.1 | 2.49× |
 | 256 | 263 | 1.64 s | 36.6 | 3.95× |
 
+These figures come from a single interleaved run; the 768-token row provides the baseline used for the speedup ratios.
+
 **Two levers that look obvious and do nothing**, recorded so they are not retried:
 
 - **`RENDER_DPI` cannot speed up embedding.** A 150-DPI page is 1275×1650 = 2.1 MP and

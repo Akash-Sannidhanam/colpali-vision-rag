@@ -232,6 +232,8 @@ def iter_embedded(
     `stats` is profiling-only. Note that with the overlap the sub-stage times legitimately
     sum to more than the wall clock: that gap *is* the overlap being measured.
     """
+    if not images:
+        return
     size = max(1, batch_size or EMBED_BATCH_SIZE)
     if size > 1 and not _batching_is_supported():
         size = 1
@@ -257,6 +259,10 @@ def iter_embedded(
                 if size == 1 or not _is_oom(exc):
                     raise
                 size = size // 2
+                # Clear the failed batch and bound exception before releasing memory to ensure
+                # device tensors and traceback references are dropped.
+                inputs = None
+                exc = None
                 _release_memory()
                 logger.warning(
                     "embed batch ran out of memory; retrying smaller",

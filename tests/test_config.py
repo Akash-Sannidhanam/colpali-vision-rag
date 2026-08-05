@@ -16,6 +16,7 @@ def _ok(monkeypatch):
     monkeypatch.setattr(config, "GEMINI_API_KEY", "test-key")
     monkeypatch.setattr(config, "CANDIDATE_FANOUT", 2.0)
     monkeypatch.setattr(config, "COLLECTION_NAME", "pdf_pages")
+    monkeypatch.setattr(config, "EMBED_VISUAL_TOKENS", None)
 
 
 def test_validate_passes_on_a_sane_config(monkeypatch):

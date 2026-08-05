@@ -59,8 +59,15 @@ RENDER_DPI = int(os.getenv("RENDER_DPI", "150"))
 # with - so adding this knob did not invalidate the index. Setting it, even to the value the
 # checkpoint already uses, changes EMBED_VERSION and re-embeds: erring toward a needless
 # re-ingest rather than toward silently keeping vectors from a different budget.
-EMBED_VISUAL_TOKENS = int(os.environ["EMBED_VISUAL_TOKENS"]) if os.getenv(
-    "EMBED_VISUAL_TOKENS") else None
+try:
+    EMBED_VISUAL_TOKENS = int(os.environ["EMBED_VISUAL_TOKENS"]) if os.getenv(
+        "EMBED_VISUAL_TOKENS") else None
+except ValueError as e:
+    raise RuntimeError(
+        f"EMBED_VISUAL_TOKENS must be an integer, got {os.environ['EMBED_VISUAL_TOKENS']!r}. "
+        "It is how many patches the model may see per page; leave it unset to use the "
+        "checkpoint's own budget."
+    ) from e
 # Identifies what produced a stored vector. Written into every point's payload so an
 # incremental ingest can tell a still-current page from a stale one: changing the model,
 # the render DPI or the visual-token budget invalidates every embedding while leaving the
