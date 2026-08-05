@@ -1,4 +1,4 @@
-"""Eval harness CLI - the regression guard (PRODUCTION_HARDENING.md Phase 4).
+"""Eval harness CLI - the regression guard (docs/ENGINEERING_LOG.md Phase 4).
 
 Runs every question in eval/dataset.jsonl and scores retrieval recall@k,
 rerank recall, citation correctness, and answer quality, then writes a JSON

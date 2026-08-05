@@ -98,20 +98,20 @@ VECTOR_DIM = 128 # ColQwen emits one 128-d vector per patch
 # 12, not 10: two extra slots are the single cheapest lever on cross-document coverage
 # measured here - candidate_coverage_avg 0.700 -> 0.800 on their own, with recall@1/@3
 # flat and no gold page leaving the slate. MAX_PAGES_PER_DOC takes it the rest of the
-# way. See the slate-diversity pass in PRODUCTION_HARDENING.md.
+# way. See the slate-diversity pass in docs/ENGINEERING_LOG.md.
 RETRIEVE_K = int(os.getenv("RETRIEVE_K", "12"))  # candidate pages pulled from Qdrant per query
 # 3, not 2: at 2 the reranker spent both slots inside one document on cross-document
 # questions, and the answer step filled the missing half from parametric memory - with
 # numbers that were plausible and *wrong* (BERT-base "108M" for 110M, BEIR "19 datasets"
 # for 18). Measured over 83 questions: 3 genuine answer/citation fixes, zero regressions
 # across 144 paired row comparisons, for +7.8% cost and flat latency. See the
-# instrument-sharpening pass in PRODUCTION_HARDENING.md.
+# instrument-sharpening pass in docs/ENGINEERING_LOG.md.
 RERANK_K = int(os.getenv("RERANK_K", "3"))       # pages kept after the Gemini rerank pass
                                                  # (a cap when RERANK_ADAPTIVE)
 # When true, rerank keeps a *variable* number of pages (1..RERANK_K) - only the
 # pages the model judged relevant, instead of always topping up to RERANK_K. Trades
 # a little predictability for answer precision. Off by default until an eval diff
-# proves it wins (PRODUCTION_HARDENING.md retrieval-quality pass).
+# proves it wins (docs/ENGINEERING_LOG.md retrieval-quality pass).
 RERANK_ADAPTIVE = os.getenv("RERANK_ADAPTIVE", "false").strip().lower() in ("1", "true", "yes")
 # Slate diversity: the most pages any one pdf may occupy in the RETRIEVE_K candidate
 # slate (0 = no cap, today's behaviour). ColQwen2's MaxSim on a two-part question is
@@ -119,7 +119,7 @@ RERANK_ADAPTIVE = os.getenv("RERANK_ADAPTIVE", "false").strip().lower() in ("1",
 # on three baseline rows the top-10 was ten pages of a *single* PDF, shutting the second
 # gold document out entirely. That makes candidate_coverage_avg a hard ceiling on
 # gold_coverage_avg which no RERANK_K value can lift. See the slate-diversity pass in
-# PRODUCTION_HARDENING.md.
+# docs/ENGINEERING_LOG.md.
 #
 # 5, not 4: 4 scores higher coverage (0.850 vs 0.825) but evicts a gold page from the
 # slate entirely on every arm it was measured in. colpali-avg-ndcg is a *single*-document
@@ -151,7 +151,7 @@ CANDIDATE_FANOUT = float(os.getenv("CANDIDATE_FANOUT", "2.0"))
 # indistinguishable from memorising the dataset. eval/dataset_paraphrase.jsonl is the
 # hold-out that tells them apart: it moved coverage 0.7917 -> 0.8333 on deliberately
 # varied phrasings, from the 5 of 12 rows the splitter fires on at all.
-# See the query-decomposition pass in PRODUCTION_HARDENING.md.
+# See the query-decomposition pass in docs/ENGINEERING_LOG.md.
 QUERY_DECOMPOSE = os.getenv("QUERY_DECOMPOSE", "true").strip().lower() in ("1", "true", "yes")
 # Most parts a question may be split into, beyond the original. Bounds how wide the
 # fused pool can get on a listy question; the whole question is always embedded too, so
@@ -187,7 +187,7 @@ UPSERT_BATCH_SIZE = 8    # pages per Qdrant upsert flush; small enough that a ba
 # `profile_ingest.py --verify-equivalence` after any change to device, dtype, model, torch
 # or transformers versions. Folding batch size into the fingerprint would re-embed the whole
 # corpus every time someone tuned it; processor/device settings are NOT captured and require
-# manual reindexing when changed (see PRODUCTION_HARDENING.md).
+# manual reindexing when changed (see docs/ENGINEERING_LOG.md).
 #
 # **This value is untuned.** It cannot be measured on an Apple-Silicon box: MPS + bfloat16
 # miscomputes a batched forward pass, so embedder._batching_is_supported refuses to batch
