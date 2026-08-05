@@ -7,6 +7,8 @@ default (no callback) path still prints for the CLI, and that the sync path re-e
 exactly the documents whose bytes or embedding config changed.
 """
 
+import threading
+
 import pytest
 
 from src import ingest
@@ -290,3 +292,94 @@ def test_cli_rebuild_flag_is_not_treated_as_a_path(monkeypatch, tmp_path, capsys
     assert seen["rebuild"] is True
     assert [p.name for p in seen["pdfs"]] == ["doc.pdf"]     # the flag is not a PDF path
     assert "Rebuilt the index with 2 pages." in capsys.readouterr().out
+
+
+# --- the store worker behind the forward pass ---
+
+def test_a_failing_store_worker_surfaces_instead_of_hanging(monkeypatch, tmp_path):
+    """A dead worker must not leave the embed loop blocked on a full queue.
+
+    An ingest that hangs is strictly worse than one that crashes: `document_index`
+    fingerprints a document from its first indexed page, so a killed run strands a truncated
+    document that the next sync considers current and skips. The queue is bounded, so
+    without the drain-to-sentinel in `_StoreWorker._run` this deadlocks rather than fails.
+    """
+    _stub_pipeline(monkeypatch, pages_per_pdf=40)
+
+    def _explode(batch, collection_name):
+        raise RuntimeError("qdrant is down")
+
+    monkeypatch.setattr(ingest, "upsert_pages", _explode)
+
+    with pytest.raises(RuntimeError, match="qdrant is down"):
+        ingest.run_ingest([_pdf(tmp_path)])
+
+
+def test_the_bodys_own_failure_is_not_masked_by_the_worker(monkeypatch, tmp_path):
+    """An OOM in the embed loop is the real story; shutting the worker down must not hide it."""
+    _stub_pipeline(monkeypatch, pages_per_pdf=6)
+
+    def _boom(pages, batch_size=None):
+        yield 0, [[[0.0] * 128]]
+        raise MemoryError("out of memory")
+
+    monkeypatch.setattr(ingest, "iter_embedded", _boom)
+
+    with pytest.raises(MemoryError, match="out of memory"):
+        ingest.run_ingest([_pdf(tmp_path)])
+
+
+def test_pages_are_stored_in_page_order(monkeypatch, tmp_path):
+    """One worker draining a FIFO queue, so moving the upsert off-thread cannot reorder pages."""
+    _stub_pipeline(monkeypatch, pages_per_pdf=10)
+    stored: list[int] = []
+    monkeypatch.setattr(ingest, "build_point",
+                        lambda mv, name, page, path, ch, ev: stored.append(page) or {"p": page})
+
+    ingest.run_ingest([_pdf(tmp_path)])
+
+    assert stored == list(range(1, 11))
+
+
+def test_every_page_reaches_qdrant_exactly_once(monkeypatch, tmp_path):
+    """The remainder past the last full UPSERT_BATCH_SIZE flush must still be stored."""
+    _stub_pipeline(monkeypatch, pages_per_pdf=10)   # 10 pages, flushes at 8, remainder 2
+    upserted: list[int] = []
+    monkeypatch.setattr(ingest, "upsert_pages",
+                        lambda batch, collection_name: upserted.append(len(batch)))
+
+    ingest.run_ingest([_pdf(tmp_path)])
+
+    assert sum(upserted) == 10
+
+
+def test_a_failure_in_the_final_flush_does_not_hang(monkeypatch, tmp_path):
+    """The remainder flush runs *after* the sentinel, so it must not drain for another one.
+
+    Draining unconditionally blocks forever here - the sentinel is delivered once - and
+    `__exit__`'s join() then hangs the whole ingest on the very path the drain exists to
+    protect. Run on a thread with a join timeout so a regression fails rather than wedging
+    the suite.
+    """
+    _stub_pipeline(monkeypatch, pages_per_pdf=10)   # flushes at 8, remainder of 2
+
+    def _fail_on_the_remainder(batch, collection_name):
+        if len(batch) < 8:
+            raise RuntimeError("remainder flush failed")
+
+    monkeypatch.setattr(ingest, "upsert_pages", _fail_on_the_remainder)
+    pdf = _pdf(tmp_path)
+    caught: list = []
+
+    def _run():
+        try:
+            ingest.run_ingest([pdf])
+        except BaseException as exc:   # noqa: BLE001 - recorded, asserted on below
+            caught.append(exc)
+
+    worker = threading.Thread(target=_run, daemon=True)
+    worker.start()
+    worker.join(timeout=10)
+
+    assert not worker.is_alive(), "ingest hung on a failure in the final flush"
+    assert isinstance(caught[0], RuntimeError)

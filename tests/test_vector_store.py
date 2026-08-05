@@ -107,6 +107,56 @@ def test_next_physical_name_bootstraps_to_one():
     assert vector_store._next_physical_name(FakeClient(collections=[])) == "pdf_pages_1"
 
 
+# --- arm isolation (COLLECTION_NAME is env-overridable) ---
+
+def _as_arm(monkeypatch, alias):
+    """Point vector_store at another COLLECTION_NAME, as an env prefix would.
+
+    Both by-value globals have to move together: `_PHYSICAL_PREFIX` is computed from
+    COLLECTION_NAME at import, so patching the name alone would leave the module naming its
+    physical collections after the default and defeat the isolation being tested.
+    """
+    monkeypatch.setattr(vector_store, "COLLECTION_NAME", alias)
+    monkeypatch.setattr(vector_store, "_PHYSICAL_PREFIX", f"{alias}_")
+
+
+def test_default_alias_does_not_see_another_arms_physical_collections():
+    """`pdf_pages_vt512_1` shares the default's prefix but is not one of its versions.
+
+    This is the property that lets a sweep arm live in the same Qdrant as the pinned index:
+    without the isdigit() guard the default's orphan sweep would delete the arm mid-rebuild.
+    """
+    fake = FakeClient(collections=["pdf_pages_1", "pdf_pages_vt512_1", "pdf_pages_vt512_2"])
+
+    assert vector_store._list_physical_versions(fake) == [1]
+    assert vector_store._next_physical_name(fake) == "pdf_pages_2"
+
+
+def test_an_arm_does_not_see_the_default_alias_physical_collections(monkeypatch):
+    """And symmetrically: the arm's prefix matches none of the default's collections."""
+    _as_arm(monkeypatch, "pdf_pages_vt512")
+    fake = FakeClient(collections=["pdf_pages_1", "pdf_pages_2", "pdf_pages_vt512_1"])
+
+    assert vector_store._list_physical_versions(fake) == [1]
+    assert vector_store._next_physical_name(fake) == "pdf_pages_vt512_2"
+
+
+def test_promoting_an_arm_leaves_the_pinned_index_alone(monkeypatch):
+    """The sweep during an arm's alias swap must not drop the default's collections."""
+    _as_arm(monkeypatch, "pdf_pages_vt512")
+    fake = FakeClient(
+        collections=["pdf_pages_1", "pdf_pages_vt512_1", "pdf_pages_vt512_2"],
+        alias_target="pdf_pages_vt512_1",
+    )
+    _use(monkeypatch, fake)
+
+    vector_store.promote_collection_version("pdf_pages_vt512_2")
+
+    deleted = {name for verb, name, *_ in fake.calls if verb == "delete"}
+    assert "pdf_pages_vt512_1" in deleted      # the arm's own superseded version
+    assert "pdf_pages_1" not in deleted        # the pinned index is untouched
+
+
 # --- atomic swap ---
 
 def test_promote_swaps_atomically_then_deletes_old(monkeypatch):

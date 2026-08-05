@@ -14,6 +14,9 @@ they exercise the two things batching adds that a batch of one never exercised:
 exactly which positions survived.
 """
 
+import threading
+import time
+
 import pytest
 import torch
 
@@ -201,12 +204,20 @@ def test_embed_image_matches_the_batched_path(monkeypatch):
 
 
 def test_no_pages_means_no_forward_pass(monkeypatch):
-    """An empty document costs nothing (and must not index an empty batch)."""
+    """An empty document costs nothing (and must not index an empty batch).
+
+    The processor assertion is the load-bearing one. Without the empty guard in
+    `iter_embedded`, `preprocess([])` is still submitted to the prefetch pool: the loop then
+    never runs, so nothing ever calls `.result()`, and whatever that raises is swallowed with
+    the abandoned future. The forward-pass assertion alone passes either way.
+    """
     model = _FakeModel()
-    _install(monkeypatch, model, _FakeProcessor({}))
+    processor = _FakeProcessor({})
+    _install(monkeypatch, model, processor)
 
     assert embedder.embed_images([]) == []
     assert model.batch_sizes == []
+    assert processor.calls == []      # not even preprocessed
 
 
 # --- the MPS batching exclusion (see embedder._batching_is_supported) ---
@@ -272,3 +283,71 @@ def test_allocation_failures_are_recognised_across_backends(message):
     assert embedder._is_oom(RuntimeError(message))
     assert embedder._is_oom(MemoryError())
     assert not embedder._is_oom(RuntimeError("shape mismatch"))
+
+
+# --- the preprocess/GPU overlap ---
+
+def test_the_next_batch_is_preprocessed_while_the_gpu_runs_the_current_one(monkeypatch):
+    """The overlap this pipelining exists for, asserted rather than assumed.
+
+    `preprocess` is pure CPU and measured at 0.30 s/page against a 5.45 s forward, so
+    running it inline idled the GPU for ~5% of every page - and much more once the forward
+    pass shrinks. The fake model blocks until the processor has been called for a *later*
+    batch, which can only happen if preprocessing runs ahead on another thread. Serially,
+    nothing would ever set the event and the wait would time out.
+    """
+    started_second = threading.Event()
+
+    class _AheadProcessor(_FakeProcessor):
+        def process_images(self, images):
+            out = super().process_images(images)
+            if len(self.calls) >= 2:
+                started_second.set()
+            return out
+
+    class _WaitingModel(_FakeModel):
+        def __call__(self, **kwargs):
+            # Called on the main thread; the setter runs on the prefetch thread.
+            assert started_second.wait(timeout=10), "the next batch was not preprocessed ahead"
+            return super().__call__(**kwargs)
+
+    processor = _AheadProcessor({})
+    _install(monkeypatch, _WaitingModel(), processor)
+
+    out = embedder.embed_images([f"p{i}" for i in range(4)], batch_size=2)
+
+    assert len(out) == 4
+    assert processor.calls == [["p0", "p1"], ["p2", "p3"]]
+
+
+def test_a_preprocess_failure_propagates_instead_of_hanging(monkeypatch):
+    """A raise on the prefetch thread must surface, not deadlock the generator.
+
+    An ingest that hangs is worse than one that crashes: `document_index` fingerprints a
+    document from its first indexed page, so a killed run strands a truncated document that
+    the next sync considers current.
+    """
+    class _BrokenProcessor(_FakeProcessor):
+        def process_images(self, images):
+            raise ValueError("processor exploded")
+
+    _install(monkeypatch, _FakeModel(), _BrokenProcessor({}))
+
+    with pytest.raises(ValueError, match="processor exploded"):
+        embedder.embed_images(["a", "b", "c"], batch_size=2)
+
+
+def test_the_prefetch_thread_does_not_outlive_an_abandoned_generator(monkeypatch):
+    """Closing the iterator early must not leak the pool - ingest streams these per document."""
+    before = threading.active_count()
+    _install(monkeypatch, _FakeModel(), _FakeProcessor({}))
+
+    it = embedder.iter_embedded([f"p{i}" for i in range(8)], batch_size=2)
+    next(it)          # start the pool, then walk away
+    it.close()
+
+    for _ in range(100):                      # the pool shuts down asynchronously
+        if threading.active_count() <= before:
+            break
+        time.sleep(0.01)
+    assert threading.active_count() <= before

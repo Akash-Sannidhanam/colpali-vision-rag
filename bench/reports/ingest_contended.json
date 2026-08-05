@@ -1,0 +1,74 @@
+{
+  "config": {
+    "colpali_model": "vidore/colqwen2-v1.0",
+    "render_dpi": 150,
+    "embed_visual_tokens": null,
+    "batch_sizes": [
+      1
+    ],
+    "upsert_batch_size": 8,
+    "device": "mps:0",
+    "dtype": "torch.bfloat16",
+    "torch": "2.11.0",
+    "platform": "macOS-26.3.1-arm64-arm-64bit-Mach-O",
+    "python": "3.13.13",
+    "upsert_measured": true,
+    "upsert_skipped": "",
+    "measurement_quality": "CONTENDED - OneDrive Sync Service at ~97% CPU during this run. Exercises the new preprocess/forward/decode + upsert fields; the absolute numbers are inflated (preprocess 0.965s here against 0.304s on a quieter run of the same 8 pages). Not a baseline. Re-pin ingest_baseline.json from a quiet box."
+  },
+  "documents": [
+    {
+      "pdf": "attention.pdf",
+      "pages_rendered": 15,
+      "pages_profiled": 8
+    }
+  ],
+  "model_load_s": 16.81,
+  "pages": 8,
+  "stages": {
+    "render": {
+      "total_s": 2.009,
+      "per_page_s": 0.134,
+      "pages_rendered": 15
+    },
+    "save": {
+      "total_s": 0.359,
+      "mean_s": 0.045,
+      "median_s": 0.047,
+      "n": 8,
+      "per_page_s": 0.045
+    },
+    "upsert": {
+      "measured": true,
+      "total_s": 1.53,
+      "mean_s": 1.53,
+      "median_s": 1.53,
+      "n": 1,
+      "per_page_s": 0.191
+    }
+  },
+  "arms": [
+    {
+      "batch_size": 1,
+      "effective_batch_size": 1,
+      "requested_size_honoured": true,
+      "embed": {
+        "total_s": 48.073,
+        "mean_s": 6.009,
+        "median_s": 5.976,
+        "n": 8,
+        "per_page_s": 6.009
+      },
+      "embed_stages": {
+        "preprocess": 0.965,
+        "forward": 5.941,
+        "decode": 0.036
+      },
+      "visual_tokens_per_page": 755,
+      "embed_share_of_page_s": 0.942,
+      "page_s": 6.379,
+      "pages_per_min": 9.41,
+      "speedup_vs_batch_1": 1.0
+    }
+  ]
+}

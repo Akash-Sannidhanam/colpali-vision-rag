@@ -277,6 +277,12 @@ def _config_snapshot(mode: str, dataset_path: str, use_judge: bool) -> dict:
         "eval_judge_model": EVAL_JUDGE_MODEL if use_judge else None,
         "render_dpi": config.RENDER_DPI,
         "colpali_model": config.COLPALI_MODEL,
+        # Unlike EMBED_BATCH_SIZE (which is vector-identical and so deliberately absent),
+        # this changes every stored vector and therefore what retrieval can find. It also
+        # needs its own index, so `collection` records which one the arm actually read -
+        # the one config difference that could otherwise make two arms look identical.
+        "embed_visual_tokens": config.EMBED_VISUAL_TOKENS,
+        "collection": config.COLLECTION_NAME,
         "qdrant_mode": "server" if config.QDRANT_URL else "embedded",
     }
 

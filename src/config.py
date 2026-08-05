@@ -2,6 +2,7 @@
 
 import math
 import os
+import re
 import shutil
 from pathlib import Path
 
@@ -36,13 +37,59 @@ COLPALI_MODEL = os.getenv("COLPALI_MODEL") or "vidore/colqwen2-v1.0"
 # Page render resolution. Higher DPI = more ColQwen patches = finer detail on dense
 # tables/small text, at more ingest time + storage. Env-overridable for A/B ingests.
 RENDER_DPI = int(os.getenv("RENDER_DPI", "150"))
+# How many visual tokens (patches) the model is allowed to see per page. **The single
+# largest lever on ingest speed**, because the ViT's attention is quadratic in patch count,
+# so cutting the budget pays superlinearly. Measured on this box (M5, bf16), forward pass
+# only:
+#
+#   budget   patches   forward   pages/min   speedup
+#      768       755    6.48 s        9.3      1.00x   <- the checkpoint's own value
+#      512       486    3.18 s       18.9      2.04x
+#      384       385    2.60 s       23.1      2.49x
+#      256       263    1.64 s       36.6      3.95x
+#
+# **This is not RENDER_DPI, and lowering DPI does not substitute for it.** The processor
+# downscales every page to its own pixel budget (`max_pixels`, 602112 = 768*28*28 in this
+# checkpoint) long before the model sees it: a 150-DPI page is 1275x1650 = 2.1 MP and
+# reaches the model as 672x868. The model already reads pages at ~79 DPI equivalent, so DPI
+# buys render time and disk, not embedding time. It still matters for the page PNGs, which
+# the answer step and the crops use at full resolution.
+#
+# Unset means "whatever the checkpoint ships", which is what every stored vector was built
+# with - so adding this knob did not invalidate the index. Setting it, even to the value the
+# checkpoint already uses, changes EMBED_VERSION and re-embeds: erring toward a needless
+# re-ingest rather than toward silently keeping vectors from a different budget.
+try:
+    EMBED_VISUAL_TOKENS = int(os.environ["EMBED_VISUAL_TOKENS"]) if os.getenv(
+        "EMBED_VISUAL_TOKENS") else None
+except ValueError as e:
+    raise RuntimeError(
+        f"EMBED_VISUAL_TOKENS must be an integer, got {os.environ['EMBED_VISUAL_TOKENS']!r}. "
+        "It is how many patches the model may see per page; leave it unset to use the "
+        "checkpoint's own budget."
+    ) from e
 # Identifies what produced a stored vector. Written into every point's payload so an
-# incremental ingest can tell a still-current page from a stale one: changing the model
-# or the render DPI invalidates every embedding while leaving the PDF bytes untouched,
-# which a content hash alone would miss (see src/ingest.py).
-EMBED_VERSION = f"{COLPALI_MODEL}@{RENDER_DPI}"
+# incremental ingest can tell a still-current page from a stale one: changing the model,
+# the render DPI or the visual-token budget invalidates every embedding while leaving the
+# PDF bytes untouched, which a content hash alone would miss (see src/ingest.py).
+#
+# The exact inverse of EMBED_BATCH_SIZE's rationale below: batch size stays *out* because
+# batching is vector-identical, and the token budget goes *in* because it changes every
+# vector on the page.
+EMBED_VERSION = f"{COLPALI_MODEL}@{RENDER_DPI}" + (
+    f"@{EMBED_VISUAL_TOKENS}" if EMBED_VISUAL_TOKENS is not None else "")
 
-COLLECTION_NAME = "pdf_pages"
+# Env-overridable for the same reason the retrieval knobs are: an experiment arm should be a
+# command-line prefix, not a code edit. Here it is what lets an arm that needs its *own index*
+# (anything that changes EMBED_VERSION - a model, a DPI, a visual-token budget) be built and
+# evaluated without destroying the pinned one, and re-run later without re-ingesting:
+#   EMBED_VISUAL_TOKENS=512 COLLECTION_NAME=pdf_pages_vt512 ... src/ingest.py --rebuild
+#   EMBED_VISUAL_TOKENS=512 COLLECTION_NAME=pdf_pages_vt512 ... eval/run_eval.py
+# Arms cannot collide: vector_store derives its physical-collection prefix from this name and
+# only treats an all-digit suffix as a version, so `pdf_pages`'s sweep skips
+# `pdf_pages_vt512_1` and vice versa. See validate() for the one name shape that would break
+# that, and _list_physical_versions for the guard itself.
+COLLECTION_NAME = os.getenv("COLLECTION_NAME") or "pdf_pages"
 VECTOR_DIM = 128 # ColQwen emits one 128-d vector per patch
 # Both env-overridable for the same reason RENDER_DPI is: an eval arm should be a
 # command-line prefix (`RERANK_K=3 uv run python eval/run_eval.py ...`), not a code
@@ -227,6 +274,25 @@ def validate() -> None:
         raise RuntimeError(
             f"CANDIDATE_FANOUT must be a finite number, got {CANDIDATE_FANOUT!r}. "
             "It is a multiplier on RETRIEVE_K (2.0 = fetch twice the slate size)."
+        )
+    # `pdf_pages_7` is the shape vector_store gives a *physical* collection of the alias
+    # `pdf_pages`, so an alias by that name would be swept as a stale version of another
+    # alias mid-rebuild - silently deleting the arm you were measuring. Cheaper to refuse
+    # the name than to make the sweep clever enough to tell them apart.
+    if not COLLECTION_NAME or re.search(r"_\d+$", COLLECTION_NAME):
+        raise RuntimeError(
+            f"COLLECTION_NAME must be non-empty and must not end in _<digits>, got "
+            f"{COLLECTION_NAME!r}. That suffix is how vector_store names the physical "
+            "collections behind an alias, so such a name collides with another alias's "
+            "versions. Use e.g. 'pdf_pages_vt512' rather than 'pdf_pages_512'."
+        )
+    # A budget below one patch cannot describe a page at all, and the processor would either
+    # raise deep inside a forward pass or hand back something empty that indexes cleanly.
+    if EMBED_VISUAL_TOKENS is not None and EMBED_VISUAL_TOKENS < 1:
+        raise RuntimeError(
+            f"EMBED_VISUAL_TOKENS must be at least 1, got {EMBED_VISUAL_TOKENS!r}. "
+            "It is how many patches the model may see per page; leave it unset to use the "
+            "checkpoint's own budget."
         )
     # Same rationale: a zero or negative batch would make the ingest loop embed nothing
     # and store an empty index, which is far worse than refusing to start.
