@@ -86,7 +86,8 @@ class _StoreWorker:
     Kept because that balance is a function of how big the forward pass is - 0.31 s against
     a 5.45 s forward is 6%, against a 2.7 s one it is 11% - and because a remote Qdrant or a
     slower disk moves it the same way. It is the piece to re-measure and delete if a future
-    profile still shows it flat.
+    profile still shows it flat: `scripts/bench_pipeline.py` is that measurement, and exists
+    for this decision specifically.
 
     One worker draining a FIFO queue, so pages are stored in page order and the `stored`
     events keep the sequence the SSE consumer has always seen. The queue is bounded: a
