@@ -24,6 +24,7 @@ from eval.run_eval import (
     parse_gates,
 )
 from eval.scoring import load_dataset
+from src.confidence import retrieval_confidence
 from src.config import EVAL_JUDGE_MODEL
 
 # --- the shipped dataset itself ---
@@ -268,8 +269,24 @@ def test_run_full_stores_both_page_lists_for_offline_rescoring(monkeypatch):
 
     (row,) = run_eval.run_full([_CROSS_ROW], use_judge=False)
 
-    assert row["candidate_pages"] == [{"pdf": "a.pdf", "page": 3}, {"pdf": "b.pdf", "page": 7}]
-    assert row["reranked_pages"] == [{"pdf": "a.pdf", "page": 3}]
+    assert row["candidate_pages"] == [{"pdf": "a.pdf", "page": 3, "score": 0.9},
+                                      {"pdf": "b.pdf", "page": 7, "score": 0.9}]
+    assert row["reranked_pages"] == [{"pdf": "a.pdf", "page": 3, "score": 0.9}]
+
+
+def test_stored_pages_carry_the_score_so_a_confidence_formula_is_re_scorable(monkeypatch):
+    """Scores turn a stored report into a simulator for *any* confidence formula.
+
+    `candidate_pages` already made a gold-label change re-scorable offline; without the
+    score it could not do the same for `src/confidence.py`, whose whole input is the
+    score distribution across the slate.
+    """
+    monkeypatch.setattr("src.retrieval.retrieve",
+                        lambda q: [_page("a.pdf", 3, score=17.5), _page("b.pdf", 7, score=16.25)])
+
+    (row,) = run_eval.run_retrieval_only([_CROSS_ROW])
+
+    assert [p["score"] for p in row["candidate_pages"]] == [17.5, 16.25]
 
 
 def test_run_retrieval_only_carries_candidate_coverage(monkeypatch):
@@ -280,7 +297,49 @@ def test_run_retrieval_only_carries_candidate_coverage(monkeypatch):
     (row,) = run_eval.run_retrieval_only([_CROSS_ROW])
 
     assert row["candidate_doc_coverage"] == 1.0
-    assert row["candidate_pages"] == [{"pdf": "a.pdf", "page": 3}, {"pdf": "b.pdf", "page": 7}]
+    assert row["candidate_pages"] == [{"pdf": "a.pdf", "page": 3, "score": 0.9},
+                                      {"pdf": "b.pdf", "page": 7, "score": 0.9}]
+
+
+def test_run_retrieval_only_records_top1_decisiveness(monkeypatch):
+    """The free half of the calibration evidence: no API key, no Gemini spend.
+
+    Anchored on the top candidate rather than a cited page, because retrieval-only has
+    no citation - and because "was the top page right?" is what the UI chip implies.
+    """
+    monkeypatch.setattr("src.retrieval.retrieve",
+                        lambda q: [_page("a.pdf", 3, score=30.0), _page("b.pdf", 7, score=10.0)])
+
+    (row,) = run_eval.run_retrieval_only([_dataset_row()])
+
+    # Same function the UI number comes from, so the two can never drift apart.
+    assert row["top1_decisiveness"] == retrieval_confidence(
+        [_page("a.pdf", 3, score=30.0), _page("b.pdf", 7, score=10.0)],
+        {"pdf": "a.pdf", "page_number": 3},
+    )
+    assert row["top1_decisiveness"] > 0.5  # the top page holds most of the mass here
+
+
+def test_run_full_records_top1_decisiveness_too(monkeypatch):
+    """One artifact can carry both calibration families rather than needing two runs."""
+    _stub_cross_doc_run_query(
+        monkeypatch,
+        candidates=[_page("a.pdf", 3, score=30.0), _page("b.pdf", 7, score=10.0)],
+        reranked=[_page("a.pdf", 3, score=30.0)],
+    )
+
+    (row,) = run_eval.run_full([_CROSS_ROW], use_judge=False)
+
+    assert row["top1_decisiveness"] > 0.5
+
+
+def test_run_retrieval_only_top1_decisiveness_is_none_without_candidates(monkeypatch):
+    """An empty slate has no top page to be decisive about."""
+    monkeypatch.setattr("src.retrieval.retrieve", lambda q: [])
+
+    (row,) = run_eval.run_retrieval_only([_dataset_row()])
+
+    assert row["top1_decisiveness"] is None
 
 
 def test_run_retrieval_only_leaves_unanswerable_rows_unscored(monkeypatch):
