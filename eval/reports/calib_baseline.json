@@ -1,0 +1,5899 @@
+{
+  "generated_at": "2026-08-05T19:07:07+00:00",
+  "config": {
+    "mode": "retrieval-only",
+    "dataset": "eval/dataset.jsonl",
+    "retrieve_k": 12,
+    "rerank_k": 3,
+    "rerank_adaptive": false,
+    "max_pages_per_doc": 5,
+    "candidate_fanout": 2.0,
+    "query_decompose": true,
+    "max_subqueries": 2,
+    "decompose_original_weight": 0.0,
+    "rescore_oversampling": 2.0,
+    "gemini_model": "gemini-3.5-flash",
+    "rerank_model": "gemini-3.5-flash",
+    "eval_judge_model": null,
+    "render_dpi": 150,
+    "colpali_model": "vidore/colqwen2-v1.0",
+    "embed_visual_tokens": null,
+    "collection": "pdf_pages",
+    "qdrant_mode": "server"
+  },
+  "degradation": {
+    "degraded_calls": 0,
+    "rows_with_degraded": 0,
+    "judge_na": 0,
+    "degraded_row_frac": 0.0
+  },
+  "degraded_run": false,
+  "summary": {
+    "n": 83,
+    "recall@1": 0.6712,
+    "recall@3": 0.8493,
+    "recall@12": 1.0,
+    "rerank_recall": null,
+    "citation_accuracy": null,
+    "substring_accuracy": null,
+    "abstention_accuracy": null,
+    "gold_coverage_avg": null,
+    "candidate_coverage_avg": 0.85,
+    "judge_accuracy": null,
+    "judge_score_avg": null,
+    "retrieval_conf_correct_avg": null,
+    "retrieval_conf_wrong_avg": null,
+    "n_conf_correct": 0,
+    "n_conf_wrong": 0,
+    "confidence_separation": null,
+    "decisiveness_hit_avg": 0.1253,
+    "decisiveness_miss_avg": 0.1126,
+    "n_decisive_hit": 49,
+    "n_decisive_miss": 24,
+    "decisiveness_separation": 0.0127,
+    "self_conf_high_acc": null,
+    "n_self_conf_high": 0,
+    "self_conf_medium_acc": null,
+    "n_self_conf_medium": 0,
+    "self_conf_low_acc": null,
+    "n_self_conf_low": 0,
+    "avg_latency_ms": null,
+    "decisiveness_fused_hit_avg": 0.1332,
+    "decisiveness_fused_miss_avg": 0.1188,
+    "n_decisive_fused_hit": 8,
+    "n_decisive_fused_miss": 15,
+    "decisiveness_fused_separation": 0.0144,
+    "decisiveness_unfused_hit_avg": 0.1237,
+    "decisiveness_unfused_miss_avg": 0.1023,
+    "n_decisive_unfused_hit": 41,
+    "n_decisive_unfused_miss": 9,
+    "decisiveness_unfused_separation": 0.0214
+  },
+  "per_tag": {
+    "chart": {
+      "n": 5,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@12": 1.0,
+      "rerank_recall": null,
+      "citation_accuracy": null,
+      "substring_accuracy": null,
+      "abstention_accuracy": null,
+      "gold_coverage_avg": null,
+      "candidate_coverage_avg": null,
+      "judge_accuracy": null,
+      "judge_score_avg": null,
+      "retrieval_conf_correct_avg": null,
+      "retrieval_conf_wrong_avg": null,
+      "n_conf_correct": 0,
+      "n_conf_wrong": 0,
+      "confidence_separation": null,
+      "decisiveness_hit_avg": 0.1301,
+      "decisiveness_miss_avg": null,
+      "n_decisive_hit": 5,
+      "n_decisive_miss": 0,
+      "decisiveness_separation": null,
+      "self_conf_high_acc": null,
+      "n_self_conf_high": 0,
+      "self_conf_medium_acc": null,
+      "n_self_conf_medium": 0,
+      "self_conf_low_acc": null,
+      "n_self_conf_low": 0,
+      "avg_latency_ms": null
+    },
+    "cross-doc": {
+      "n": 20,
+      "recall@1": 0.3,
+      "recall@3": 0.6,
+      "recall@12": 1.0,
+      "rerank_recall": null,
+      "citation_accuracy": null,
+      "substring_accuracy": null,
+      "abstention_accuracy": null,
+      "gold_coverage_avg": null,
+      "candidate_coverage_avg": 0.85,
+      "judge_accuracy": null,
+      "judge_score_avg": null,
+      "retrieval_conf_correct_avg": null,
+      "retrieval_conf_wrong_avg": null,
+      "n_conf_correct": 0,
+      "n_conf_wrong": 0,
+      "confidence_separation": null,
+      "decisiveness_hit_avg": 0.1231,
+      "decisiveness_miss_avg": 0.1164,
+      "n_decisive_hit": 6,
+      "n_decisive_miss": 14,
+      "decisiveness_separation": 0.0067,
+      "self_conf_high_acc": null,
+      "n_self_conf_high": 0,
+      "self_conf_medium_acc": null,
+      "n_self_conf_medium": 0,
+      "self_conf_low_acc": null,
+      "n_self_conf_low": 0,
+      "avg_latency_ms": null
+    },
+    "figure": {
+      "n": 4,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@12": 1.0,
+      "rerank_recall": null,
+      "citation_accuracy": null,
+      "substring_accuracy": null,
+      "abstention_accuracy": null,
+      "gold_coverage_avg": null,
+      "candidate_coverage_avg": null,
+      "judge_accuracy": null,
+      "judge_score_avg": null,
+      "retrieval_conf_correct_avg": null,
+      "retrieval_conf_wrong_avg": null,
+      "n_conf_correct": 0,
+      "n_conf_wrong": 0,
+      "confidence_separation": null,
+      "decisiveness_hit_avg": 0.112,
+      "decisiveness_miss_avg": null,
+      "n_decisive_hit": 4,
+      "n_decisive_miss": 0,
+      "decisiveness_separation": null,
+      "self_conf_high_acc": null,
+      "n_self_conf_high": 0,
+      "self_conf_medium_acc": null,
+      "n_self_conf_medium": 0,
+      "self_conf_low_acc": null,
+      "n_self_conf_low": 0,
+      "avg_latency_ms": null
+    },
+    "formula": {
+      "n": 3,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@12": 1.0,
+      "rerank_recall": null,
+      "citation_accuracy": null,
+      "substring_accuracy": null,
+      "abstention_accuracy": null,
+      "gold_coverage_avg": null,
+      "candidate_coverage_avg": null,
+      "judge_accuracy": null,
+      "judge_score_avg": null,
+      "retrieval_conf_correct_avg": null,
+      "retrieval_conf_wrong_avg": null,
+      "n_conf_correct": 0,
+      "n_conf_wrong": 0,
+      "confidence_separation": null,
+      "decisiveness_hit_avg": 0.1106,
+      "decisiveness_miss_avg": null,
+      "n_decisive_hit": 3,
+      "n_decisive_miss": 0,
+      "decisiveness_separation": null,
+      "self_conf_high_acc": null,
+      "n_self_conf_high": 0,
+      "self_conf_medium_acc": null,
+      "n_self_conf_medium": 0,
+      "self_conf_low_acc": null,
+      "n_self_conf_low": 0,
+      "avg_latency_ms": null
+    },
+    "hard": {
+      "n": 35,
+      "recall@1": 0.8286,
+      "recall@3": 0.9143,
+      "recall@12": 1.0,
+      "rerank_recall": null,
+      "citation_accuracy": null,
+      "substring_accuracy": null,
+      "abstention_accuracy": null,
+      "gold_coverage_avg": null,
+      "candidate_coverage_avg": 0.9167,
+      "judge_accuracy": null,
+      "judge_score_avg": null,
+      "retrieval_conf_correct_avg": null,
+      "retrieval_conf_wrong_avg": null,
+      "n_conf_correct": 0,
+      "n_conf_wrong": 0,
+      "confidence_separation": null,
+      "decisiveness_hit_avg": 0.1231,
+      "decisiveness_miss_avg": 0.1062,
+      "n_decisive_hit": 29,
+      "n_decisive_miss": 6,
+      "decisiveness_separation": 0.0169,
+      "self_conf_high_acc": null,
+      "n_self_conf_high": 0,
+      "self_conf_medium_acc": null,
+      "n_self_conf_medium": 0,
+      "self_conf_low_acc": null,
+      "n_self_conf_low": 0,
+      "avg_latency_ms": null
+    },
+    "table": {
+      "n": 31,
+      "recall@1": 0.8065,
+      "recall@3": 0.9032,
+      "recall@12": 1.0,
+      "rerank_recall": null,
+      "citation_accuracy": null,
+      "substring_accuracy": null,
+      "abstention_accuracy": null,
+      "gold_coverage_avg": null,
+      "candidate_coverage_avg": 0.875,
+      "judge_accuracy": null,
+      "judge_score_avg": null,
+      "retrieval_conf_correct_avg": null,
+      "retrieval_conf_wrong_avg": null,
+      "n_conf_correct": 0,
+      "n_conf_wrong": 0,
+      "confidence_separation": null,
+      "decisiveness_hit_avg": 0.1314,
+      "decisiveness_miss_avg": 0.1105,
+      "n_decisive_hit": 25,
+      "n_decisive_miss": 6,
+      "decisiveness_separation": 0.0209,
+      "self_conf_high_acc": null,
+      "n_self_conf_high": 0,
+      "self_conf_medium_acc": null,
+      "n_self_conf_medium": 0,
+      "self_conf_low_acc": null,
+      "n_self_conf_low": 0,
+      "avg_latency_ms": null
+    },
+    "text": {
+      "n": 35,
+      "recall@1": 0.4857,
+      "recall@3": 0.7714,
+      "recall@12": 1.0,
+      "rerank_recall": null,
+      "citation_accuracy": null,
+      "substring_accuracy": null,
+      "abstention_accuracy": null,
+      "gold_coverage_avg": null,
+      "candidate_coverage_avg": 0.8438,
+      "judge_accuracy": null,
+      "judge_score_avg": null,
+      "retrieval_conf_correct_avg": null,
+      "retrieval_conf_wrong_avg": null,
+      "n_conf_correct": 0,
+      "n_conf_wrong": 0,
+      "confidence_separation": null,
+      "decisiveness_hit_avg": 0.1142,
+      "decisiveness_miss_avg": 0.1133,
+      "n_decisive_hit": 17,
+      "n_decisive_miss": 18,
+      "decisiveness_separation": 0.0009,
+      "self_conf_high_acc": null,
+      "n_self_conf_high": 0,
+      "self_conf_medium_acc": null,
+      "n_self_conf_medium": 0,
+      "self_conf_low_acc": null,
+      "n_self_conf_low": 0,
+      "avg_latency_ms": null
+    },
+    "unanswerable": {
+      "n": 10,
+      "recall@1": null,
+      "recall@3": null,
+      "recall@12": null,
+      "rerank_recall": null,
+      "citation_accuracy": null,
+      "substring_accuracy": null,
+      "abstention_accuracy": null,
+      "gold_coverage_avg": null,
+      "candidate_coverage_avg": null,
+      "judge_accuracy": null,
+      "judge_score_avg": null,
+      "retrieval_conf_correct_avg": null,
+      "retrieval_conf_wrong_avg": null,
+      "n_conf_correct": 0,
+      "n_conf_wrong": 0,
+      "confidence_separation": null,
+      "decisiveness_hit_avg": null,
+      "decisiveness_miss_avg": null,
+      "n_decisive_hit": 0,
+      "n_decisive_miss": 0,
+      "decisiveness_separation": null,
+      "self_conf_high_acc": null,
+      "n_self_conf_high": 0,
+      "self_conf_medium_acc": null,
+      "n_self_conf_medium": 0,
+      "self_conf_low_acc": null,
+      "n_self_conf_low": 0,
+      "avg_latency_ms": null
+    }
+  },
+  "rows": [
+    {
+      "id": "sales-q4-revenue",
+      "tags": [
+        "chart"
+      ],
+      "gold_rank": 1,
+      "top1": {
+        "pdf": "sales_report.pdf",
+        "page": 1
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "sales_report.pdf",
+          "page": 1,
+          "score": 13.4951
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 4,
+          "score": 9.3882
+        },
+        {
+          "pdf": "albert.pdf",
+          "page": 12,
+          "score": 9.3524
+        },
+        {
+          "pdf": "e5.pdf",
+          "page": 14,
+          "score": 9.3071
+        },
+        {
+          "pdf": "docvqa.pdf",
+          "page": 23,
+          "score": 9.0228
+        },
+        {
+          "pdf": "e5.pdf",
+          "page": 9,
+          "score": 8.8822
+        },
+        {
+          "pdf": "colbertv2.pdf",
+          "page": 18,
+          "score": 8.7748
+        },
+        {
+          "pdf": "docvqa.pdf",
+          "page": 6,
+          "score": 8.7284
+        },
+        {
+          "pdf": "docvqa.pdf",
+          "page": 2,
+          "score": 8.5326
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 23,
+          "score": 8.4957
+        },
+        {
+          "pdf": "dpr.pdf",
+          "page": 1,
+          "score": 8.4874
+        },
+        {
+          "pdf": "colbertv2.pdf",
+          "page": 9,
+          "score": 8.4709
+        }
+      ],
+      "top1_decisiveness": 0.1304432208617434
+    },
+    {
+      "id": "sales-best-quarter",
+      "tags": [
+        "chart"
+      ],
+      "gold_rank": 1,
+      "top1": {
+        "pdf": "sales_report.pdf",
+        "page": 1
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "sales_report.pdf",
+          "page": 1,
+          "score": 14.4384
+        },
+        {
+          "pdf": "e5.pdf",
+          "page": 9,
+          "score": 9.1462
+        },
+        {
+          "pdf": "e5.pdf",
+          "page": 14,
+          "score": 8.9676
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 4,
+          "score": 8.9338
+        },
+        {
+          "pdf": "albert.pdf",
+          "page": 12,
+          "score": 8.8125
+        },
+        {
+          "pdf": "colbertv2.pdf",
+          "page": 18,
+          "score": 8.6203
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 58,
+          "score": 8.3911
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 23,
+          "score": 8.3545
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 7,
+          "score": 8.2979
+        },
+        {
+          "pdf": "rag.pdf",
+          "page": 6,
+          "score": 8.2809
+        },
+        {
+          "pdf": "e5.pdf",
+          "page": 6,
+          "score": 8.1923
+        },
+        {
+          "pdf": "colbertv2.pdf",
+          "page": 8,
+          "score": 8.1895
+        }
+      ],
+      "top1_decisiveness": 0.14811812426818483
+    },
+    {
+      "id": "sales-south-growth",
+      "tags": [
+        "table"
+      ],
+      "gold_rank": 1,
+      "top1": {
+        "pdf": "sales_report.pdf",
+        "page": 2
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "sales_report.pdf",
+          "page": 2,
+          "score": 19.3604
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 26,
+          "score": 11.6528
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 15,
+          "score": 10.6107
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 15,
+          "score": 10.5284
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 24,
+          "score": 10.4664
+        },
+        {
+          "pdf": "colbertv2.pdf",
+          "page": 12,
+          "score": 10.4408
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 59,
+          "score": 10.4212
+        },
+        {
+          "pdf": "donut.pdf",
+          "page": 16,
+          "score": 10.4057
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 17,
+          "score": 10.3744
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 10,
+          "score": 10.3475
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 14,
+          "score": 10.3321
+        },
+        {
+          "pdf": "albert.pdf",
+          "page": 2,
+          "score": 10.3253
+        }
+      ],
+      "top1_decisiveness": 0.16580548558596941
+    },
+    {
+      "id": "sales-lowest-revenue-pct",
+      "tags": [
+        "table"
+      ],
+      "gold_rank": 1,
+      "top1": {
+        "pdf": "sales_report.pdf",
+        "page": 2
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "sales_report.pdf",
+          "page": 2,
+          "score": 21.9495
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 26,
+          "score": 11.4164
+        },
+        {
+          "pdf": "sales_report.pdf",
+          "page": 1,
+          "score": 10.6658
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 15,
+          "score": 9.9637
+        },
+        {
+          "pdf": "docvqa.pdf",
+          "page": 14,
+          "score": 9.9512
+        },
+        {
+          "pdf": "docvqa.pdf",
+          "page": 15,
+          "score": 9.8078
+        },
+        {
+          "pdf": "colbertv2.pdf",
+          "page": 18,
+          "score": 9.7734
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 8,
+          "score": 9.7675
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 23,
+          "score": 9.6976
+        },
+        {
+          "pdf": "layoutlm.pdf",
+          "page": 8,
+          "score": 9.6767
+        },
+        {
+          "pdf": "layoutlm.pdf",
+          "page": 6,
+          "score": 9.6569
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 24,
+          "score": 9.6148
+        }
+      ],
+      "top1_decisiveness": 0.21211731268486622
+    },
+    {
+      "id": "sales-west-revenue-pct",
+      "tags": [
+        "table"
+      ],
+      "gold_rank": 1,
+      "top1": {
+        "pdf": "sales_report.pdf",
+        "page": 2
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "sales_report.pdf",
+          "page": 2,
+          "score": 19.7016
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 23,
+          "score": 10.117
+        },
+        {
+          "pdf": "colbertv2.pdf",
+          "page": 18,
+          "score": 9.7959
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 26,
+          "score": 9.7302
+        },
+        {
+          "pdf": "donut.pdf",
+          "page": 16,
+          "score": 9.5632
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 3,
+          "score": 9.4516
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 13,
+          "score": 9.4043
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 15,
+          "score": 9.3597
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 19,
+          "score": 9.3253
+        },
+        {
+          "pdf": "rag.pdf",
+          "page": 7,
+          "score": 9.2863
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 14,
+          "score": 9.2786
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 25,
+          "score": 9.2765
+        }
+      ],
+      "top1_decisiveness": 0.19559778041176382
+    },
+    {
+      "id": "attn-bleu-en-de",
+      "tags": [
+        "table"
+      ],
+      "gold_rank": 1,
+      "top1": {
+        "pdf": "attention.pdf",
+        "page": 8
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "attention.pdf",
+          "page": 8,
+          "score": 25.1812
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 1,
+          "score": 24.1037
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 10,
+          "score": 22.3144
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 9,
+          "score": 21.0864
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 7,
+          "score": 18.8075
+        },
+        {
+          "pdf": "bert.pdf",
+          "page": 5,
+          "score": 18.7
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 16,
+          "score": 17.9146
+        },
+        {
+          "pdf": "bert.pdf",
+          "page": 1,
+          "score": 17.6162
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 20,
+          "score": 17.3382
+        },
+        {
+          "pdf": "bert.pdf",
+          "page": 15,
+          "score": 17.3146
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 14,
+          "score": 17.0773
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 8,
+          "score": 17.012
+        }
+      ],
+      "top1_decisiveness": 0.11006793701580232
+    },
+    {
+      "id": "attn-bleu-en-fr",
+      "tags": [
+        "table"
+      ],
+      "gold_rank": 1,
+      "top1": {
+        "pdf": "attention.pdf",
+        "page": 8
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "attention.pdf",
+          "page": 8,
+          "score": 23.7608
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 1,
+          "score": 21.1049
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 10,
+          "score": 20.6019
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 9,
+          "score": 19.4921
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 7,
+          "score": 18.5551
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 16,
+          "score": 16.6056
+        },
+        {
+          "pdf": "bert.pdf",
+          "page": 5,
+          "score": 16.3285
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 20,
+          "score": 15.8895
+        },
+        {
+          "pdf": "bert.pdf",
+          "page": 1,
+          "score": 15.8311
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 1,
+          "score": 15.7618
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 8,
+          "score": 15.6388
+        },
+        {
+          "pdf": "bert.pdf",
+          "page": 3,
+          "score": 15.4845
+        }
+      ],
+      "top1_decisiveness": 0.11414704414935806
+    },
+    {
+      "id": "attn-num-heads",
+      "tags": [
+        "text",
+        "table"
+      ],
+      "gold_rank": 1,
+      "top1": {
+        "pdf": "attention.pdf",
+        "page": 5
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "attention.pdf",
+          "page": 5,
+          "score": 14.6488
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 9,
+          "score": 13.7678
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 3,
+          "score": 13.3567
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 3,
+          "score": 12.9934
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 8,
+          "score": 12.9386
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 14,
+          "score": 12.7043
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 20,
+          "score": 12.1336
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 4,
+          "score": 12.0605
+        },
+        {
+          "pdf": "donut.pdf",
+          "page": 4,
+          "score": 11.8183
+        },
+        {
+          "pdf": "albert.pdf",
+          "page": 3,
+          "score": 11.7645
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 2,
+          "score": 11.7581
+        },
+        {
+          "pdf": "albert.pdf",
+          "page": 2,
+          "score": 11.7182
+        }
+      ],
+      "top1_decisiveness": 0.09744869090805189
+    },
+    {
+      "id": "attn-dff",
+      "tags": [
+        "text",
+        "table"
+      ],
+      "gold_rank": 1,
+      "top1": {
+        "pdf": "attention.pdf",
+        "page": 5
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "attention.pdf",
+          "page": 5,
+          "score": 20.2205
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 3,
+          "score": 17.2799
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 8,
+          "score": 16.2769
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 9,
+          "score": 16.1418
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 3,
+          "score": 15.9801
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 18,
+          "score": 15.7539
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 4,
+          "score": 15.3464
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 4,
+          "score": 15.0772
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 9,
+          "score": 15.0682
+        },
+        {
+          "pdf": "albert.pdf",
+          "page": 4,
+          "score": 14.7853
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 3,
+          "score": 14.6598
+        },
+        {
+          "pdf": "albert.pdf",
+          "page": 3,
+          "score": 14.5683
+        }
+      ],
+      "top1_decisiveness": 0.10858086771117696
+    },
+    {
+      "id": "attn-encoder-layers",
+      "tags": [
+        "text"
+      ],
+      "gold_rank": 1,
+      "top1": {
+        "pdf": "attention.pdf",
+        "page": 3
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "attention.pdf",
+          "page": 3,
+          "score": 16.2243
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 3,
+          "score": 15.3197
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 5,
+          "score": 14.5009
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 18,
+          "score": 13.6325
+        },
+        {
+          "pdf": "donut.pdf",
+          "page": 4,
+          "score": 13.3647
+        },
+        {
+          "pdf": "albert.pdf",
+          "page": 2,
+          "score": 12.5086
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 9,
+          "score": 12.5027
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 8,
+          "score": 12.3377
+        },
+        {
+          "pdf": "bert.pdf",
+          "page": 4,
+          "score": 12.2909
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 4,
+          "score": 12.262
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 13,
+          "score": 12.2414
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 10,
+          "score": 12.1419
+        }
+      ],
+      "top1_decisiveness": 0.10351202426167472
+    },
+    {
+      "id": "attn-big-params",
+      "tags": [
+        "table"
+      ],
+      "gold_rank": 2,
+      "top1": {
+        "pdf": "attention.pdf",
+        "page": 8
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "attention.pdf",
+          "page": 8,
+          "score": 14.431
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 9,
+          "score": 14.2168
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 16,
+          "score": 13.3349
+        },
+        {
+          "pdf": "bert.pdf",
+          "page": 3,
+          "score": 12.9139
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 8,
+          "score": 12.6847
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 16,
+          "score": 12.5553
+        },
+        {
+          "pdf": "bert.pdf",
+          "page": 13,
+          "score": 12.5193
+        },
+        {
+          "pdf": "albert.pdf",
+          "page": 2,
+          "score": 12.3302
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 4,
+          "score": 12.2998
+        },
+        {
+          "pdf": "donut.pdf",
+          "page": 27,
+          "score": 12.2042
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 3,
+          "score": 12.1069
+        },
+        {
+          "pdf": "donut.pdf",
+          "page": 4,
+          "score": 12.0937
+        }
+      ],
+      "top1_decisiveness": 0.09442509990718573
+    },
+    {
+      "id": "attn-training-hardware",
+      "tags": [
+        "text"
+      ],
+      "gold_rank": 4,
+      "top1": {
+        "pdf": "vit.pdf",
+        "page": 5
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "vit.pdf",
+          "page": 5,
+          "score": 0.029762
+        },
+        {
+          "pdf": "donut.pdf",
+          "page": 27,
+          "score": 0.029236
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 2,
+          "score": 0.027588
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 1,
+          "score": 0.027425
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 7,
+          "score": 0.024853
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 8,
+          "score": 0.016393
+        },
+        {
+          "pdf": "siglip.pdf",
+          "page": 17,
+          "score": 0.016393
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 9,
+          "score": 0.016129
+        },
+        {
+          "pdf": "colbertv2.pdf",
+          "page": 17,
+          "score": 0.016129
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 16,
+          "score": 0.015873
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 10,
+          "score": 0.015625
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 7,
+          "score": 0.015625
+        }
+      ],
+      "top1_decisiveness": 0.12207312120709765
+    },
+    {
+      "id": "attn-encoder-sublayers",
+      "tags": [
+        "text",
+        "figure"
+      ],
+      "gold_rank": 1,
+      "top1": {
+        "pdf": "attention.pdf",
+        "page": 3
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "attention.pdf",
+          "page": 3,
+          "score": 16.3977
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 5,
+          "score": 15.6811
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 3,
+          "score": 15.0009
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 18,
+          "score": 13.9015
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 8,
+          "score": 13.7009
+        },
+        {
+          "pdf": "albert.pdf",
+          "page": 2,
+          "score": 13.5476
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 9,
+          "score": 13.3641
+        },
+        {
+          "pdf": "donut.pdf",
+          "page": 4,
+          "score": 13.3375
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 10,
+          "score": 13.1761
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 14,
+          "score": 13.0621
+        },
+        {
+          "pdf": "albert.pdf",
+          "page": 4,
+          "score": 13.0013
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 20,
+          "score": 12.7095
+        }
+      ],
+      "top1_decisiveness": 0.09935298078094955
+    },
+    {
+      "id": "attn-multihead-formula",
+      "tags": [
+        "formula"
+      ],
+      "gold_rank": 1,
+      "top1": {
+        "pdf": "attention.pdf",
+        "page": 5
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "attention.pdf",
+          "page": 5,
+          "score": 19.597
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 4,
+          "score": 16.7197
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 3,
+          "score": 16.3513
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 3,
+          "score": 14.7576
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 13,
+          "score": 14.3366
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 12,
+          "score": 14.1643
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 2,
+          "score": 14.0848
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 13,
+          "score": 14.0392
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 10,
+          "score": 13.902
+        },
+        {
+          "pdf": "e5.pdf",
+          "page": 14,
+          "score": 13.5297
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 2,
+          "score": 12.7657
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 3,
+          "score": 12.6795
+        }
+      ],
+      "top1_decisiveness": 0.11483697610415741
+    },
+    {
+      "id": "colpali-benchmark-name",
+      "tags": [
+        "text"
+      ],
+      "gold_rank": 1,
+      "top1": {
+        "pdf": "colpali.pdf",
+        "page": 1
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "colpali.pdf",
+          "page": 1,
+          "score": 18.1473
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 10,
+          "score": 17.3306
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 4,
+          "score": 17.33
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 1,
+          "score": 17.2971
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 3,
+          "score": 16.838
+        },
+        {
+          "pdf": "layoutlm.pdf",
+          "page": 3,
+          "score": 16.396
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 2,
+          "score": 16.2058
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 3,
+          "score": 16.0409
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 17,
+          "score": 15.8422
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 2,
+          "score": 15.3808
+        },
+        {
+          "pdf": "layoutlm.pdf",
+          "page": 5,
+          "score": 15.2693
+        },
+        {
+          "pdf": "donut.pdf",
+          "page": 3,
+          "score": 15.0695
+        }
+      ],
+      "top1_decisiveness": 0.09237350871381587
+    },
+    {
+      "id": "colpali-avg-ndcg",
+      "tags": [
+        "table"
+      ],
+      "gold_rank": 5,
+      "top1": {
+        "pdf": "colpali.pdf",
+        "page": 2
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "colpali.pdf",
+          "page": 2,
+          "score": 22.8013
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 10,
+          "score": 22.0097
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 9,
+          "score": 20.7795
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 21,
+          "score": 20.3722
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 7,
+          "score": 20.0647
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 9,
+          "score": 15.8336
+        },
+        {
+          "pdf": "e5.pdf",
+          "page": 6,
+          "score": 15.7668
+        },
+        {
+          "pdf": "colbertv2.pdf",
+          "page": 8,
+          "score": 15.2608
+        },
+        {
+          "pdf": "colbert.pdf",
+          "page": 1,
+          "score": 15.0819
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 46,
+          "score": 14.909
+        },
+        {
+          "pdf": "colbert.pdf",
+          "page": 9,
+          "score": 14.8463
+        },
+        {
+          "pdf": "colbertv2.pdf",
+          "page": 7,
+          "score": 14.7052
+        }
+      ],
+      "top1_decisiveness": 0.10947371941772269
+    },
+    {
+      "id": "colpali-indexing-speed",
+      "tags": [
+        "chart",
+        "figure"
+      ],
+      "gold_rank": 1,
+      "top1": {
+        "pdf": "colpali.pdf",
+        "page": 5
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "colpali.pdf",
+          "page": 5,
+          "score": 23.7908
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 2,
+          "score": 22.8509
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 1,
+          "score": 22.5602
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 19,
+          "score": 21.2647
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 18,
+          "score": 21.1001
+        },
+        {
+          "pdf": "colbert.pdf",
+          "page": 9,
+          "score": 16.8862
+        },
+        {
+          "pdf": "e5.pdf",
+          "page": 3,
+          "score": 16.2699
+        },
+        {
+          "pdf": "colbert.pdf",
+          "page": 3,
+          "score": 16.1567
+        },
+        {
+          "pdf": "colbert.pdf",
+          "page": 2,
+          "score": 16.008
+        },
+        {
+          "pdf": "colbert.pdf",
+          "page": 1,
+          "score": 15.6364
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 8,
+          "score": 15.6122
+        },
+        {
+          "pdf": "colbert.pdf",
+          "page": 5,
+          "score": 15.5085
+        }
+      ],
+      "top1_decisiveness": 0.10824583127034125
+    },
+    {
+      "id": "colpali-query-latency",
+      "tags": [
+        "text"
+      ],
+      "gold_rank": 1,
+      "top1": {
+        "pdf": "colpali.pdf",
+        "page": 8
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "colpali.pdf",
+          "page": 8,
+          "score": 17.8495
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 10,
+          "score": 16.761
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 5,
+          "score": 16.2119
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 18,
+          "score": 16.191
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 9,
+          "score": 16.031
+        },
+        {
+          "pdf": "colbert.pdf",
+          "page": 3,
+          "score": 14.9561
+        },
+        {
+          "pdf": "e5.pdf",
+          "page": 3,
+          "score": 14.3805
+        },
+        {
+          "pdf": "colbert.pdf",
+          "page": 2,
+          "score": 14.3503
+        },
+        {
+          "pdf": "colbertv2.pdf",
+          "page": 3,
+          "score": 13.488
+        },
+        {
+          "pdf": "colbertv2.pdf",
+          "page": 2,
+          "score": 13.4414
+        },
+        {
+          "pdf": "colbertv2.pdf",
+          "page": 17,
+          "score": 13.4031
+        },
+        {
+          "pdf": "colbertv2.pdf",
+          "page": 19,
+          "score": 13.3771
+        }
+      ],
+      "top1_decisiveness": 0.09999180416488837
+    },
+    {
+      "id": "colpali-embedding-dim",
+      "tags": [
+        "text"
+      ],
+      "gold_rank": 2,
+      "top1": {
+        "pdf": "colpali.pdf",
+        "page": 22
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "colpali.pdf",
+          "page": 22,
+          "score": 18.1572
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 8,
+          "score": 17.8221
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 23,
+          "score": 17.6244
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 9,
+          "score": 17.4219
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 7,
+          "score": 17.185
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 1,
+          "score": 16.0141
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 44,
+          "score": 15.9354
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 2,
+          "score": 15.8706
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 45,
+          "score": 15.3195
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 3,
+          "score": 15.11
+        }
+      ],
+      "top1_decisiveness": 0.1092835136362773
+    },
+    {
+      "id": "colpali-memory-footprint",
+      "tags": [
+        "text"
+      ],
+      "gold_rank": 2,
+      "top1": {
+        "pdf": "colpali.pdf",
+        "page": 18
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "colpali.pdf",
+          "page": 18,
+          "score": 15.553
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 8,
+          "score": 15.2497
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 2,
+          "score": 15.1079
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 5,
+          "score": 14.5914
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 1,
+          "score": 14.2481
+        },
+        {
+          "pdf": "colbertv2.pdf",
+          "page": 7,
+          "score": 11.4206
+        },
+        {
+          "pdf": "colbert.pdf",
+          "page": 9,
+          "score": 11.3132
+        },
+        {
+          "pdf": "colbertv2.pdf",
+          "page": 10,
+          "score": 11.163
+        },
+        {
+          "pdf": "e5.pdf",
+          "page": 3,
+          "score": 11.0608
+        },
+        {
+          "pdf": "colbert.pdf",
+          "page": 6,
+          "score": 10.5343
+        },
+        {
+          "pdf": "colbert.pdf",
+          "page": 1,
+          "score": 10.4992
+        },
+        {
+          "pdf": "colbertv2.pdf",
+          "page": 18,
+          "score": 10.3652
+        }
+      ],
+      "top1_decisiveness": 0.1040309718229439
+    },
+    {
+      "id": "colpali-token-pooling",
+      "tags": [
+        "text"
+      ],
+      "gold_rank": 3,
+      "top1": {
+        "pdf": "colpali.pdf",
+        "page": 2
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "colpali.pdf",
+          "page": 2,
+          "score": 0.030769
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 9,
+          "score": 0.02895
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 8,
+          "score": 0.028893
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 5,
+          "score": 0.028382
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 9,
+          "score": 0.025528
+        },
+        {
+          "pdf": "colbertv2.pdf",
+          "page": 10,
+          "score": 0.023953
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 8,
+          "score": 0.016393
+        },
+        {
+          "pdf": "dpr.pdf",
+          "page": 9,
+          "score": 0.016129
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 6,
+          "score": 0.015873
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 1,
+          "score": 0.015873
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 2,
+          "score": 0.015625
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 7,
+          "score": 0.015152
+        }
+      ],
+      "top1_decisiveness": 0.12082500392907945
+    },
+    {
+      "id": "colpali-llm-component",
+      "tags": [
+        "text"
+      ],
+      "gold_rank": 3,
+      "top1": {
+        "pdf": "colpali.pdf",
+        "page": 8
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "colpali.pdf",
+          "page": 8,
+          "score": 21.7747
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 2,
+          "score": 21.1716
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 7,
+          "score": 21.1489
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 1,
+          "score": 20.8404
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 23,
+          "score": 20.5204
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 6,
+          "score": 19.6922
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 3,
+          "score": 19.5654
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 4,
+          "score": 19.5472
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 3,
+          "score": 19.5092
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 22,
+          "score": 19.3064
+        }
+      ],
+      "top1_decisiveness": 0.10739884432962102
+    },
+    {
+      "id": "sales-q3-revenue",
+      "tags": [
+        "chart"
+      ],
+      "gold_rank": 1,
+      "top1": {
+        "pdf": "sales_report.pdf",
+        "page": 1
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "sales_report.pdf",
+          "page": 1,
+          "score": 13.5956
+        },
+        {
+          "pdf": "e5.pdf",
+          "page": 14,
+          "score": 9.2548
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 4,
+          "score": 9.2449
+        },
+        {
+          "pdf": "albert.pdf",
+          "page": 12,
+          "score": 9.1722
+        },
+        {
+          "pdf": "docvqa.pdf",
+          "page": 23,
+          "score": 9.0364
+        },
+        {
+          "pdf": "colbertv2.pdf",
+          "page": 18,
+          "score": 8.8409
+        },
+        {
+          "pdf": "docvqa.pdf",
+          "page": 6,
+          "score": 8.8151
+        },
+        {
+          "pdf": "e5.pdf",
+          "page": 9,
+          "score": 8.729
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 23,
+          "score": 8.5983
+        },
+        {
+          "pdf": "docvqa.pdf",
+          "page": 2,
+          "score": 8.4803
+        },
+        {
+          "pdf": "colbertv2.pdf",
+          "page": 7,
+          "score": 8.4578
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 59,
+          "score": 8.4184
+        }
+      ],
+      "top1_decisiveness": 0.13230075361134466
+    },
+    {
+      "id": "sales-q2-revenue",
+      "tags": [
+        "chart",
+        "hard"
+      ],
+      "gold_rank": 1,
+      "top1": {
+        "pdf": "sales_report.pdf",
+        "page": 1
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "sales_report.pdf",
+          "page": 1,
+          "score": 13.5558
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 4,
+          "score": 9.5383
+        },
+        {
+          "pdf": "e5.pdf",
+          "page": 14,
+          "score": 9.3695
+        },
+        {
+          "pdf": "albert.pdf",
+          "page": 12,
+          "score": 9.2481
+        },
+        {
+          "pdf": "colbertv2.pdf",
+          "page": 18,
+          "score": 9.0115
+        },
+        {
+          "pdf": "docvqa.pdf",
+          "page": 23,
+          "score": 8.9826
+        },
+        {
+          "pdf": "e5.pdf",
+          "page": 9,
+          "score": 8.7628
+        },
+        {
+          "pdf": "docvqa.pdf",
+          "page": 6,
+          "score": 8.7055
+        },
+        {
+          "pdf": "colbertv2.pdf",
+          "page": 9,
+          "score": 8.4902
+        },
+        {
+          "pdf": "docvqa.pdf",
+          "page": 1,
+          "score": 8.441
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 12,
+          "score": 8.432
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 23,
+          "score": 8.4264
+        }
+      ],
+      "top1_decisiveness": 0.13119531240134957
+    },
+    {
+      "id": "sales-north-growth",
+      "tags": [
+        "table"
+      ],
+      "gold_rank": 1,
+      "top1": {
+        "pdf": "sales_report.pdf",
+        "page": 2
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "sales_report.pdf",
+          "page": 2,
+          "score": 19.8471
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 26,
+          "score": 11.7092
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 14,
+          "score": 10.9907
+        },
+        {
+          "pdf": "colbertv2.pdf",
+          "page": 11,
+          "score": 10.6243
+        },
+        {
+          "pdf": "rag.pdf",
+          "page": 11,
+          "score": 10.6158
+        },
+        {
+          "pdf": "e5.pdf",
+          "page": 13,
+          "score": 10.6098
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 24,
+          "score": 10.5677
+        },
+        {
+          "pdf": "dpr.pdf",
+          "page": 13,
+          "score": 10.5465
+        },
+        {
+          "pdf": "colbertv2.pdf",
+          "page": 12,
+          "score": 10.4878
+        },
+        {
+          "pdf": "docvqa.pdf",
+          "page": 17,
+          "score": 10.4872
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 15,
+          "score": 10.4718
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 17,
+          "score": 10.4603
+        }
+      ],
+      "top1_decisiveness": 0.16817909698718728
+    },
+    {
+      "id": "sales-east-growth",
+      "tags": [
+        "table",
+        "hard"
+      ],
+      "gold_rank": 1,
+      "top1": {
+        "pdf": "sales_report.pdf",
+        "page": 2
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "sales_report.pdf",
+          "page": 2,
+          "score": 18.9706
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 26,
+          "score": 11.5966
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 23,
+          "score": 11.1687
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 11,
+          "score": 10.8285
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 14,
+          "score": 10.7332
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 17,
+          "score": 10.6933
+        },
+        {
+          "pdf": "docvqa.pdf",
+          "page": 20,
+          "score": 10.5542
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 15,
+          "score": 10.5342
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 10,
+          "score": 10.4972
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 9,
+          "score": 10.4794
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 24,
+          "score": 10.4783
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 20,
+          "score": 10.4635
+        }
+      ],
+      "top1_decisiveness": 0.15755853382821305
+    },
+    {
+      "id": "sales-highest-growth-region",
+      "tags": [
+        "table",
+        "hard"
+      ],
+      "gold_rank": 1,
+      "top1": {
+        "pdf": "sales_report.pdf",
+        "page": 2
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "sales_report.pdf",
+          "page": 2,
+          "score": 16.9094
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 26,
+          "score": 10.5452
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 14,
+          "score": 9.059
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 12,
+          "score": 8.9703
+        },
+        {
+          "pdf": "e5.pdf",
+          "page": 9,
+          "score": 8.9246
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 1,
+          "score": 8.9171
+        },
+        {
+          "pdf": "rag.pdf",
+          "page": 12,
+          "score": 8.8476
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 13,
+          "score": 8.8427
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 15,
+          "score": 8.7895
+        },
+        {
+          "pdf": "colbert.pdf",
+          "page": 7,
+          "score": 8.771
+        },
+        {
+          "pdf": "donut.pdf",
+          "page": 17,
+          "score": 8.7487
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 15,
+          "score": 8.7056
+        }
+      ],
+      "top1_decisiveness": 0.17045433831352316
+    },
+    {
+      "id": "attn-table1-recurrent-sequential-ops",
+      "tags": [
+        "table",
+        "hard"
+      ],
+      "gold_rank": 1,
+      "top1": {
+        "pdf": "attention.pdf",
+        "page": 6
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "attention.pdf",
+          "page": 6,
+          "score": 25.0384
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 10,
+          "score": 18.4372
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 7,
+          "score": 18.2596
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 3,
+          "score": 17.6771
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 4,
+          "score": 17.4899
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 2,
+          "score": 17.431
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 7,
+          "score": 17.2729
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 5,
+          "score": 17.2603
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 8,
+          "score": 17.1041
+        },
+        {
+          "pdf": "albert.pdf",
+          "page": 15,
+          "score": 16.623
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 20,
+          "score": 16.3547
+        },
+        {
+          "pdf": "albert.pdf",
+          "page": 16,
+          "score": 16.2968
+        }
+      ],
+      "top1_decisiveness": 0.12274561787718424
+    },
+    {
+      "id": "attn-posenc-geometric-progression",
+      "tags": [
+        "text",
+        "formula",
+        "hard"
+      ],
+      "gold_rank": 1,
+      "top1": {
+        "pdf": "attention.pdf",
+        "page": 6
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "attention.pdf",
+          "page": 6,
+          "score": 17.4452
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 5,
+          "score": 15.078
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 9,
+          "score": 14.2724
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 18,
+          "score": 14.1263
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 4,
+          "score": 13.9912
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 2,
+          "score": 13.7867
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 17,
+          "score": 13.4143
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 3,
+          "score": 13.2539
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 7,
+          "score": 13.0619
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 12,
+          "score": 13.0338
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 7,
+          "score": 12.91
+        },
+        {
+          "pdf": "e5.pdf",
+          "page": 15,
+          "score": 12.7854
+        }
+      ],
+      "top1_decisiveness": 0.1068064433021824
+    },
+    {
+      "id": "attn-warmup-steps-4000",
+      "tags": [
+        "text",
+        "hard"
+      ],
+      "gold_rank": 1,
+      "top1": {
+        "pdf": "attention.pdf",
+        "page": 7
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "attention.pdf",
+          "page": 7,
+          "score": 20.1349
+        },
+        {
+          "pdf": "e5.pdf",
+          "page": 15,
+          "score": 17.7379
+        },
+        {
+          "pdf": "albert.pdf",
+          "page": 17,
+          "score": 16.0987
+        },
+        {
+          "pdf": "e5.pdf",
+          "page": 5,
+          "score": 15.6249
+        },
+        {
+          "pdf": "siglip.pdf",
+          "page": 15,
+          "score": 15.3974
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 6,
+          "score": 15.2885
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 14,
+          "score": 14.5821
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 13,
+          "score": 14.2022
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 6,
+          "score": 14.1936
+        },
+        {
+          "pdf": "bert.pdf",
+          "page": 14,
+          "score": 13.9606
+        },
+        {
+          "pdf": "bert.pdf",
+          "page": 13,
+          "score": 13.888
+        },
+        {
+          "pdf": "siglip.pdf",
+          "page": 6,
+          "score": 13.8633
+        }
+      ],
+      "top1_decisiveness": 0.11238181916210474
+    },
+    {
+      "id": "attn-adam-beta2",
+      "tags": [
+        "text",
+        "hard"
+      ],
+      "gold_rank": 1,
+      "top1": {
+        "pdf": "attention.pdf",
+        "page": 7
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "attention.pdf",
+          "page": 7,
+          "score": 17.0357
+        },
+        {
+          "pdf": "siglip.pdf",
+          "page": 6,
+          "score": 14.2482
+        },
+        {
+          "pdf": "bert.pdf",
+          "page": 13,
+          "score": 13.841
+        },
+        {
+          "pdf": "siglip.pdf",
+          "page": 8,
+          "score": 13.2553
+        },
+        {
+          "pdf": "siglip.pdf",
+          "page": 14,
+          "score": 12.7581
+        },
+        {
+          "pdf": "siglip.pdf",
+          "page": 10,
+          "score": 12.638
+        },
+        {
+          "pdf": "donut.pdf",
+          "page": 8,
+          "score": 12.4891
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 16,
+          "score": 11.9487
+        },
+        {
+          "pdf": "donut.pdf",
+          "page": 25,
+          "score": 11.6499
+        },
+        {
+          "pdf": "e5.pdf",
+          "page": 16,
+          "score": 11.6379
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 2,
+          "score": 11.2711
+        },
+        {
+          "pdf": "albert.pdf",
+          "page": 17,
+          "score": 11.2568
+        }
+      ],
+      "top1_decisiveness": 0.11467781517800169
+    },
+    {
+      "id": "attn-ende-vocab-37000",
+      "tags": [
+        "text",
+        "hard"
+      ],
+      "gold_rank": 1,
+      "top1": {
+        "pdf": "attention.pdf",
+        "page": 7
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "attention.pdf",
+          "page": 7,
+          "score": 27.3682
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 9,
+          "score": 20.9205
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 8,
+          "score": 20.542
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 10,
+          "score": 19.6769
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 1,
+          "score": 19.4749
+        },
+        {
+          "pdf": "bert.pdf",
+          "page": 5,
+          "score": 17.1945
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 7,
+          "score": 17.0537
+        },
+        {
+          "pdf": "splade.pdf",
+          "page": 2,
+          "score": 17.0089
+        },
+        {
+          "pdf": "bert.pdf",
+          "page": 15,
+          "score": 16.9926
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 1,
+          "score": 16.992
+        },
+        {
+          "pdf": "bert.pdf",
+          "page": 4,
+          "score": 16.8822
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 22,
+          "score": 16.842
+        }
+      ],
+      "top1_decisiveness": 0.12857393673333536
+    },
+    {
+      "id": "attn-table2-base-flops",
+      "tags": [
+        "table",
+        "hard"
+      ],
+      "gold_rank": 1,
+      "top1": {
+        "pdf": "attention.pdf",
+        "page": 8
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "attention.pdf",
+          "page": 8,
+          "score": 22.2595
+        },
+        {
+          "pdf": "splade.pdf",
+          "page": 4,
+          "score": 18.5378
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 9,
+          "score": 17.3826
+        },
+        {
+          "pdf": "colbert.pdf",
+          "page": 8,
+          "score": 17.1091
+        },
+        {
+          "pdf": "layoutlm.pdf",
+          "page": 6,
+          "score": 16.829
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 10,
+          "score": 16.7718
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 16,
+          "score": 16.5164
+        },
+        {
+          "pdf": "bert.pdf",
+          "page": 5,
+          "score": 16.4861
+        },
+        {
+          "pdf": "colbert.pdf",
+          "page": 7,
+          "score": 16.456
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 19,
+          "score": 16.418
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 18,
+          "score": 16.3809
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 20,
+          "score": 16.3504
+        }
+      ],
+      "top1_decisiveness": 0.11055090191509492
+    },
+    {
+      "id": "attn-table2-convs2s-enfr-bleu",
+      "tags": [
+        "table",
+        "hard"
+      ],
+      "gold_rank": 1,
+      "top1": {
+        "pdf": "attention.pdf",
+        "page": 8
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "attention.pdf",
+          "page": 8,
+          "score": 27.1997
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 9,
+          "score": 19.2087
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 2,
+          "score": 18.4872
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 1,
+          "score": 18.3919
+        },
+        {
+          "pdf": "rag.pdf",
+          "page": 6,
+          "score": 18.2443
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 7,
+          "score": 17.9125
+        },
+        {
+          "pdf": "rag.pdf",
+          "page": 8,
+          "score": 17.7079
+        },
+        {
+          "pdf": "colbert.pdf",
+          "page": 7,
+          "score": 17.487
+        },
+        {
+          "pdf": "e5.pdf",
+          "page": 7,
+          "score": 17.197
+        },
+        {
+          "pdf": "albert.pdf",
+          "page": 4,
+          "score": 17.1097
+        },
+        {
+          "pdf": "bert.pdf",
+          "page": 5,
+          "score": 16.989
+        },
+        {
+          "pdf": "e5.pdf",
+          "page": 16,
+          "score": 16.9266
+        }
+      ],
+      "top1_decisiveness": 0.13103884646305272
+    },
+    {
+      "id": "attn-table2-gnmt-ensemble-ende-bleu",
+      "tags": [
+        "table",
+        "hard"
+      ],
+      "gold_rank": 1,
+      "top1": {
+        "pdf": "attention.pdf",
+        "page": 8
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "attention.pdf",
+          "page": 8,
+          "score": 26.007
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 9,
+          "score": 18.8011
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 1,
+          "score": 17.2431
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 10,
+          "score": 17.0203
+        },
+        {
+          "pdf": "rag.pdf",
+          "page": 6,
+          "score": 16.9962
+        },
+        {
+          "pdf": "splade.pdf",
+          "page": 4,
+          "score": 16.7706
+        },
+        {
+          "pdf": "bert.pdf",
+          "page": 6,
+          "score": 16.6949
+        },
+        {
+          "pdf": "rag.pdf",
+          "page": 8,
+          "score": 16.6864
+        },
+        {
+          "pdf": "bert.pdf",
+          "page": 7,
+          "score": 16.6788
+        },
+        {
+          "pdf": "albert.pdf",
+          "page": 10,
+          "score": 16.678
+        },
+        {
+          "pdf": "bert.pdf",
+          "page": 14,
+          "score": 16.5901
+        },
+        {
+          "pdf": "bert.pdf",
+          "page": 5,
+          "score": 16.5819
+        }
+      ],
+      "top1_decisiveness": 0.13134251602117697
+    },
+    {
+      "id": "attn-table3-single-head-bleu",
+      "tags": [
+        "table",
+        "hard"
+      ],
+      "gold_rank": 1,
+      "top1": {
+        "pdf": "attention.pdf",
+        "page": 9
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "attention.pdf",
+          "page": 9,
+          "score": 20.0165
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 8,
+          "score": 17.3609
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 13,
+          "score": 17.0109
+        },
+        {
+          "pdf": "rag.pdf",
+          "page": 8,
+          "score": 16.938
+        },
+        {
+          "pdf": "bert.pdf",
+          "page": 7,
+          "score": 16.8712
+        },
+        {
+          "pdf": "albert.pdf",
+          "page": 6,
+          "score": 16.4729
+        },
+        {
+          "pdf": "rag.pdf",
+          "page": 5,
+          "score": 16.181
+        },
+        {
+          "pdf": "albert.pdf",
+          "page": 9,
+          "score": 16.1612
+        },
+        {
+          "pdf": "rag.pdf",
+          "page": 6,
+          "score": 15.9334
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 5,
+          "score": 15.8014
+        },
+        {
+          "pdf": "albert.pdf",
+          "page": 10,
+          "score": 15.7204
+        },
+        {
+          "pdf": "dpr.pdf",
+          "page": 8,
+          "score": 15.671
+        }
+      ],
+      "top1_decisiveness": 0.10155064200042087
+    },
+    {
+      "id": "attn-table3-big-ppl",
+      "tags": [
+        "table",
+        "hard"
+      ],
+      "gold_rank": 1,
+      "top1": {
+        "pdf": "attention.pdf",
+        "page": 9
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "attention.pdf",
+          "page": 9,
+          "score": 20.3052
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 8,
+          "score": 17.227
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 7,
+          "score": 16.8005
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 6,
+          "score": 16.5579
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 8,
+          "score": 16.5173
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 13,
+          "score": 16.3311
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 7,
+          "score": 16.1888
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 13,
+          "score": 15.9792
+        },
+        {
+          "pdf": "albert.pdf",
+          "page": 5,
+          "score": 15.8343
+        },
+        {
+          "pdf": "e5.pdf",
+          "page": 7,
+          "score": 15.8009
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 14,
+          "score": 15.7839
+        },
+        {
+          "pdf": "dpr.pdf",
+          "page": 12,
+          "score": 15.7229
+        }
+      ],
+      "top1_decisiveness": 0.10397834758298143
+    },
+    {
+      "id": "attn-table3-dk16-bleu",
+      "tags": [
+        "table",
+        "hard"
+      ],
+      "gold_rank": 1,
+      "top1": {
+        "pdf": "attention.pdf",
+        "page": 9
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "attention.pdf",
+          "page": 9,
+          "score": 22.5459
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 4,
+          "score": 18.2758
+        },
+        {
+          "pdf": "rag.pdf",
+          "page": 5,
+          "score": 18.0403
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 5,
+          "score": 17.8885
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 13,
+          "score": 17.745
+        },
+        {
+          "pdf": "colbert.pdf",
+          "page": 8,
+          "score": 17.6834
+        },
+        {
+          "pdf": "splade.pdf",
+          "page": 3,
+          "score": 17.321
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 6,
+          "score": 17.2543
+        },
+        {
+          "pdf": "albert.pdf",
+          "page": 6,
+          "score": 17.1449
+        },
+        {
+          "pdf": "colbert.pdf",
+          "page": 5,
+          "score": 17.0116
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 8,
+          "score": 16.9955
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 6,
+          "score": 16.9853
+        }
+      ],
+      "top1_decisiveness": 0.1075861575978925
+    },
+    {
+      "id": "attn-table4-transformer-semisup-f1",
+      "tags": [
+        "table",
+        "hard"
+      ],
+      "gold_rank": 1,
+      "top1": {
+        "pdf": "attention.pdf",
+        "page": 10
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "attention.pdf",
+          "page": 10,
+          "score": 25.9057
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 9,
+          "score": 21.751
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 8,
+          "score": 18.8774
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 16,
+          "score": 18.5787
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 14,
+          "score": 18.5215
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 7,
+          "score": 18.2142
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 13,
+          "score": 18.1695
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 6,
+          "score": 18.1075
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 7,
+          "score": 18.0958
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 14,
+          "score": 17.9856
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 8,
+          "score": 17.9247
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 8,
+          "score": 17.8037
+        }
+      ],
+      "top1_decisiveness": 0.11758452382186745
+    },
+    {
+      "id": "attn-parsing-beam-size",
+      "tags": [
+        "text",
+        "hard"
+      ],
+      "gold_rank": 2,
+      "top1": {
+        "pdf": "attention.pdf",
+        "page": 9
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "attention.pdf",
+          "page": 9,
+          "score": 16.0009
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 10,
+          "score": 15.2026
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 8,
+          "score": 15.1132
+        },
+        {
+          "pdf": "donut.pdf",
+          "page": 28,
+          "score": 13.0153
+        },
+        {
+          "pdf": "rag.pdf",
+          "page": 17,
+          "score": 12.5175
+        },
+        {
+          "pdf": "albert.pdf",
+          "page": 6,
+          "score": 12.4806
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 13,
+          "score": 12.4316
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 12,
+          "score": 12.428
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 7,
+          "score": 12.306
+        },
+        {
+          "pdf": "albert.pdf",
+          "page": 5,
+          "score": 12.2961
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 55,
+          "score": 12.2222
+        },
+        {
+          "pdf": "bert.pdf",
+          "page": 13,
+          "score": 12.1909
+        }
+      ],
+      "top1_decisiveness": 0.10263996667781711
+    },
+    {
+      "id": "colpali-ndcg-ai-task",
+      "tags": [
+        "table",
+        "hard"
+      ],
+      "gold_rank": 3,
+      "top1": {
+        "pdf": "colpali.pdf",
+        "page": 2
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "colpali.pdf",
+          "page": 2,
+          "score": 26.6138
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 10,
+          "score": 25.7673
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 7,
+          "score": 25.0353
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 21,
+          "score": 24.6275
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 9,
+          "score": 24.2497
+        },
+        {
+          "pdf": "colbertv2.pdf",
+          "page": 7,
+          "score": 20.859
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 9,
+          "score": 20.672
+        },
+        {
+          "pdf": "colbertv2.pdf",
+          "page": 8,
+          "score": 19.9581
+        },
+        {
+          "pdf": "colbert.pdf",
+          "page": 1,
+          "score": 19.6509
+        },
+        {
+          "pdf": "e5.pdf",
+          "page": 6,
+          "score": 19.5615
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 8,
+          "score": 19.3953
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 24,
+          "score": 19.1586
+        }
+      ],
+      "top1_decisiveness": 0.10126562117642275
+    },
+    {
+      "id": "colpali-ndcg-tabfquad",
+      "tags": [
+        "table",
+        "hard"
+      ],
+      "gold_rank": 4,
+      "top1": {
+        "pdf": "colpali.pdf",
+        "page": 10
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "colpali.pdf",
+          "page": 10,
+          "score": 28.0833
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 9,
+          "score": 27.807
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 21,
+          "score": 27.4299
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 7,
+          "score": 25.4253
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 4,
+          "score": 25.2345
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 46,
+          "score": 20.8294
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 54,
+          "score": 20.6715
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 52,
+          "score": 20.6577
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 9,
+          "score": 20.4327
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 24,
+          "score": 20.3506
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 7,
+          "score": 20.3354
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 5,
+          "score": 20.3227
+        }
+      ],
+      "top1_decisiveness": 0.10222315199084445
+    },
+    {
+      "id": "colpali-late-interaction-maxsim",
+      "tags": [
+        "formula",
+        "hard"
+      ],
+      "gold_rank": 1,
+      "top1": {
+        "pdf": "colpali.pdf",
+        "page": 6
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "colpali.pdf",
+          "page": 6,
+          "score": 22.9681
+        },
+        {
+          "pdf": "colbert.pdf",
+          "page": 5,
+          "score": 18.3559
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 2,
+          "score": 18.1377
+        },
+        {
+          "pdf": "colbert.pdf",
+          "page": 2,
+          "score": 17.7897
+        },
+        {
+          "pdf": "colbert.pdf",
+          "page": 4,
+          "score": 17.7142
+        },
+        {
+          "pdf": "colbertv2.pdf",
+          "page": 4,
+          "score": 17.4448
+        },
+        {
+          "pdf": "colbertv2.pdf",
+          "page": 3,
+          "score": 17.3197
+        },
+        {
+          "pdf": "colbert.pdf",
+          "page": 3,
+          "score": 17.2557
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 10,
+          "score": 17.0167
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 23,
+          "score": 16.9675
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 8,
+          "score": 16.7836
+        },
+        {
+          "pdf": "colbertv2.pdf",
+          "page": 2,
+          "score": 16.7745
+        }
+      ],
+      "top1_decisiveness": 0.11030266625344114
+    },
+    {
+      "id": "colpali-training-synthetic-fraction",
+      "tags": [
+        "text",
+        "hard"
+      ],
+      "gold_rank": 1,
+      "top1": {
+        "pdf": "colpali.pdf",
+        "page": 6
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "colpali.pdf",
+          "page": 6,
+          "score": 0.030077
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 17,
+          "score": 0.028665
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 22,
+          "score": 0.027047
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 37,
+          "score": 0.026688
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 38,
+          "score": 0.02425
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 18,
+          "score": 0.016393
+        },
+        {
+          "pdf": "donut.pdf",
+          "page": 5,
+          "score": 0.016393
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 10,
+          "score": 0.016129
+        },
+        {
+          "pdf": "docvqa.pdf",
+          "page": 23,
+          "score": 0.016129
+        },
+        {
+          "pdf": "docvqa.pdf",
+          "page": 5,
+          "score": 0.015873
+        },
+        {
+          "pdf": "docvqa.pdf",
+          "page": 11,
+          "score": 0.015625
+        },
+        {
+          "pdf": "e5.pdf",
+          "page": 2,
+          "score": 0.015385
+        }
+      ],
+      "top1_decisiveness": 0.12579530643370732
+    },
+    {
+      "id": "colpali-tatdqa-corpus-size",
+      "tags": [
+        "table",
+        "hard"
+      ],
+      "gold_rank": 1,
+      "top1": {
+        "pdf": "colpali.pdf",
+        "page": 4
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "colpali.pdf",
+          "page": 4,
+          "score": 21.0338
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 16,
+          "score": 20.5866
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 18,
+          "score": 19.8046
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 21,
+          "score": 16.665
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 52,
+          "score": 16.5639
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 58,
+          "score": 16.3952
+        },
+        {
+          "pdf": "dpr.pdf",
+          "page": 4,
+          "score": 16.2777
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 7,
+          "score": 16.111
+        },
+        {
+          "pdf": "colbertv2.pdf",
+          "page": 8,
+          "score": 16.0875
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 37,
+          "score": 16.0542
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 56,
+          "score": 16.0464
+        },
+        {
+          "pdf": "docvqa.pdf",
+          "page": 4,
+          "score": 15.9904
+        }
+      ],
+      "top1_decisiveness": 0.1027764198987384
+    },
+    {
+      "id": "colpali-french-vidore-tasks",
+      "tags": [
+        "table",
+        "hard"
+      ],
+      "gold_rank": 1,
+      "top1": {
+        "pdf": "colpali.pdf",
+        "page": 4
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "colpali.pdf",
+          "page": 4,
+          "score": 14.9457
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 7,
+          "score": 13.3217
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 2,
+          "score": 12.9073
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 24,
+          "score": 12.8281
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 10,
+          "score": 12.7594
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 35,
+          "score": 11.5279
+        },
+        {
+          "pdf": "docvqa.pdf",
+          "page": 4,
+          "score": 11.2502
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 11,
+          "score": 11.2047
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 33,
+          "score": 11.1908
+        },
+        {
+          "pdf": "donut.pdf",
+          "page": 6,
+          "score": 11.1801
+        },
+        {
+          "pdf": "donut.pdf",
+          "page": 12,
+          "score": 11.1415
+        },
+        {
+          "pdf": "docvqa.pdf",
+          "page": 2,
+          "score": 11.1364
+        }
+      ],
+      "top1_decisiveness": 0.10474404028048474
+    },
+    {
+      "id": "colpali-scrapped-pdfs-split",
+      "tags": [
+        "table",
+        "hard"
+      ],
+      "gold_rank": 1,
+      "top1": {
+        "pdf": "colpali.pdf",
+        "page": 18
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "colpali.pdf",
+          "page": 18,
+          "score": 0.032787
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 5,
+          "score": 0.016129
+        },
+        {
+          "pdf": "e5.pdf",
+          "page": 9,
+          "score": 0.016129
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 6,
+          "score": 0.015873
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 23,
+          "score": 0.015873
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 8,
+          "score": 0.015625
+        },
+        {
+          "pdf": "rag.pdf",
+          "page": 13,
+          "score": 0.015625
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 10,
+          "score": 0.015385
+        },
+        {
+          "pdf": "rag.pdf",
+          "page": 15,
+          "score": 0.015385
+        },
+        {
+          "pdf": "albert.pdf",
+          "page": 13,
+          "score": 0.015152
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 15,
+          "score": 0.014925
+        },
+        {
+          "pdf": "albert.pdf",
+          "page": 14,
+          "score": 0.014706
+        }
+      ],
+      "top1_decisiveness": 0.2008521973888088
+    },
+    {
+      "id": "colpali-bge-m3-embedding-size",
+      "tags": [
+        "table",
+        "hard"
+      ],
+      "gold_rank": 1,
+      "top1": {
+        "pdf": "colpali.pdf",
+        "page": 18
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "colpali.pdf",
+          "page": 18,
+          "score": 27.7903
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 5,
+          "score": 21.213
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 8,
+          "score": 20.8049
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 21,
+          "score": 20.3128
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 10,
+          "score": 19.8759
+        },
+        {
+          "pdf": "donut.pdf",
+          "page": 10,
+          "score": 18.7528
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 8,
+          "score": 18.2354
+        },
+        {
+          "pdf": "docvqa.pdf",
+          "page": 7,
+          "score": 18.1079
+        },
+        {
+          "pdf": "colbert.pdf",
+          "page": 8,
+          "score": 17.8951
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 32,
+          "score": 17.8524
+        },
+        {
+          "pdf": "albert.pdf",
+          "page": 7,
+          "score": 17.8157
+        },
+        {
+          "pdf": "docvqa.pdf",
+          "page": 8,
+          "score": 17.7395
+        }
+      ],
+      "top1_decisiveness": 0.12434129047944159
+    },
+    {
+      "id": "colpali-unstructured-captioning-latency",
+      "tags": [
+        "table",
+        "hard"
+      ],
+      "gold_rank": 1,
+      "top1": {
+        "pdf": "colpali.pdf",
+        "page": 19
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "colpali.pdf",
+          "page": 19,
+          "score": 19.1309
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 5,
+          "score": 19.0659
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 52,
+          "score": 15.2219
+        },
+        {
+          "pdf": "e5.pdf",
+          "page": 3,
+          "score": 14.8646
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 21,
+          "score": 14.8427
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 36,
+          "score": 14.7712
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 7,
+          "score": 14.4388
+        },
+        {
+          "pdf": "colbert.pdf",
+          "page": 9,
+          "score": 14.4374
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 56,
+          "score": 14.2538
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 8,
+          "score": 14.1567
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 38,
+          "score": 14.1431
+        },
+        {
+          "pdf": "donut.pdf",
+          "page": 2,
+          "score": 13.9535
+        }
+      ],
+      "top1_decisiveness": 0.10653459562856385
+    },
+    {
+      "id": "colpali-512-patch-degradation",
+      "tags": [
+        "text",
+        "hard"
+      ],
+      "gold_rank": 1,
+      "top1": {
+        "pdf": "colpali.pdf",
+        "page": 9
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "colpali.pdf",
+          "page": 9,
+          "score": 35.2852
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 10,
+          "score": 32.9838
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 7,
+          "score": 32.0151
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 8,
+          "score": 31.5543
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 22,
+          "score": 31.3697
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 3,
+          "score": 28.2951
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 4,
+          "score": 27.2294
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 12,
+          "score": 26.869
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 30,
+          "score": 26.5836
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 41,
+          "score": 26.5341
+        }
+      ],
+      "top1_decisiveness": 0.1192648261444342
+    },
+    {
+      "id": "colpali-idefics2-patch-gain",
+      "tags": [
+        "text",
+        "hard"
+      ],
+      "gold_rank": 1,
+      "top1": {
+        "pdf": "colpali.pdf",
+        "page": 9
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "colpali.pdf",
+          "page": 9,
+          "score": 29.312
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 21,
+          "score": 25.6589
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 2,
+          "score": 24.366
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 10,
+          "score": 24.2648
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 7,
+          "score": 23.955
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 24,
+          "score": 20.1531
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 46,
+          "score": 19.899
+        },
+        {
+          "pdf": "e5.pdf",
+          "page": 6,
+          "score": 19.8976
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 5,
+          "score": 19.7217
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 8,
+          "score": 19.7169
+        },
+        {
+          "pdf": "colbert.pdf",
+          "page": 9,
+          "score": 19.1087
+        },
+        {
+          "pdf": "colbertv2.pdf",
+          "page": 15,
+          "score": 19.1068
+        }
+      ],
+      "top1_decisiveness": 0.11428025352800286
+    },
+    {
+      "id": "colpali-interpretability-hour-token",
+      "tags": [
+        "figure",
+        "hard"
+      ],
+      "gold_rank": 1,
+      "top1": {
+        "pdf": "colpali.pdf",
+        "page": 9
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "colpali.pdf",
+          "page": 9,
+          "score": 18.3637
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 22,
+          "score": 14.441
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 19,
+          "score": 13.9793
+        },
+        {
+          "pdf": "docvqa.pdf",
+          "page": 5,
+          "score": 13.8455
+        },
+        {
+          "pdf": "rag.pdf",
+          "page": 2,
+          "score": 13.7205
+        },
+        {
+          "pdf": "colbert.pdf",
+          "page": 2,
+          "score": 13.4237
+        },
+        {
+          "pdf": "colbert.pdf",
+          "page": 4,
+          "score": 13.3255
+        },
+        {
+          "pdf": "splade.pdf",
+          "page": 2,
+          "score": 13.3172
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 17,
+          "score": 13.2813
+        },
+        {
+          "pdf": "colbert.pdf",
+          "page": 3,
+          "score": 13.2348
+        },
+        {
+          "pdf": "rag.pdf",
+          "page": 3,
+          "score": 13.2236
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 22,
+          "score": 13.2224
+        }
+      ],
+      "top1_decisiveness": 0.1137565372362664
+    },
+    {
+      "id": "colpali-kashagan-world-knowledge",
+      "tags": [
+        "figure",
+        "hard"
+      ],
+      "gold_rank": 1,
+      "top1": {
+        "pdf": "colpali.pdf",
+        "page": 22
+      },
+      "candidate_doc_coverage": null,
+      "candidate_pages": [
+        {
+          "pdf": "colpali.pdf",
+          "page": 22,
+          "score": 29.9148
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 2,
+          "score": 22.7892
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 8,
+          "score": 22.4041
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 9,
+          "score": 21.5881
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 10,
+          "score": 21.4817
+        },
+        {
+          "pdf": "colbertv2.pdf",
+          "page": 5,
+          "score": 19.2857
+        },
+        {
+          "pdf": "colbert.pdf",
+          "page": 3,
+          "score": 19.1396
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 31,
+          "score": 19.0725
+        },
+        {
+          "pdf": "colbert.pdf",
+          "page": 5,
+          "score": 19.001
+        },
+        {
+          "pdf": "colbert.pdf",
+          "page": 2,
+          "score": 18.9677
+        },
+        {
+          "pdf": "colbertv2.pdf",
+          "page": 4,
+          "score": 18.7194
+        },
+        {
+          "pdf": "colbert.pdf",
+          "page": 6,
+          "score": 18.6652
+        }
+      ],
+      "top1_decisiveness": 0.12658510103643011
+    },
+    {
+      "id": "xdoc-transformer-vs-bert-layers",
+      "tags": [
+        "cross-doc",
+        "text"
+      ],
+      "gold_rank": 5,
+      "top1": {
+        "pdf": "bert.pdf",
+        "page": 4
+      },
+      "candidate_doc_coverage": 0.5,
+      "candidate_pages": [
+        {
+          "pdf": "bert.pdf",
+          "page": 4,
+          "score": 0.030077
+        },
+        {
+          "pdf": "bert.pdf",
+          "page": 12,
+          "score": 0.026847
+        },
+        {
+          "pdf": "bert.pdf",
+          "page": 9,
+          "score": 0.026084
+        },
+        {
+          "pdf": "albert.pdf",
+          "page": 3,
+          "score": 0.025004
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 3,
+          "score": 0.016393
+        },
+        {
+          "pdf": "albert.pdf",
+          "page": 5,
+          "score": 0.016393
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 3,
+          "score": 0.016129
+        },
+        {
+          "pdf": "bert.pdf",
+          "page": 16,
+          "score": 0.016129
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 5,
+          "score": 0.015873
+        },
+        {
+          "pdf": "bert.pdf",
+          "page": 13,
+          "score": 0.015873
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 18,
+          "score": 0.015625
+        },
+        {
+          "pdf": "colbert.pdf",
+          "page": 8,
+          "score": 0.015625
+        }
+      ],
+      "top1_decisiveness": 0.13605351690566558
+    },
+    {
+      "id": "xdoc-transformer-vs-bert-params",
+      "tags": [
+        "cross-doc",
+        "table"
+      ],
+      "gold_rank": 1,
+      "top1": {
+        "pdf": "bert.pdf",
+        "page": 3
+      },
+      "candidate_doc_coverage": 1.0,
+      "candidate_pages": [
+        {
+          "pdf": "bert.pdf",
+          "page": 3,
+          "score": 0.02971
+        },
+        {
+          "pdf": "bert.pdf",
+          "page": 13,
+          "score": 0.02901
+        },
+        {
+          "pdf": "bert.pdf",
+          "page": 9,
+          "score": 0.028068
+        },
+        {
+          "pdf": "albert.pdf",
+          "page": 2,
+          "score": 0.0272
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 9,
+          "score": 0.016393
+        },
+        {
+          "pdf": "albert.pdf",
+          "page": 8,
+          "score": 0.016393
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 16,
+          "score": 0.016129
+        },
+        {
+          "pdf": "albert.pdf",
+          "page": 10,
+          "score": 0.016129
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 8,
+          "score": 0.015873
+        },
+        {
+          "pdf": "bert.pdf",
+          "page": 5,
+          "score": 0.015625
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 8,
+          "score": 0.015385
+        },
+        {
+          "pdf": "albert.pdf",
+          "page": 4,
+          "score": 0.015385
+        }
+      ],
+      "top1_decisiveness": 0.1282195089793513
+    },
+    {
+      "id": "xdoc-colbert-vs-colpali-dim",
+      "tags": [
+        "cross-doc",
+        "text"
+      ],
+      "gold_rank": 3,
+      "top1": {
+        "pdf": "colpali.pdf",
+        "page": 23
+      },
+      "candidate_doc_coverage": 1.0,
+      "candidate_pages": [
+        {
+          "pdf": "colpali.pdf",
+          "page": 23,
+          "score": 18.8225
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 18,
+          "score": 17.7357
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 8,
+          "score": 17.6619
+        },
+        {
+          "pdf": "colbert.pdf",
+          "page": 2,
+          "score": 17.595
+        },
+        {
+          "pdf": "colbertv2.pdf",
+          "page": 15,
+          "score": 17.535
+        },
+        {
+          "pdf": "colbert.pdf",
+          "page": 5,
+          "score": 17.5012
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 9,
+          "score": 17.454
+        },
+        {
+          "pdf": "colbert.pdf",
+          "page": 3,
+          "score": 17.374
+        },
+        {
+          "pdf": "colbertv2.pdf",
+          "page": 3,
+          "score": 17.0164
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 7,
+          "score": 16.899
+        },
+        {
+          "pdf": "colbert.pdf",
+          "page": 9,
+          "score": 16.8511
+        },
+        {
+          "pdf": "colbertv2.pdf",
+          "page": 5,
+          "score": 16.8464
+        }
+      ],
+      "top1_decisiveness": 0.09016177224078459
+    },
+    {
+      "id": "xdoc-colpali-base-model",
+      "tags": [
+        "cross-doc",
+        "text"
+      ],
+      "gold_rank": 8,
+      "top1": {
+        "pdf": "colpali.pdf",
+        "page": 19
+      },
+      "candidate_doc_coverage": 0.5,
+      "candidate_pages": [
+        {
+          "pdf": "colpali.pdf",
+          "page": 19,
+          "score": 0.027222
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 2,
+          "score": 0.016393
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 14,
+          "score": 0.016393
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 10,
+          "score": 0.016129
+        },
+        {
+          "pdf": "siglip.pdf",
+          "page": 17,
+          "score": 0.016129
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 1,
+          "score": 0.015873
+        },
+        {
+          "pdf": "layoutlm.pdf",
+          "page": 8,
+          "score": 0.015873
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 22,
+          "score": 0.015625
+        },
+        {
+          "pdf": "layoutlm.pdf",
+          "page": 6,
+          "score": 0.015625
+        },
+        {
+          "pdf": "albert.pdf",
+          "page": 5,
+          "score": 0.015385
+        },
+        {
+          "pdf": "e5.pdf",
+          "page": 1,
+          "score": 0.015152
+        },
+        {
+          "pdf": "donut.pdf",
+          "page": 10,
+          "score": 0.014925
+        }
+      ],
+      "top1_decisiveness": 0.152670604522823
+    },
+    {
+      "id": "xdoc-ndcg-cutoffs",
+      "tags": [
+        "cross-doc",
+        "text"
+      ],
+      "gold_rank": 1,
+      "top1": {
+        "pdf": "beir.pdf",
+        "page": 5
+      },
+      "candidate_doc_coverage": 1.0,
+      "candidate_pages": [
+        {
+          "pdf": "beir.pdf",
+          "page": 5,
+          "score": 0.028283
+        },
+        {
+          "pdf": "e5.pdf",
+          "page": 6,
+          "score": 0.028006
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 9,
+          "score": 0.027242
+        },
+        {
+          "pdf": "colbertv2.pdf",
+          "page": 8,
+          "score": 0.026547
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 7,
+          "score": 0.025182
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 2,
+          "score": 0.016393
+        },
+        {
+          "pdf": "e5.pdf",
+          "page": 5,
+          "score": 0.016393
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 10,
+          "score": 0.016129
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 17,
+          "score": 0.016129
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 9,
+          "score": 0.015873
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 1,
+          "score": 0.015873
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 21,
+          "score": 0.015625
+        }
+      ],
+      "top1_decisiveness": 0.11642510790017352
+    },
+    {
+      "id": "xdoc-beir-vs-vidore",
+      "tags": [
+        "cross-doc",
+        "text"
+      ],
+      "gold_rank": 2,
+      "top1": {
+        "pdf": "e5.pdf",
+        "page": 5
+      },
+      "candidate_doc_coverage": 1.0,
+      "candidate_pages": [
+        {
+          "pdf": "e5.pdf",
+          "page": 5,
+          "score": 0.016393
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 4,
+          "score": 0.016393
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 17,
+          "score": 0.016129
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 10,
+          "score": 0.016129
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 1,
+          "score": 0.015873
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 2,
+          "score": 0.015873
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 5,
+          "score": 0.015625
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 24,
+          "score": 0.015625
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 3,
+          "score": 0.015385
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 1,
+          "score": 0.015385
+        },
+        {
+          "pdf": "e5.pdf",
+          "page": 17,
+          "score": 0.015152
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 32,
+          "score": 0.015152
+        }
+      ],
+      "top1_decisiveness": 0.08672001351558899
+    },
+    {
+      "id": "neg-sales-profit-margin",
+      "tags": [
+        "unanswerable"
+      ],
+      "unanswerable": true
+    },
+    {
+      "id": "neg-sales-central-region",
+      "tags": [
+        "unanswerable"
+      ],
+      "unanswerable": true
+    },
+    {
+      "id": "neg-sales-headcount",
+      "tags": [
+        "unanswerable"
+      ],
+      "unanswerable": true
+    },
+    {
+      "id": "neg-sales-forecast",
+      "tags": [
+        "unanswerable"
+      ],
+      "unanswerable": true
+    },
+    {
+      "id": "neg-attn-bleu-en-ru",
+      "tags": [
+        "unanswerable"
+      ],
+      "unanswerable": true
+    },
+    {
+      "id": "neg-attn-training-dollars",
+      "tags": [
+        "unanswerable"
+      ],
+      "unanswerable": true
+    },
+    {
+      "id": "neg-colpali-indexing-cost-dollars",
+      "tags": [
+        "unanswerable"
+      ],
+      "unanswerable": true
+    },
+    {
+      "id": "neg-colbert-vidore",
+      "tags": [
+        "unanswerable"
+      ],
+      "unanswerable": true
+    },
+    {
+      "id": "neg-bert-vidore",
+      "tags": [
+        "unanswerable"
+      ],
+      "unanswerable": true
+    },
+    {
+      "id": "neg-donut-wmt-bleu",
+      "tags": [
+        "unanswerable"
+      ],
+      "unanswerable": true
+    },
+    {
+      "id": "xdoc-dpr-vs-colbert-dim",
+      "tags": [
+        "cross-doc",
+        "text"
+      ],
+      "gold_rank": 12,
+      "top1": {
+        "pdf": "colbertv2.pdf",
+        "page": 3
+      },
+      "candidate_doc_coverage": 0.5,
+      "candidate_pages": [
+        {
+          "pdf": "colbertv2.pdf",
+          "page": 3,
+          "score": 0.028309
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 6,
+          "score": 0.027619
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 8,
+          "score": 0.026501
+        },
+        {
+          "pdf": "colbertv2.pdf",
+          "page": 19,
+          "score": 0.025645
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 9,
+          "score": 0.024405
+        },
+        {
+          "pdf": "dpr.pdf",
+          "page": 2,
+          "score": 0.016393
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 23,
+          "score": 0.016393
+        },
+        {
+          "pdf": "rag.pdf",
+          "page": 3,
+          "score": 0.016129
+        },
+        {
+          "pdf": "colbert.pdf",
+          "page": 2,
+          "score": 0.016129
+        },
+        {
+          "pdf": "dpr.pdf",
+          "page": 1,
+          "score": 0.015873
+        },
+        {
+          "pdf": "colbert.pdf",
+          "page": 5,
+          "score": 0.015873
+        },
+        {
+          "pdf": "dpr.pdf",
+          "page": 3,
+          "score": 0.015625
+        }
+      ],
+      "top1_decisiveness": 0.11867265111498661
+    },
+    {
+      "id": "xdoc-vit-base-vs-bert-base-params",
+      "tags": [
+        "cross-doc",
+        "table"
+      ],
+      "gold_rank": 2,
+      "top1": {
+        "pdf": "docvqa.pdf",
+        "page": 7
+      },
+      "candidate_doc_coverage": 1.0,
+      "candidate_pages": [
+        {
+          "pdf": "docvqa.pdf",
+          "page": 7,
+          "score": 0.023953
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 5,
+          "score": 0.016393
+        },
+        {
+          "pdf": "albert.pdf",
+          "page": 5,
+          "score": 0.016393
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 6,
+          "score": 0.016129
+        },
+        {
+          "pdf": "donut.pdf",
+          "page": 9,
+          "score": 0.016129
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 13,
+          "score": 0.015873
+        },
+        {
+          "pdf": "bert.pdf",
+          "page": 15,
+          "score": 0.015873
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 20,
+          "score": 0.015625
+        },
+        {
+          "pdf": "bert.pdf",
+          "page": 13,
+          "score": 0.015625
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 7,
+          "score": 0.015385
+        },
+        {
+          "pdf": "colbert.pdf",
+          "page": 8,
+          "score": 0.015385
+        },
+        {
+          "pdf": "bert.pdf",
+          "page": 3,
+          "score": 0.015152
+        }
+      ],
+      "top1_decisiveness": 0.12957206388235704
+    },
+    {
+      "id": "xdoc-albert-vs-bert-large-params",
+      "tags": [
+        "cross-doc",
+        "table",
+        "hard"
+      ],
+      "gold_rank": 1,
+      "top1": {
+        "pdf": "albert.pdf",
+        "page": 5
+      },
+      "candidate_doc_coverage": 1.0,
+      "candidate_pages": [
+        {
+          "pdf": "albert.pdf",
+          "page": 5,
+          "score": 0.031545
+        },
+        {
+          "pdf": "albert.pdf",
+          "page": 4,
+          "score": 0.031258
+        },
+        {
+          "pdf": "albert.pdf",
+          "page": 1,
+          "score": 0.03031
+        },
+        {
+          "pdf": "albert.pdf",
+          "page": 10,
+          "score": 0.030214
+        },
+        {
+          "pdf": "albert.pdf",
+          "page": 8,
+          "score": 0.029907
+        },
+        {
+          "pdf": "bert.pdf",
+          "page": 9,
+          "score": 0.029206
+        },
+        {
+          "pdf": "bert.pdf",
+          "page": 3,
+          "score": 0.028446
+        },
+        {
+          "pdf": "bert.pdf",
+          "page": 8,
+          "score": 0.027864
+        },
+        {
+          "pdf": "bert.pdf",
+          "page": 6,
+          "score": 0.02748
+        },
+        {
+          "pdf": "bert.pdf",
+          "page": 13,
+          "score": 0.026743
+        },
+        {
+          "pdf": "layoutlm.pdf",
+          "page": 6,
+          "score": 0.025158
+        },
+        {
+          "pdf": "docvqa.pdf",
+          "page": 7,
+          "score": 0.025035
+        }
+      ],
+      "top1_decisiveness": 0.09213407092340309
+    },
+    {
+      "id": "xdoc-siglip-loss-paligemma-resolution",
+      "tags": [
+        "cross-doc",
+        "text"
+      ],
+      "gold_rank": 8,
+      "top1": {
+        "pdf": "paligemma.pdf",
+        "page": 3
+      },
+      "candidate_doc_coverage": 0.5,
+      "candidate_pages": [
+        {
+          "pdf": "paligemma.pdf",
+          "page": 3,
+          "score": 0.031319
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 2,
+          "score": 0.028665
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 10,
+          "score": 0.028205
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 6,
+          "score": 0.028006
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 22,
+          "score": 0.027921
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 1,
+          "score": 0.025833
+        },
+        {
+          "pdf": "siglip.pdf",
+          "page": 10,
+          "score": 0.016393
+        },
+        {
+          "pdf": "siglip.pdf",
+          "page": 1,
+          "score": 0.016129
+        },
+        {
+          "pdf": "siglip.pdf",
+          "page": 2,
+          "score": 0.015625
+        },
+        {
+          "pdf": "siglip.pdf",
+          "page": 5,
+          "score": 0.015385
+        },
+        {
+          "pdf": "siglip.pdf",
+          "page": 4,
+          "score": 0.014706
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 23,
+          "score": 0.014706
+        }
+      ],
+      "top1_decisiveness": 0.12251385246276791
+    },
+    {
+      "id": "xdoc-donut-encoder-layoutlm-embeddings",
+      "tags": [
+        "cross-doc",
+        "text"
+      ],
+      "gold_rank": 7,
+      "top1": {
+        "pdf": "donut.pdf",
+        "page": 9
+      },
+      "candidate_doc_coverage": 0.5,
+      "candidate_pages": [
+        {
+          "pdf": "donut.pdf",
+          "page": 9,
+          "score": 0.029911
+        },
+        {
+          "pdf": "donut.pdf",
+          "page": 10,
+          "score": 0.029857
+        },
+        {
+          "pdf": "donut.pdf",
+          "page": 13,
+          "score": 0.02885
+        },
+        {
+          "pdf": "donut.pdf",
+          "page": 11,
+          "score": 0.028382
+        },
+        {
+          "pdf": "donut.pdf",
+          "page": 28,
+          "score": 0.027242
+        },
+        {
+          "pdf": "layoutlm.pdf",
+          "page": 3,
+          "score": 0.016393
+        },
+        {
+          "pdf": "layoutlm.pdf",
+          "page": 2,
+          "score": 0.016129
+        },
+        {
+          "pdf": "layoutlm.pdf",
+          "page": 4,
+          "score": 0.015873
+        },
+        {
+          "pdf": "layoutlm.pdf",
+          "page": 5,
+          "score": 0.015385
+        },
+        {
+          "pdf": "layoutlm.pdf",
+          "page": 6,
+          "score": 0.014925
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 29,
+          "score": 0.013333
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 2,
+          "score": 0.013158
+        }
+      ],
+      "top1_decisiveness": 0.12220553428699078
+    },
+    {
+      "id": "xdoc-rag-generator-dpr-dim",
+      "tags": [
+        "cross-doc",
+        "text",
+        "hard"
+      ],
+      "gold_rank": 1,
+      "top1": {
+        "pdf": "rag.pdf",
+        "page": 3
+      },
+      "candidate_doc_coverage": 1.0,
+      "candidate_pages": [
+        {
+          "pdf": "rag.pdf",
+          "page": 3,
+          "score": 0.032522
+        },
+        {
+          "pdf": "rag.pdf",
+          "page": 2,
+          "score": 0.031778
+        },
+        {
+          "pdf": "rag.pdf",
+          "page": 5,
+          "score": 0.030579
+        },
+        {
+          "pdf": "rag.pdf",
+          "page": 18,
+          "score": 0.029469
+        },
+        {
+          "pdf": "rag.pdf",
+          "page": 7,
+          "score": 0.028439
+        },
+        {
+          "pdf": "dpr.pdf",
+          "page": 2,
+          "score": 0.016129
+        },
+        {
+          "pdf": "dpr.pdf",
+          "page": 12,
+          "score": 0.015625
+        },
+        {
+          "pdf": "dpr.pdf",
+          "page": 13,
+          "score": 0.015152
+        },
+        {
+          "pdf": "dpr.pdf",
+          "page": 7,
+          "score": 0.014925
+        },
+        {
+          "pdf": "dpr.pdf",
+          "page": 3,
+          "score": 0.014706
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 22,
+          "score": 0.014286
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 1,
+          "score": 0.013699
+        }
+      ],
+      "top1_decisiveness": 0.13059935451010307
+    },
+    {
+      "id": "xdoc-colbert-v1-v2-compression",
+      "tags": [
+        "cross-doc",
+        "text"
+      ],
+      "gold_rank": 2,
+      "top1": {
+        "pdf": "colpali.pdf",
+        "page": 23
+      },
+      "candidate_doc_coverage": 1.0,
+      "candidate_pages": [
+        {
+          "pdf": "colpali.pdf",
+          "page": 23,
+          "score": 0.032266
+        },
+        {
+          "pdf": "colbertv2.pdf",
+          "page": 3,
+          "score": 0.031319
+        },
+        {
+          "pdf": "colbert.pdf",
+          "page": 5,
+          "score": 0.030622
+        },
+        {
+          "pdf": "colbertv2.pdf",
+          "page": 5,
+          "score": 0.02967
+        },
+        {
+          "pdf": "colbert.pdf",
+          "page": 9,
+          "score": 0.029631
+        },
+        {
+          "pdf": "colbert.pdf",
+          "page": 2,
+          "score": 0.029572
+        },
+        {
+          "pdf": "colbert.pdf",
+          "page": 3,
+          "score": 0.029469
+        },
+        {
+          "pdf": "colbertv2.pdf",
+          "page": 2,
+          "score": 0.029324
+        },
+        {
+          "pdf": "colbertv2.pdf",
+          "page": 15,
+          "score": 0.028958
+        },
+        {
+          "pdf": "colbertv2.pdf",
+          "page": 10,
+          "score": 0.02781
+        },
+        {
+          "pdf": "colbert.pdf",
+          "page": 6,
+          "score": 0.027652
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 9,
+          "score": 0.026398
+        }
+      ],
+      "top1_decisiveness": 0.09177183134323562
+    },
+    {
+      "id": "xdoc-e5-pairs-beir-datasets",
+      "tags": [
+        "cross-doc",
+        "text"
+      ],
+      "gold_rank": 2,
+      "top1": {
+        "pdf": "e5.pdf",
+        "page": 5
+      },
+      "candidate_doc_coverage": 1.0,
+      "candidate_pages": [
+        {
+          "pdf": "e5.pdf",
+          "page": 5,
+          "score": 0.032018
+        },
+        {
+          "pdf": "e5.pdf",
+          "page": 2,
+          "score": 0.031281
+        },
+        {
+          "pdf": "e5.pdf",
+          "page": 15,
+          "score": 0.029877
+        },
+        {
+          "pdf": "e5.pdf",
+          "page": 7,
+          "score": 0.029236
+        },
+        {
+          "pdf": "e5.pdf",
+          "page": 1,
+          "score": 0.029052
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 17,
+          "score": 0.016129
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 1,
+          "score": 0.015873
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 5,
+          "score": 0.015625
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 3,
+          "score": 0.015385
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 2,
+          "score": 0.014706
+        },
+        {
+          "pdf": "rag.pdf",
+          "page": 18,
+          "score": 0.014286
+        },
+        {
+          "pdf": "bert.pdf",
+          "page": 14,
+          "score": 0.014085
+        }
+      ],
+      "top1_decisiveness": 0.12798705248789788
+    },
+    {
+      "id": "xdoc-transformer-xl-vs-attention-depth",
+      "tags": [
+        "cross-doc",
+        "text",
+        "hard"
+      ],
+      "gold_rank": 3,
+      "top1": {
+        "pdf": "vit.pdf",
+        "page": 3
+      },
+      "candidate_doc_coverage": 1.0,
+      "candidate_pages": [
+        {
+          "pdf": "vit.pdf",
+          "page": 3,
+          "score": 0.029462
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 4,
+          "score": 0.029083
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 1,
+          "score": 0.029052
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 16,
+          "score": 0.028665
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 3,
+          "score": 0.028589
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 10,
+          "score": 0.028175
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 8,
+          "score": 0.027972
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 2,
+          "score": 0.027921
+        },
+        {
+          "pdf": "attention.pdf",
+          "page": 9,
+          "score": 0.027364
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 16,
+          "score": 0.026974
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 3,
+          "score": 0.025679
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 2,
+          "score": 0.024892
+        }
+      ],
+      "top1_decisiveness": 0.08830318141631009
+    },
+    {
+      "id": "xdoc-vit-huge-vs-paligemma-size",
+      "tags": [
+        "cross-doc",
+        "table",
+        "hard"
+      ],
+      "gold_rank": 5,
+      "top1": {
+        "pdf": "paligemma.pdf",
+        "page": 49
+      },
+      "candidate_doc_coverage": 0.5,
+      "candidate_pages": [
+        {
+          "pdf": "paligemma.pdf",
+          "page": 49,
+          "score": 0.027588
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 6,
+          "score": 0.025
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 10,
+          "score": 0.024869
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 59,
+          "score": 0.024725
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 5,
+          "score": 0.016393
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 2,
+          "score": 0.016393
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 22,
+          "score": 0.016129
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 6,
+          "score": 0.015873
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 23,
+          "score": 0.015873
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 13,
+          "score": 0.015625
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 22,
+          "score": 0.015625
+        },
+        {
+          "pdf": "vit.pdf",
+          "page": 19,
+          "score": 0.015385
+        }
+      ],
+      "top1_decisiveness": 0.12583541643280632
+    },
+    {
+      "id": "xdoc-docvqa-scale-layoutlm-pretraining",
+      "tags": [
+        "cross-doc",
+        "text"
+      ],
+      "gold_rank": 6,
+      "top1": {
+        "pdf": "donut.pdf",
+        "page": 11
+      },
+      "candidate_doc_coverage": 1.0,
+      "candidate_pages": [
+        {
+          "pdf": "donut.pdf",
+          "page": 11,
+          "score": 0.029199
+        },
+        {
+          "pdf": "donut.pdf",
+          "page": 10,
+          "score": 0.028571
+        },
+        {
+          "pdf": "donut.pdf",
+          "page": 8,
+          "score": 0.02753
+        },
+        {
+          "pdf": "donut.pdf",
+          "page": 27,
+          "score": 0.027032
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 4,
+          "score": 0.025333
+        },
+        {
+          "pdf": "docvqa.pdf",
+          "page": 3,
+          "score": 0.016393
+        },
+        {
+          "pdf": "layoutlm.pdf",
+          "page": 2,
+          "score": 0.016393
+        },
+        {
+          "pdf": "docvqa.pdf",
+          "page": 1,
+          "score": 0.016129
+        },
+        {
+          "pdf": "layoutlm.pdf",
+          "page": 1,
+          "score": 0.016129
+        },
+        {
+          "pdf": "docvqa.pdf",
+          "page": 4,
+          "score": 0.015873
+        },
+        {
+          "pdf": "layoutlm.pdf",
+          "page": 4,
+          "score": 0.015873
+        },
+        {
+          "pdf": "layoutlm.pdf",
+          "page": 5,
+          "score": 0.015625
+        }
+      ],
+      "top1_decisiveness": 0.11973413994164742
+    },
+    {
+      "id": "xdoc-splade-vocab-dpr-dense",
+      "tags": [
+        "cross-doc",
+        "text",
+        "hard"
+      ],
+      "gold_rank": 6,
+      "top1": {
+        "pdf": "colbertv2.pdf",
+        "page": 7
+      },
+      "candidate_doc_coverage": 1.0,
+      "candidate_pages": [
+        {
+          "pdf": "colbertv2.pdf",
+          "page": 7,
+          "score": 0.028219
+        },
+        {
+          "pdf": "colbertv2.pdf",
+          "page": 19,
+          "score": 0.027047
+        },
+        {
+          "pdf": "dpr.pdf",
+          "page": 1,
+          "score": 0.026786
+        },
+        {
+          "pdf": "dpr.pdf",
+          "page": 9,
+          "score": 0.02643
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 8,
+          "score": 0.025658
+        },
+        {
+          "pdf": "splade.pdf",
+          "page": 1,
+          "score": 0.016393
+        },
+        {
+          "pdf": "rag.pdf",
+          "page": 3,
+          "score": 0.016393
+        },
+        {
+          "pdf": "splade.pdf",
+          "page": 4,
+          "score": 0.016129
+        },
+        {
+          "pdf": "dpr.pdf",
+          "page": 2,
+          "score": 0.016129
+        },
+        {
+          "pdf": "dpr.pdf",
+          "page": 12,
+          "score": 0.015873
+        },
+        {
+          "pdf": "splade.pdf",
+          "page": 3,
+          "score": 0.015625
+        },
+        {
+          "pdf": "dpr.pdf",
+          "page": 3,
+          "score": 0.015625
+        }
+      ],
+      "top1_decisiveness": 0.11708288245630556
+    },
+    {
+      "id": "xdoc-donut-ocr-free-docvqa-questions",
+      "tags": [
+        "cross-doc",
+        "text"
+      ],
+      "gold_rank": 1,
+      "top1": {
+        "pdf": "donut.pdf",
+        "page": 11
+      },
+      "candidate_doc_coverage": 1.0,
+      "candidate_pages": [
+        {
+          "pdf": "donut.pdf",
+          "page": 11,
+          "score": 0.03009
+        },
+        {
+          "pdf": "donut.pdf",
+          "page": 10,
+          "score": 0.029418
+        },
+        {
+          "pdf": "donut.pdf",
+          "page": 8,
+          "score": 0.029206
+        },
+        {
+          "pdf": "donut.pdf",
+          "page": 12,
+          "score": 0.028219
+        },
+        {
+          "pdf": "donut.pdf",
+          "page": 27,
+          "score": 0.026857
+        },
+        {
+          "pdf": "docvqa.pdf",
+          "page": 3,
+          "score": 0.016393
+        },
+        {
+          "pdf": "docvqa.pdf",
+          "page": 1,
+          "score": 0.016129
+        },
+        {
+          "pdf": "docvqa.pdf",
+          "page": 4,
+          "score": 0.015625
+        },
+        {
+          "pdf": "docvqa.pdf",
+          "page": 2,
+          "score": 0.015385
+        },
+        {
+          "pdf": "docvqa.pdf",
+          "page": 5,
+          "score": 0.015152
+        },
+        {
+          "pdf": "colpali.pdf",
+          "page": 16,
+          "score": 0.014925
+        },
+        {
+          "pdf": "paligemma.pdf",
+          "page": 32,
+          "score": 0.014286
+        }
+      ],
+      "top1_decisiveness": 0.12228371457201527
+    },
+    {
+      "id": "xdoc-albert-sharing-xl-recurrence",
+      "tags": [
+        "cross-doc",
+        "text",
+        "hard"
+      ],
+      "gold_rank": 1,
+      "top1": {
+        "pdf": "albert.pdf",
+        "page": 2
+      },
+      "candidate_doc_coverage": 1.0,
+      "candidate_pages": [
+        {
+          "pdf": "albert.pdf",
+          "page": 2,
+          "score": 0.028442
+        },
+        {
+          "pdf": "albert.pdf",
+          "page": 3,
+          "score": 0.027584
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 1,
+          "score": 0.016393
+        },
+        {
+          "pdf": "albert.pdf",
+          "page": 1,
+          "score": 0.016129
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 4,
+          "score": 0.016129
+        },
+        {
+          "pdf": "albert.pdf",
+          "page": 4,
+          "score": 0.015873
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 16,
+          "score": 0.015873
+        },
+        {
+          "pdf": "albert.pdf",
+          "page": 5,
+          "score": 0.015625
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 2,
+          "score": 0.015625
+        },
+        {
+          "pdf": "transformer_xl.pdf",
+          "page": 14,
+          "score": 0.015385
+        },
+        {
+          "pdf": "beir.pdf",
+          "page": 6,
+          "score": 0.013514
+        },
+        {
+          "pdf": "bert.pdf",
+          "page": 1,
+          "score": 0.013333
+        }
+      ],
+      "top1_decisiveness": 0.14922558605763905
+    }
+  ]
+}

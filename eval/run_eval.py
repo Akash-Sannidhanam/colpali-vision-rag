@@ -36,6 +36,10 @@ from eval.scoring import (
     substring_match,
 )
 from src import config
+
+# Pure arithmetic over a score list (imports only `math`), so it costs --retrieval-only
+# none of its no-API-key, no-model property.
+from src.confidence import retrieval_confidence
 from src.config import EVAL_JUDGE_MODEL, RERANK_K, RETRIEVE_K
 from src.gemini_client import generate
 from src.logging_setup import get_logger
@@ -115,15 +119,44 @@ def judge_answer(question: str, answer: str, expected: list[str] | None, gold: l
 
 
 def _pages_of(hits: list[dict]) -> list[dict]:
-    """The `[{pdf, page}, ...]` identity of a hit list, in order, without the payload.
+    """The `[{pdf, page, score}, ...]` identity of a hit list, in order, no payload.
 
     Stored per row so a later change to the gold labels is re-scorable **offline**:
     `gold_rank`, `rerank_hit`, `gold_doc_coverage` and `candidate_doc_coverage` are all
     pure functions of (pages, gold), and `cited` / `answer` are already kept. Without
     these two lists, re-labelling one question costs a full ~25-minute judged re-run to
     learn what the pipeline had already done. Costs ~45 KB on a 192 KB report.
+
+    `score` extends that from gold labels to **retrieval policy**: a confidence formula
+    is a pure function of the score distribution across the slate, so with the scores
+    here any candidate formula can be scored against a stored report for free, instead
+    of one live arm per idea. Reports written before this existed carry `{pdf, page}`
+    only - anything reading `score` must treat its absence as "unknown", exactly as
+    `baseline_rerank_k3.json` and earlier lack these lists entirely.
+
+    The key stays `page`, not `page_number`: `eval/diff_reports.py` and the existing
+    offline re-scoring path both read `page`, and renaming it to match the Qdrant hit
+    shape would silently break every stored report.
     """
-    return [{"pdf": h["pdf"], "page": h["page_number"]} for h in hits]
+    return [{"pdf": h["pdf"], "page": h["page_number"], "score": h.get("score")} for h in hits]
+
+
+def _top1_decisiveness(hits: list[dict]) -> float | None:
+    """How decisively retrieval preferred its own top page, or None on an empty slate.
+
+    The *same* `src.confidence.retrieval_confidence` the UI chip is computed from, just
+    anchored on the top candidate instead of a cited page - so the eval can never end up
+    measuring a different formula than the product ships.
+
+    Anchoring here is what makes the measurement affordable. Against `citation_correct`
+    the negative class is the pipeline's own wrong citations (one, in the pinned
+    baseline) and needs a judged run; against `gold_rank` it is recall@1 misses, which
+    are deterministic, free, and number in the dozens.
+    """
+    if not hits:
+        return None
+    top = hits[0]
+    return retrieval_confidence(hits, {"pdf": top["pdf"], "page_number": top["page_number"]})
 
 
 def run_retrieval_only(dataset: list[dict]) -> list[dict]:
@@ -159,6 +192,10 @@ def run_retrieval_only(dataset: list[dict]) -> list[dict]:
             # of the rerank/answer run-to-run variance the full mode does.
             "candidate_doc_coverage": gold_doc_coverage(hits, item["gold"]),
             "candidate_pages": _pages_of(hits),
+            # Pairs with `gold_rank` above into the deterministic calibration slice:
+            # every answerable row is a data point here, where the citation-based
+            # separation only gets one per pipeline mistake.
+            "top1_decisiveness": _top1_decisiveness(hits),
         }
         rows.append(row)
         log.info("eval question scored",
@@ -222,6 +259,10 @@ def run_full(dataset: list[dict], use_judge: bool) -> list[dict]:
                 # Both confidence signals ride along on the result already (main.run_query),
                 # so calibration costs no extra call - only the scoring in eval.scoring.
                 "retrieval_confidence": meta.get("retrieval_confidence"),
+                # The same formula anchored on the top candidate instead of the cited
+                # page, so one artifact carries both calibration families - the starved
+                # citation-based one and the free gold_rank-based one.
+                "top1_decisiveness": _top1_decisiveness(candidates),
                 "self_confidence": (citation or {}).get("confidence"),
             }
             if use_judge:

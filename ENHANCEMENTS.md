@@ -217,12 +217,45 @@ the reader) is complete, tested, and shipped. Captured here so they are not lost
   floors had to be lowered; that is the honest cost of adopting.
   **`gold_coverage_avg` did not follow its ceiling** (0.825 against 0.850), so the slate
   pass's "rerank loses nothing" property no longer holds. That is now the sharpest open lead.
-- **The confidence signals carry almost no information.** _(new, measured.)_ The model
+- **The confidence signals: the verdict below was itself unmeasured, and it was wrong.**
+  _(✅ done — see the confidence-calibration pass in PRODUCTION_HARDENING.md.)_ Three
+  corrections, in ascending order of how much they cost to learn.
+  **`confidence_separation` was reported to four decimals off one row.** The pinned
+  `baseline_decomposed.json` has 70 correct citations and **exactly one** wrong one
+  carrying a confidence value, so its `-0.0062` is a single data point; `baseline_diverse`
+  says `+0.0193` (n=3) and `baseline_swept` `+0.0226` (n=2). Same quantity, opposite sign,
+  all noise. The metric degrades precisely as the pipeline improves, because its negative
+  class *is* the pipeline's mistakes. `MIN_CALIBRATION_N=5` now withholds every calibration
+  comparison below the floor, and every one ships with its counts.
+  **The right label was free and 24× larger.** `src/confidence.py` measures retrieval
+  decisiveness, and pairing it with `gold_rank` instead of `citation_correct` swaps a
+  negative class of 1 for one of 24 — deterministic, no API key, no judged run. Measured
+  there, the signal **does** carry information: AUC **0.629**, permutation p **0.016** at
+  n=49/24. Weak, but not the "almost none" claimed below.
+  **The defect was the presentation, not the formula.** `retrieval_confidence` is a
+  softmax share over `RETRIEVE_K` candidates, so `1/12 = 8.3%` is the uniform-reference
+  value (what an evenly-spread slate would yield), not zero. The entire observed range
+  across 83 questions is 0.063–0.212. The UI rendered it as `Math.round(x*100)`, so a
+  maximally decisive retrieval read **"21%"** and a typical correct answer read **"11%"**
+  — the system appearing to doubt answers it got right. It now shows as a multiple of an
+  evenly-spread slate (`1.50× uniform`) inside the trace disclosure rather than as a chip
+  beside the answer, which is the placement AUC 0.629 supports. The original note follows.
+
+  The model
   self-reported `high` on most of the 73 answerable questions, showing some variance
   (high-confidence accuracy: 0.958, low-confidence: 0.0), but the deterministic
   retrieval confidence separates correct from wrong citations by only 0.0247. Both are
   surfaced in the UI. Either calibrate them or stop showing them as if they mean
   something; the eval now reports `confidence_separation` to tell.
+
+- **`self_conf_low_acc` is a tautology, and read as calibration for two passes.**
+  _(✅ suppressed by the same floor.)_ `answerer._normalize` pins `confidence = "low"`
+  onto every not-found answer, and a declined *answerable* row scores
+  `citation_correct=False` — so every `low` row is a decline and every decline is scored
+  wrong. The bucket is forced to 0.0 by the code whenever any decline exists, which is
+  what "low-confidence accuracy: 0.0" above actually reported, from two rows. The
+  invariant is correct and stays; the floor is what stops it being read as a measurement
+  of the model's calibration.
 - **Refuse to pin a baseline from a degraded run.** _(✅ done — see the
   instrument-sharpening pass in PRODUCTION_HARDENING.md.)_ Built as described below, with
   one change: the report is still written, stamped `degraded_run` and named
