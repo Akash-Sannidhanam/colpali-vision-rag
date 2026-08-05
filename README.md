@@ -18,11 +18,12 @@ confusable distractor papers). Full harness and methodology in [Evaluation](#eva
 | LLM-judge accuracy | **0.945** (avg score 4.85/5) | abstention accuracy | 1.000 (10/10) |
 | gold-doc coverage | 0.825 *(ceiling: 0.850)* | avg latency | 19.0 s |
 
-Read honestly: **`recall@12`, `rerank_recall` and `abstention_accuracy` are all at 1.0 and
-therefore cannot fail** — three of the ten CI gates are currently un-trippable, and
+Read honestly: **`recall@12`, `rerank_recall` and `abstention_accuracy` are all at 1.0 with
+no observed headroom in the current baseline** — three of the ten CI gates are currently
+un-trippable while their configured gates remain active and can fail after regression, and
 re-de-saturating the eval is an open lead. The numbers that still have room are recall@1
-and gold-document coverage, and [every remaining miss is a cross-document
-question](docs/EXPERIMENTS.md#whats-still-open).
+and gold-document coverage (`gold_coverage_avg`), and [every remaining miss for gold_coverage_avg
+is a cross-document question](docs/EXPERIMENTS.md#whats-still-open).
 
 **→ [Experiments](docs/EXPERIMENTS.md)** — every retrieval and ingest decision with its
 numbers, including the rejected arms: a 2× ingest speedup turned down for what it cost
@@ -52,7 +53,7 @@ verifiable citation.
 
 ## How it works
 
-```
+```text
                                                             ┌─ answer text: "28.4"
 question ─▶ retrieve ─▶ rerank ─▶ answer ─▶ highlight ──────┼─ crop:      page_8_crop.png      ◀─ the exact slice
            (ColQwen2   (Gemini    (Gemini,   (crop the      └─ annotated: page_8_annotated.png ◀─ box drawn on page
@@ -215,8 +216,10 @@ PYTHONPATH=. uv run python eval/run_eval.py --judge \
   --gate candidate_coverage_avg:0.80 --gate judge_accuracy:0.90
 ```
 
-Those floors sit ~3 questions below the pinned baseline — except `candidate_coverage_avg`,
-deliberately the tightest at ~1 question because it is pure retrieval and carries no LLM variance.
+Those floors sit ~3 questions below the pinned baseline — except `candidate_coverage_avg` and
+`abstention_accuracy`, which both have approximately one-question slack (`abstention_accuracy`
+has a 0.90 floor over 10 unanswerable rows). `candidate_coverage_avg` is the tightest gate for
+the retrieval-only path and carries no LLM variance.
 
 **The gate names track `RETRIEVE_K`.** The harness derives `ks = {1, 3, RETRIEVE_K}`, so a report
 carries `recall@12` and no `recall@10` — an old `--gate recall@10:...` fails as a *missing metric*
@@ -224,7 +227,7 @@ rather than as a regression.
 
 | family | question it answers |
 | --- | --- |
-| **recall@k** | is the gold page in Qdrant's top-`RETRIEVE_K`, and in the reranked top-`RERANK_K`? |
+| **recall@k** | is the gold page in Qdrant's top-`RETRIEVE_K` pre-rerank candidates? **Rerank retention** is measured separately by the reranking metrics (`rerank_recall` and the coverage family) which evaluate whether gold pages are kept through the rerank step into the top-`RERANK_K` results. |
 | **citation accuracy** | did the answer's `source_page` resolve to the gold page? |
 | **answer quality** | substring match, plus the optional LLM judge |
 | **abstention accuracy** | on the 10 questions the corpus *cannot* answer, did it decline instead of inventing one? Its complement is the hallucination rate. |
@@ -485,7 +488,7 @@ suite, and a `ui` job that typechecks, tests and builds the frontend.
 
 ## Project layout
 
-```
+```text
 src/
   config.py        # paths, model names, Qdrant + DPI + retrieve/rerank settings
   pdf_render.py    # PDF → page PNGs (pdf2image / Poppler)

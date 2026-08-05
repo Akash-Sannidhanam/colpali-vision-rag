@@ -190,7 +190,7 @@ the model could see it.**
 **The corruption is fixable** — prepend a throwaway page, discard output index 0. Verified
 bit-identical:
 
-```
+```text
 naive batch of 3 vs solo:   slot 0 delta 0.411133  <-- CORRUPT
                             slot 1 delta 0.000000
 sacrificial pad, slot 0 discarded:  all three pages delta 0.000000
@@ -302,9 +302,10 @@ stops guarding.
 - **`gold_coverage_avg` (0.825) trails its ceiling `candidate_coverage_avg` (0.850)** — rerank is
   losing a row it was offered, for the first time since the slate pass closed that gap. The most
   concrete open lead.
-- **Three metrics are back on the ceiling** (`recall@12`, `rerank_recall`, `abstention_accuracy`),
-  so three of the ten gates cannot fail. Re-de-saturating needs new *question types*, not a bigger
-  corpus.
+- **Three metrics are back on the ceiling** (`recall@12`, `rerank_recall`, `abstention_accuracy`)
+  with no observed headroom in the current baseline — while their configured gates remain active
+  and can fail after regression, three of the ten gates are currently un-trippable. Re-de-saturating
+  needs new *question types*, not a bigger corpus.
 - **One row needs a relevance-aware cap.** A rank-based cap spends `donut.pdf`'s quota on four
   non-gold pages. This is the honest failure mode of capping by rank.
 - **The splitter reaches ~40% of natural phrasings.** "For both X and Y…", "Compare X with Y" and
