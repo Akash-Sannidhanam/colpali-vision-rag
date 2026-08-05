@@ -1337,3 +1337,130 @@ which is a stronger justification than the one it shipped with.
   preprocess inflating the measured forward time.
 - **The store worker is on probation** — 0 of 3 rounds today, kept on the argument that its
   share grows as the forward pass shrinks. Re-measure it; delete it if it stays flat.
+
+---
+
+## Confidence-calibration pass (follow-on) ✅ DONE
+
+Work on branch **`fix/honest-confidence-signals`**. The backlog carried this as a small
+UX cleanup — *"the confidence signals carry almost no information (new, measured) …
+either calibrate them or stop showing them as if they mean something."* The scope it
+actually needed was different, because **that verdict was never measured**, the thing it
+condemned turned out to work, and the thing nobody suspected was broken.
+
+### Three defects, in ascending order of how much they cost to find
+
+**1. `confidence_separation` was reported to four decimals off one row.** The pinned
+`baseline_decomposed.json` has 73 answerable rows: 70 correct citations, 2 declines that
+cite nothing (so they carry no confidence at all), and **one** wrong citation. Its
+`-0.0062` is that single row minus the mean of the other 70. Worse, the earlier baselines
+report the *same quantity with the opposite sign* at the same tiny n — `baseline_diverse`
+`+0.0193` (n_wrong=3), `baseline_swept` `+0.0226` (n_wrong=2). Three passes read a sign
+flip in noise as a finding.
+
+The structural version of the problem is the part worth carrying forward: **this metric's
+negative class is the pipeline's own mistakes**, so it degrades exactly as the system it
+measures improves. That is the same failure mode the eval-de-saturation pass was built to
+fight, reappearing one level down — in the instrument's own instrument. `scoring.py`'s
+docstring even anticipated it (*"a slice with no wrong citations has no separation to
+report"*) and then emitted the number anyway whenever n was 1 instead of 0.
+
+**2. `self_conf_low_acc = 0.0` is a tautology, and was read as calibration twice.**
+`answerer._normalize` pins `confidence = "low"` onto every not-found answer, and a
+declined *answerable* row scores `citation_correct=False`. So every `low` row is a decline
+and every decline is scored wrong: the bucket is **forced to 0.0 by the code** whenever
+any decline exists. The backlog quoted it as "low-confidence accuracy: 0.0", i.e. as
+evidence the model knows when it is wrong. It was two rows and a `d["confidence"] = "low"`
+assignment. The invariant is correct and stays; what changed is that the eval no longer
+reports it as a measurement.
+
+**3. The formula was fine. The presentation was the defect.** `retrieval_confidence` is a
+softmax share over `RETRIEVE_K` candidates, so its floor is `1/12 = 8.3%` and **not zero**;
+across all 83 questions its entire observed range is **0.063–0.212**. `AnswerBubble.tsx`
+rendered `Math.round(x*100)`, so a *maximally* decisive retrieval displayed **"21%"** and a
+typical correct answer displayed **"11%"** — the product appearing to doubt answers it had
+got right. Nobody had flagged this, because everyone was arguing about whether the number
+separated rather than whether it was legible.
+
+### The lever: score the same formula against a label that has a negative class
+
+`src/confidence.py` says in its own docstring that it measures *retrieval*, not answer
+correctness. Pairing it with `citation_correct` is well-posed but starved. Pairing it with
+`gold_rank` asks the cheaper, higher-N version of the same question about the same
+function — *does a decisive slate mean retrieval's top page was right?*, which is exactly
+what the UI number implied — and its negative class is recall@1 misses: deterministic, no
+API key, no judged run, **24 of them against 1**.
+
+No new formula. `_top1_decisiveness` calls the shipped `retrieval_confidence` anchored on
+`hits[0]`, so the eval can never drift onto a different formula than the product ships.
+
+### The arm (`--retrieval-only`: no API key, no Gemini spend, deterministic)
+
+`eval/reports/calib_baseline.json`. Recall reproduced the pinned baseline to four decimals
+(recall@1 0.6712, recall@3 0.8493, recall@12 1.0, candidate_coverage_avg 0.850) and
+`diff_reports.py --metric gold_rank` showed **73 paired rows, 0 improved, 0 regressed, no
+rows flipped** — the pass changes scoring and reporting only.
+
+| | |
+|---|---|
+| `decisiveness_separation` | **+0.0127** (n = 49 hit / 24 miss) |
+| AUC | **0.629** (0.5 = coin flip) |
+| permutation p, one-sided, 20 000 shuffles | **0.016** |
+| `decisiveness_hit_avg` / `decisiveness_miss_avg` | 0.1253 / 0.1126 |
+
+**So the signal carries information — weakly, but not by chance.** That is the opposite of
+what the backlog concluded from 1–3 rows, and it is why the answer was to fix the
+presentation rather than replace the formula. A difference of means alone could not have
+said this; AUC and the permutation test are what turn +0.0127 into a verdict.
+
+### What shipped
+
+- **`MIN_CALIBRATION_N = 5`** (`eval/scoring.py`) withholds every calibration *comparison*
+  below the floor, and every one now ships with its counts (`n_conf_correct`,
+  `n_conf_wrong`, `n_decisive_hit`, `n_decisive_miss`, `n_self_conf_{level}`). The
+  per-group means keep reporting unfloored — a mean over one row is still that row's value,
+  and hiding it would hide the evidence for why the difference is gone. Re-scoring the
+  pinned baseline through the new code suppresses exactly three figures (`-0.0062` from
+  n=1, `self_conf_medium_acc 1.0` from n=1, `self_conf_low_acc 0.0` from n=2), keeps the
+  one honest bucket (`self_conf_high_acc 0.9857`, n=70), and **moves no other metric**.
+- **`top1_decisiveness`** on every answerable row in both run modes, and
+  **`decisiveness_separation`** in the summary.
+- **`score` inside `candidate_pages` / `reranked_pages`** (`_pages_of`). `candidate_pages`
+  already made a *gold-label* change re-scorable offline; the score extends that to
+  *retrieval policy*, because a confidence formula is a pure function of the slate's score
+  distribution. Any future candidate formula is now testable against a stored report for
+  free instead of costing one live arm per idea. Reports written earlier carry
+  `{pdf, page}` only and must be treated as "score unknown".
+- **UI:** the chip is gone from `AnswerBubble`; `TraceDisclosure` shows
+  `retrieval decisiveness 1.58× uniform` on its own line beneath the stage table (it is a
+  property of the retrieval result, not a stage that ran). `lib.decisivenessVsUniform`
+  divides by the `1/RETRIEVE_K` floor, so 1× means "no preference at all" and the number
+  stops moving when `RETRIEVE_K` changes. Trace placement rather than headline placement
+  is what AUC 0.629 supports.
+
+**Verify:** `uv run pytest` (419 passing, 11 of them new); `cd ui && npm test` (14, 4 new)
+and `npm run build`;
+`PYTHONPATH=. uv run python eval/run_eval.py --retrieval-only --output
+eval/reports/calib_baseline.json`; then `diff_reports.py` against
+`baseline_decomposed.json` must show **no rows flipped** on `gold_rank`. Confirmed live
+end-to-end: `What was Q4 revenue?` answers `180 Thousand` from `sales_report.pdf` p.1 and
+its decisiveness reads `1.58× uniform` where the old chip read `13%`.
+
+### What is left
+
+- **`confidence_separation` is now `null` and will stay null** until the eval has ≥5 wrong
+  citations. That is honest, not fixed: the citation-based pairing cannot be measured on a
+  pipeline this accurate. Re-de-saturating the eval with new *question types* is the lead
+  that would revive it — the same lever the de-saturation pass found, for the same reason.
+- **`decisiveness_separation` has no gate.** At AUC 0.629 a threshold would mostly track
+  run-to-run composition; gate it only after a second arm establishes its stability.
+- **The floor of 5 is a judgement, not a derivation.** It is above the n=1/2/3 that caused
+  the defect and below the 24 the free pairing supplies. Nothing was measured to pick it.
+- **The `×uniform` framing assumes the softmax share is the right statistic at all.** With
+  the scores now stored, alternatives (top1-vs-top2 margin, score entropy over the slate)
+  are testable offline against `calib_baseline.json` for free — that is the cheap next
+  experiment, and it now needs no live arm to run.
+- **`self_conf_high_acc` is the only self-report bucket above the floor**, at 70 of 73
+  rows. The model says "high" almost always, so the self-report is close to a constant and
+  its accuracy is close to `citation_accuracy` by construction. Worth deciding whether it
+  earns its chip on the same evidentiary standard applied here to the retrieval signal.
