@@ -57,7 +57,17 @@
     "n_self_conf_medium": 0,
     "self_conf_low_acc": null,
     "n_self_conf_low": 0,
-    "avg_latency_ms": null
+    "avg_latency_ms": null,
+    "decisiveness_fused_hit_avg": 0.1332,
+    "decisiveness_fused_miss_avg": 0.1188,
+    "n_decisive_fused_hit": 8,
+    "n_decisive_fused_miss": 15,
+    "decisiveness_fused_separation": 0.0144,
+    "decisiveness_unfused_hit_avg": 0.1237,
+    "decisiveness_unfused_miss_avg": 0.1023,
+    "n_decisive_unfused_hit": 41,
+    "n_decisive_unfused_miss": 9,
+    "decisiveness_unfused_separation": 0.0214
   },
   "per_tag": {
     "chart": {

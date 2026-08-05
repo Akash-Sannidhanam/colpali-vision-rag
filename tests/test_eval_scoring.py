@@ -550,6 +550,21 @@ def test_aggregate_decisiveness_ignores_rows_with_no_gold_rank():
     assert summary["n_decisive_miss"] == 5
 
 
+def test_aggregate_decisiveness_counts_explicit_gold_rank_none_as_miss():
+    """An answerable row with gold_rank: None (key present, value None) counts as a miss.
+
+    This distinguishes between:
+    - Unanswerable rows where the key is absent (excluded from decisiveness)
+    - Answerable rows where retrieval failed (gold_rank: None, counts as miss)
+    """
+    rows = _decisive_rows([0.30] * 5, [0.10] * 5)
+    # Explicit gold_rank: None (key present) - retrieval failure on an answerable question
+    rows.append({"id": "retrieval_fail", "tags": [], "gold_rank": None, "top1_decisiveness": 0.08})
+    summary = aggregate(rows, ks=(1,))
+    assert summary["n_decisive_hit"] == 5
+    assert summary["n_decisive_miss"] == 6  # 5 original misses + 1 explicit None
+
+
 def test_min_calibration_n_is_above_one():
     """The floor exists to reject n=1; a floor of 1 would re-admit the original defect."""
     assert MIN_CALIBRATION_N > 1

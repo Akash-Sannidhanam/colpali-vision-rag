@@ -233,13 +233,13 @@ the reader) is complete, tested, and shipped. Captured here so they are not lost
   there, the signal **does** carry information: AUC **0.629**, permutation p **0.016** at
   n=49/24. Weak, but not the "almost none" claimed below.
   **The defect was the presentation, not the formula.** `retrieval_confidence` is a
-  softmax share over `RETRIEVE_K` candidates, so its floor is `1/12 = 8.3%`, not zero, and
-  its entire observed range across 83 questions is 0.063–0.212. The UI rendered it as
-  `Math.round(x*100)`, so a maximally decisive retrieval read **"21%"** and a typical
-  correct answer read **"11%"** — the system appearing to doubt answers it got right. It
-  now shows as a multiple of an evenly-spread slate (`1.50× uniform`) inside the trace
-  disclosure rather than as a chip beside the answer, which is the placement AUC 0.629
-  supports. The original note follows.
+  softmax share over `RETRIEVE_K` candidates, so `1/12 = 8.3%` is the uniform-reference
+  value (what an evenly-spread slate would yield), not zero. The entire observed range
+  across 83 questions is 0.063–0.212. The UI rendered it as `Math.round(x*100)`, so a
+  maximally decisive retrieval read **"21%"** and a typical correct answer read **"11%"**
+  — the system appearing to doubt answers it got right. It now shows as a multiple of an
+  evenly-spread slate (`1.50× uniform`) inside the trace disclosure rather than as a chip
+  beside the answer, which is the placement AUC 0.629 supports. The original note follows.
 
   The model
   self-reported `high` on most of the 73 answerable questions, showing some variance

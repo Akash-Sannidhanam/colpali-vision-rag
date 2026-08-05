@@ -298,8 +298,34 @@ def _calibration(rows: list[dict], out: dict) -> None:
     # `gold_rank` is absent on unanswerable rows by construction (run_full omits it so a
     # correct refusal can never read as a retrieval miss), which also keeps them out of
     # this denominator - they have no gold page whose rank could be hit or missed.
+    #
+    # Answerable rows with `gold_rank: None` (key present, value None) are retrieval
+    # failures and MUST count as misses, not be excluded. Only rows where the key is
+    # completely absent (unanswerable rows) should be excluded.
+    #
+    # Fused (query-decomposed, RRF scores) vs unfused (single-query, raw MaxSim scores)
+    # use incompatible score scales, so their decisiveness values must be tracked
+    # separately. Infer fusion from the top candidate's score: RRF scores are < 1.0
+    # (typically 0.02-0.03), MaxSim scores are >= 1.0 (typically 8-22).
     decisive = [r for r in rows
-                if r.get("gold_rank") is not None and r.get("top1_decisiveness") is not None]
+                if "gold_rank" in r and r.get("top1_decisiveness") is not None]
+
+    def _is_fused(row: dict) -> bool:
+        """True when the row used query decomposition (RRF scores), False for raw MaxSim."""
+        pages = row.get("candidate_pages") or row.get("reranked_pages", [])
+        if not pages or not pages[0].get("score"):
+            return False
+        return pages[0]["score"] < 1.0
+
+    fused = [r for r in decisive if _is_fused(r)]
+    unfused = [r for r in decisive if not _is_fused(r)]
+
+    fused_hit = [r["top1_decisiveness"] for r in fused if r["gold_rank"] == 1]
+    fused_miss = [r["top1_decisiveness"] for r in fused if r["gold_rank"] != 1]
+    unfused_hit = [r["top1_decisiveness"] for r in unfused if r["gold_rank"] == 1]
+    unfused_miss = [r["top1_decisiveness"] for r in unfused if r["gold_rank"] != 1]
+
+    # Legacy fields: average across both populations (kept for compatibility, but mixing scales)
     hit = [r["top1_decisiveness"] for r in decisive if r["gold_rank"] == 1]
     miss = [r["top1_decisiveness"] for r in decisive if r["gold_rank"] != 1]
     out["decisiveness_hit_avg"] = _mean(hit)
@@ -307,6 +333,19 @@ def _calibration(rows: list[dict], out: dict) -> None:
     out["n_decisive_hit"] = len(hit)
     out["n_decisive_miss"] = len(miss)
     out["decisiveness_separation"] = _separation(hit, miss)
+
+    # Separated by fusion status: fused (RRF) vs unfused (MaxSim)
+    out["decisiveness_fused_hit_avg"] = _mean(fused_hit)
+    out["decisiveness_fused_miss_avg"] = _mean(fused_miss)
+    out["n_decisive_fused_hit"] = len(fused_hit)
+    out["n_decisive_fused_miss"] = len(fused_miss)
+    out["decisiveness_fused_separation"] = _separation(fused_hit, fused_miss)
+
+    out["decisiveness_unfused_hit_avg"] = _mean(unfused_hit)
+    out["decisiveness_unfused_miss_avg"] = _mean(unfused_miss)
+    out["n_decisive_unfused_hit"] = len(unfused_hit)
+    out["n_decisive_unfused_miss"] = len(unfused_miss)
+    out["decisiveness_unfused_separation"] = _separation(unfused_hit, unfused_miss)
 
     for level in ("high", "medium", "low"):
         bucket = [r["citation_correct"] for r in rows

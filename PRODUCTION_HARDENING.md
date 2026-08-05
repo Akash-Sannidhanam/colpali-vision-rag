@@ -1375,12 +1375,13 @@ assignment. The invariant is correct and stays; what changed is that the eval no
 reports it as a measurement.
 
 **3. The formula was fine. The presentation was the defect.** `retrieval_confidence` is a
-softmax share over `RETRIEVE_K` candidates, so its floor is `1/12 = 8.3%` and **not zero**;
-across all 83 questions its entire observed range is **0.063–0.212**. `AnswerBubble.tsx`
-rendered `Math.round(x*100)`, so a *maximally* decisive retrieval displayed **"21%"** and a
-typical correct answer displayed **"11%"** — the product appearing to doubt answers it had
-got right. Nobody had flagged this, because everyone was arguing about whether the number
-separated rather than whether it was legible.
+softmax share over `RETRIEVE_K` candidates, so `1/12 = 8.3%` is the uniform-reference value
+(what an evenly-spread slate would yield) and **not zero**; across all 83 questions its
+entire observed range is **0.063–0.212**. `AnswerBubble.tsx` rendered `Math.round(x*100)`,
+so a *maximally* decisive retrieval displayed **"21%"** and a typical correct answer
+displayed **"11%"** — the product appearing to doubt answers it had got right. Nobody had
+flagged this, because everyone was arguing about whether the number separated rather than
+whether it was legible.
 
 ### The lever: score the same formula against a label that has a negative class
 
@@ -1434,9 +1435,9 @@ said this; AUC and the permutation test are what turn +0.0127 into a verdict.
 - **UI:** the chip is gone from `AnswerBubble`; `TraceDisclosure` shows
   `retrieval decisiveness 1.58× uniform` on its own line beneath the stage table (it is a
   property of the retrieval result, not a stage that ran). `lib.decisivenessVsUniform`
-  divides by the `1/RETRIEVE_K` floor, so 1× means "no preference at all" and the number
-  stops moving when `RETRIEVE_K` changes. Trace placement rather than headline placement
-  is what AUC 0.629 supports.
+  divides by the `1/RETRIEVE_K` reference value, so 1× means "evenly spread slate" (no
+  preference at all). Trace placement rather than headline placement is what AUC 0.629
+  supports.
 
 **Verify:** `uv run pytest` (419 passing, 11 of them new); `cd ui && npm test` (14, 4 new)
 and `npm run build`;
