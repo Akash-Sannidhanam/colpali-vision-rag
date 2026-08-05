@@ -72,6 +72,14 @@ eval/reports/*
 # pinned index under the new code and reproduced baseline_decomposed.json to four decimals.
 !eval/reports/vt_control.json
 !eval/reports/vt512.json
+# The confidence-calibration arm (retrieval-only). Kept for the same simulator reason as
+# probe_k50 above, one level further: it is the only report carrying per-candidate `score`
+# and `top1_decisiveness`, and a confidence formula is a pure function of the slate's score
+# distribution - so an alternative formula (top1-vs-top2 margin, slate entropy) can be
+# scored against it offline with no model, no Qdrant and no API key. It also holds the
+# evidence that the shipped signal is real but weak (AUC 0.629, permutation p 0.016 at
+# n=49/24), which is what demoted it from a chip to a trace line rather than deleting it.
+!eval/reports/calib_baseline.json
 
 # Ingest profiles (regenerate via scripts/profile_ingest.py). Same `reports/*`-not-`reports/`
 # form as above, for the same reason: git will not descend into an excluded directory.
