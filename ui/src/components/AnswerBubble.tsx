@@ -3,15 +3,18 @@ import { TraceDisclosure } from './TraceDisclosure'
 
 const fmtTok = (t: number) => (t >= 1000 ? `${(t / 1000).toFixed(1)}k` : `${t}`)
 
-/** An answer bubble: the answer text, a citation chip (when found), the two confidence
- *  chips, the summary meta line, and the expandable per-stage trace. */
+/** An answer bubble: the answer text, a citation chip (when found), the answer-confidence
+ *  chip, the summary meta line, and the expandable per-stage trace.
+ *
+ *  Retrieval decisiveness used to sit here as a second chip reading "retrieval 11%". It
+ *  moved into the trace (see `TraceDisclosure`): measured over 73 questions it does
+ *  separate a correct top page from a wrong one, but only at AUC 0.629 - too weak to
+ *  earn a place beside the answer, and its raw percentage was unreadable besides,
+ *  because the value's floor is 1/RETRIEVE_K rather than zero. */
 export function AnswerBubble({ res, onCite }: { res: QueryResponse; onCite: () => void }) {
   const { answer, citation, pages, meta } = res
-  // The answer-confidence chip is color-coded (high=green, low=red, medium=neutral);
-  // the retrieval chip stays neutral and only shows when a page was actually cited.
+  // Color-coded: high=green, low=red, medium=neutral.
   const answerConf = citation.confidence
-  const retrievalPct =
-    meta.retrieval_confidence != null ? Math.round(meta.retrieval_confidence * 100) : null
   return (
     <div className="msg">
       <div className="bubble-answer">
@@ -24,11 +27,6 @@ export function AnswerBubble({ res, onCite }: { res: QueryResponse; onCite: () =
         )}
 
         <div className="conf-row">
-          {retrievalPct != null && (
-            <span className="conf-chip" title="How decisively retrieval preferred this page (deterministic, from MaxSim scores).">
-              retrieval <b>{retrievalPct}%</b>
-            </span>
-          )}
           <span
             className={`conf-chip ${answerConf}`}
             title="The model's own self-reported confidence in the answer."

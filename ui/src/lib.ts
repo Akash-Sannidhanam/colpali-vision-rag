@@ -28,6 +28,31 @@ export function regionsOnPage(regions: Region[], sourcePage: number): Region[] {
 }
 
 /**
+ * Retrieval decisiveness as a multiple of an evenly-spread slate, or null if N/A.
+ *
+ * `retrieval_confidence` is the cited page's share of the softmax mass over `k`
+ * candidates, so its floor is `1/k` (every page equally liked) and not zero. Rendering
+ * it as a bare percentage was actively misleading: with k=12 the whole observed range
+ * across the 83-question eval is 6-21%, so a *maximally* decisive retrieval showed
+ * "21%" and a typical correct answer showed "11%" - which reads as the system doubting
+ * an answer it got right.
+ *
+ * Dividing by the floor removes that artifact: 1x is "no preference at all", and the
+ * number stops moving when RETRIEVE_K changes. Measured on
+ * eval/reports/calib_baseline.json, retrieval's top page averages 1.50x when it is the
+ * gold page against 1.35x when it is not - a real difference (AUC 0.629, permutation
+ * p=0.016 at n=49/24), but a weak one, which is why this is a trace-level diagnostic
+ * and not a headline chip.
+ */
+export function decisivenessVsUniform(
+  confidence: number | null | undefined,
+  k: number,
+): number | null {
+  if (confidence == null || !k || k <= 0) return null
+  return confidence * k
+}
+
+/**
  * Map a normalized patch score in [0,1] to an RGBA tuple (alpha 0-1) for the "why this
  * page?" heatmap: cold patches stay clear, ramping blue -> cyan -> yellow -> red as the
  * query match strengthens, with alpha rising so only the patches that matter tint the

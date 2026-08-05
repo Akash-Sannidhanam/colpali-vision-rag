@@ -1,6 +1,29 @@
 import { describe, it, expect } from 'vitest'
-import { boxToOverlay, citedPage, heatmapRGBA, regionsOnPage } from './lib'
+import { boxToOverlay, citedPage, decisivenessVsUniform, heatmapRGBA, regionsOnPage } from './lib'
 import type { PageHit, Region } from './types'
+
+describe('decisivenessVsUniform', () => {
+  it('reports an evenly-spread slate as 1x uniform', () => {
+    // Every candidate holding an equal share is the undecided case, whatever k is.
+    expect(decisivenessVsUniform(1 / 12, 12)).toBeCloseTo(1)
+  })
+
+  it('reports the measured hit average as roughly 1.5x uniform', () => {
+    // 0.1253 is decisiveness_hit_avg from eval/reports/calib_baseline.json. As a raw
+    // percentage it reads "13%" - the presentation defect this function exists to fix.
+    expect(decisivenessVsUniform(0.1253, 12)).toBeCloseTo(1.5, 1)
+  })
+
+  it('rises with decisiveness', () => {
+    const spread = decisivenessVsUniform(0.11, 12) ?? 0
+    expect(decisivenessVsUniform(0.21, 12)).toBeGreaterThan(spread)
+  })
+
+  it('is null when there is no confidence or no slate to compare against', () => {
+    expect(decisivenessVsUniform(null, 12)).toBeNull()
+    expect(decisivenessVsUniform(0.5, 0)).toBeNull()
+  })
+})
 
 describe('boxToOverlay', () => {
   it('maps a 0-1000 box to CSS percentages', () => {

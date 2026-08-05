@@ -455,6 +455,17 @@ body {
   text-align: right;
   color: var(--t-4);
 }
+/* A property of the retrieval result rather than a stage, so it sits under the stage
+   table instead of in it. Deliberately quiet: the signal is weak (AUC 0.629). */
+.trace-note {
+  margin-top: 6px;
+  font: 500 10.5px var(--mono);
+  color: var(--t-4);
+}
+.trace-note b {
+  color: var(--t-2);
+  font-weight: 600;
+}
 
 /* ask box */
 .askbox {

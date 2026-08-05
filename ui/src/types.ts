@@ -52,7 +52,9 @@ export interface QueryMeta {
   est_cost_usd: number
   gemini_calls: number
   retrieve_k: number
-  retrieval_confidence: number | null // deterministic softmax share on the cited page; null if none
+  // Deterministic softmax share on the cited page; null if none. Its floor is
+  // 1/retrieve_k, not 0 - render via lib.decisivenessVsUniform, never as a raw percent.
+  retrieval_confidence: number | null
   stages: StageMeta[]
 }
 
