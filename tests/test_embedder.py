@@ -204,12 +204,20 @@ def test_embed_image_matches_the_batched_path(monkeypatch):
 
 
 def test_no_pages_means_no_forward_pass(monkeypatch):
-    """An empty document costs nothing (and must not index an empty batch)."""
+    """An empty document costs nothing (and must not index an empty batch).
+
+    The processor assertion is the load-bearing one. Without the empty guard in
+    `iter_embedded`, `preprocess([])` is still submitted to the prefetch pool: the loop then
+    never runs, so nothing ever calls `.result()`, and whatever that raises is swallowed with
+    the abandoned future. The forward-pass assertion alone passes either way.
+    """
     model = _FakeModel()
-    _install(monkeypatch, model, _FakeProcessor({}))
+    processor = _FakeProcessor({})
+    _install(monkeypatch, model, processor)
 
     assert embedder.embed_images([]) == []
     assert model.batch_sizes == []
+    assert processor.calls == []      # not even preprocessed
 
 
 # --- the MPS batching exclusion (see embedder._batching_is_supported) ---

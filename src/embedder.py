@@ -259,10 +259,15 @@ def iter_embedded(
                 if size == 1 or not _is_oom(exc):
                     raise
                 size = size // 2
-                # Clear the failed batch and bound exception before releasing memory to ensure
-                # device tensors and traceback references are dropped.
+                # Drop the failed batch and the exception before releasing memory: `exc`'s
+                # traceback still references forward()'s frame and therefore its device
+                # tensors, so empty_cache() cannot return that memory while it is alive.
+                # Python clears an except-bound name automatically, but only once the block
+                # exits - which is after the release below, too late to help.
+                # `del` rather than `= None` because the name is typed as the caught
+                # exception union, so assigning None to it does not typecheck.
                 inputs = None
-                exc = None
+                del exc
                 _release_memory()
                 logger.warning(
                     "embed batch ran out of memory; retrying smaller",
