@@ -334,27 +334,44 @@ dropping hits* — the same bug it fixes. Retrieval-only against the pinned base
 Row-level, not summary-level. And since the pinned index was written with absolute paths, that run
 doubles as the backward-compat proof.
 
-### One upload froze every user — 11.2× ✅ ADOPTED
+### One upload froze every user — ~16× on the wait for the model ✅ ADOPTED
 
 `/ingest` held the GPU lock across the whole build while `/query` contended for it. The fix is not
 politer waiting; it is making the ingest **give the GPU back** at each page boundary — the one
-moment in the loop it is idle. Measured on a live server, 20-page ingest with one query fired 20 s in:
+moment in the loop it is idle.
 
-| | |
-|---|---|
-| ingest total | 175.5 s (~8.8 s/page) |
-| query latency, end to end | **13.8 s** |
-| …its own pipeline work (two Gemini calls) | 12.6 s |
-| …**so the GPU queueing cost** | **~1.2 s** |
-| ingest remaining then — the pre-gate wait | **155.3 s** |
+**The first version of this measurement was a single run, and it did not reproduce** — 11.2× became
+2.1× on a re-run, plus a failed ingest. That is the noise floor this repo already documented for
+this box in the ingest-throughput pass, applied to a number published without meeting it. The
+corrected framing reports the statistic the mechanism actually moves: end-to-end latency is
+dominated by Gemini (15.7 s → 131.9 s of pipeline time for the *same* query within one session), so
+a "speedup" from it mostly measures Gemini. What the gate changes is the **wait for the model**.
+Three interleaved rounds, 13-page ingest, query fired 15 s in:
 
-The query returned the right answer mid-document and the ingest finished cleanly. Two further
-behaviours moved into `src/gpu_arbiter.py` rather than staying per-endpoint: a bounded wait
-(503 + `Retry-After` past `GPU_WAIT_TIMEOUT_S`), and **disconnect safety, which was a live bug** —
-`await asyncio.to_thread(...)` cancels the awaiting task, never the thread, so a client going away
-released the model out from under its own running forward pass. Both are regression-tested by
-*breaking* them: stub the gate and the ordering test fails; remove the shield and the disconnect
-test fails.
+| round | queueing cost | ingest remaining (the pre-gate wait) |
+|---|---|---|
+| 1 | 3.7 s | 247.2 s |
+| 2 | 8.4 s | 126.8 s |
+| 3 | 8.2 s | 135.3 s |
+| **median** | **8.2 s** | **135.3 s** — ≈**16×** |
+
+The wait drops from *the rest of the document* to *about one page batch*, and it is stable across
+rounds where the end-to-end figure is not.
+
+**A stalled upsert used to kill the whole ingest.** The failing re-run died at page 8 of 20 on a
+Qdrant upsert hitting the client's invisible 60 s default. `_StoreWorker`'s failure aborts the
+document, so one slow HTTP call discarded every page embedded so far. The obvious hypothesis — the
+gate parking the ingest long enough for the idle connection to be reaped — was **tested and
+refuted** (70 s idle, next upsert 0.02 s). The fix stands on its own regardless: `QDRANT_TIMEOUT_S`
+is stated rather than inherited, and `upsert_pages` retries transient transport failures the way
+`gemini_client` already does, safely, because point ids make the write idempotent.
+
+Two further behaviours moved into `src/gpu_arbiter.py` rather than staying per-endpoint: a bounded
+wait (503 + `Retry-After` past `GPU_WAIT_TIMEOUT_S`), and **disconnect safety, which was a live
+bug** — `await asyncio.to_thread(...)` cancels the awaiting task, never the thread, so a client
+going away released the model out from under its own running forward pass. Both are regression
+-tested by *breaking* them: stub the gate and the ordering test fails; remove the shield and the
+disconnect test fails.
 
 ---
 

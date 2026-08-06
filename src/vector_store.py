@@ -19,12 +19,20 @@ Two write paths, both reached through the mode-hiding seam at the bottom so
 physical collection transparently.
 """
 
+import logging
 import uuid
 from pathlib import Path
 from typing import Any
 
 from qdrant_client import QdrantClient
 from qdrant_client import models as qm
+from tenacity import (
+    before_sleep_log,
+    retry,
+    retry_if_exception,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 from src.config import (
     CANDIDATE_FANOUT,
@@ -32,7 +40,9 @@ from src.config import (
     MAX_PAGES_PER_DOC,
     PAGE_IMAGES_DIR,
     QDRANT_API_KEY,
+    QDRANT_MAX_RETRIES,
     QDRANT_PATH,
+    QDRANT_TIMEOUT_S,
     QDRANT_URL,
     RESCORE_OVERSAMPLING,
     RETRIEVE_K,
@@ -64,7 +74,11 @@ def get_client() -> QdrantClient:
     global _client
     if _client is None:
         if QDRANT_URL:
-            _client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
+            # Timeout stated explicitly rather than inherited. The client's own default is
+            # 60 s and invisible in the code, which is a bad property for the one call that
+            # can discard minutes of GPU work when it stalls (see `upsert_pages`).
+            _client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY,
+                                   timeout=int(QDRANT_TIMEOUT_S))
         else:
             _client = QdrantClient(path=str(QDRANT_PATH))  # local prototyping fallback
     return _client
@@ -356,16 +370,51 @@ def build_point(
         },
     )
 
+def _is_retryable(exc: BaseException) -> bool:
+    """True for transient transport failures worth retrying, False for permanent ones.
+
+    Matches `gemini_client._is_retryable`'s shape deliberately: name-based, so it covers
+    httpx/httpcore timeouts and connection resets without importing their exception tree,
+    and it never retries a 4xx (a malformed point or a missing collection will fail the
+    same way forever, and retrying only delays the error).
+    """
+    name = type(exc).__name__.lower()
+    return "timeout" in name or "connection" in name or "writeerror" in name
+
+
 def upsert_pages(points: list[qm.PointStruct], collection_name: str = COLLECTION_NAME) -> None:
     """Store a batch of page points in a single round-trip (skips empty batches).
 
     During an atomic server ingest, `collection_name` is the new physical collection
     being built - the alias still points at the previous index until finish_ingest.
+
+    **Retried, because this call is disproportionately expensive to lose.** It runs on
+    `ingest._StoreWorker`, whose failure aborts the whole document - so one slow HTTP call
+    used to discard every page embedded so far, minutes of GPU time, and leave a truncated
+    document that `_sync` would then have to catch. Observed once for real: an upsert
+    issued while a query held the GPU stalled past the client timeout and killed a 20-page
+    ingest at page 8.
+
+    Retrying is safe because the write is **idempotent** - point ids are derived from
+    (pdf, page) in `build_point`, so re-sending a batch that partially landed overwrites
+    those points in place rather than duplicating them.
     """
     if not points:
         return
     client = get_client()
-    client.upsert(collection_name=collection_name, points=points)
+
+    @retry(
+        reraise=True,
+        stop=stop_after_attempt(max(1, QDRANT_MAX_RETRIES)),
+        wait=wait_exponential(multiplier=1, min=1, max=20),
+        retry=retry_if_exception(_is_retryable),
+        before_sleep=before_sleep_log(log, logging.WARNING),
+    )
+    def _upsert() -> None:
+        """One upsert attempt, retried on a transient transport failure."""
+        client.upsert(collection_name=collection_name, points=points)
+
+    _upsert()
 
 def _diversify(hits: list[dict], cap: int, k: int) -> list[dict]:
     """Keep score order, but let no single `pdf` occupy more than `cap` of the k slots.

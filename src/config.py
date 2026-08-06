@@ -230,6 +230,12 @@ EVAL_JUDGE_MODEL = os.getenv("EVAL_JUDGE_MODEL") or GEMINI_MODEL
 GEMINI_TIMEOUT_S = float(os.getenv("GEMINI_TIMEOUT_S", "60"))   # per-request timeout
 GEMINI_MAX_RETRIES = int(os.getenv("GEMINI_MAX_RETRIES", "3"))  # attempts on transient errors
 
+# The same two for Qdrant (see src/vector_store.py). Stated rather than inherited: the
+# client's own default is 60 s and invisible, and a single upsert stalling that long used
+# to abort a whole ingest - minutes of GPU work discarded over one slow HTTP call.
+QDRANT_TIMEOUT_S = float(os.getenv("QDRANT_TIMEOUT_S", "60"))
+QDRANT_MAX_RETRIES = int(os.getenv("QDRANT_MAX_RETRIES", "3"))
+
 # Logging (see src/logging_setup.py). LOG_JSON emits one JSON object per line.
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 LOG_JSON = os.getenv("LOG_JSON", "false").strip().lower() in ("1", "true", "yes")

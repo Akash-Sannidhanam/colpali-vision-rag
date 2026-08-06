@@ -11,6 +11,7 @@ from types import SimpleNamespace
 
 import pytest
 from qdrant_client import models as qm
+from tenacity import wait_none
 
 from src import vector_store
 
@@ -846,3 +847,83 @@ def test_index_health_is_not_fooled_by_a_leftover_covering_a_missing_page(monkey
     assert health["ok"] is False
     assert health["incomplete"] == [{"pdf": "a.pdf", "indexed_pages": 2,
                                      "images_present": 1, "missing_pages": [1]}]
+
+
+# --- upsert retry: the call that is disproportionately expensive to lose ---
+
+@pytest.fixture(autouse=False)
+def no_backoff(monkeypatch):
+    """Strip the exponential wait so retry tests cost no wall-clock.
+
+    `upsert_pages` builds its tenacity decorator per call, resolving `wait_exponential`
+    from the module namespace each time - so patching it here is enough, and the suite
+    stays the "pure logic, runs in seconds" shape the rest of it has.
+    """
+    monkeypatch.setattr(vector_store, "wait_exponential", lambda **kw: wait_none())
+
+
+class _FlakyUpsert:
+    """A client whose upsert fails `fails` times before succeeding."""
+
+    def __init__(self, exc, fails):
+        self.exc, self.remaining, self.calls = exc, fails, 0
+
+    def upsert(self, **kwargs):
+        self.calls += 1
+        if self.remaining > 0:
+            self.remaining -= 1
+            raise self.exc
+
+
+def test_upsert_retries_a_transient_timeout(monkeypatch, no_backoff):
+    """One slow HTTP call used to discard a whole document's worth of GPU work.
+
+    upsert_pages runs on ingest._StoreWorker, whose failure aborts the entire document -
+    observed for real when an upsert issued while a query held the GPU stalled past the
+    client timeout and killed a 20-page ingest at page 8.
+    """
+    client = _FlakyUpsert(TimeoutError("timed out"), fails=2)
+    monkeypatch.setattr(vector_store, "get_client", lambda: client)
+    monkeypatch.setattr(vector_store, "QDRANT_MAX_RETRIES", 3)
+
+    vector_store.upsert_pages([qm.PointStruct(id=1, vector=[[0.0] * 128], payload={})])
+
+    assert client.calls == 3          # two failures, then the write lands
+
+
+def test_upsert_gives_up_after_the_configured_attempts(monkeypatch, no_backoff):
+    """A persistent failure still surfaces - the ingest must not hang or silently skip."""
+    client = _FlakyUpsert(TimeoutError("timed out"), fails=99)
+    monkeypatch.setattr(vector_store, "get_client", lambda: client)
+    monkeypatch.setattr(vector_store, "QDRANT_MAX_RETRIES", 2)
+
+    with pytest.raises(TimeoutError):
+        vector_store.upsert_pages([qm.PointStruct(id=1, vector=[[0.0] * 128], payload={})])
+
+    assert client.calls == 2
+
+
+def test_upsert_does_not_retry_a_permanent_error(monkeypatch, no_backoff):
+    """A malformed point or a missing collection fails the same way forever.
+
+    Retrying it only delays the error and, on the ingest path, holds the GPU while it
+    backs off - so the predicate is transport-shaped, exactly like gemini_client's.
+    """
+    client = _FlakyUpsert(ValueError("bad point"), fails=99)
+    monkeypatch.setattr(vector_store, "get_client", lambda: client)
+    monkeypatch.setattr(vector_store, "QDRANT_MAX_RETRIES", 3)
+
+    with pytest.raises(ValueError):
+        vector_store.upsert_pages([qm.PointStruct(id=1, vector=[[0.0] * 128], payload={})])
+
+    assert client.calls == 1          # tried once, not three times
+
+
+def test_upsert_skips_the_round_trip_for_an_empty_batch(monkeypatch):
+    """Unchanged by the retry wrapper: an empty flush must still cost nothing."""
+    client = _FlakyUpsert(TimeoutError("timed out"), fails=99)
+    monkeypatch.setattr(vector_store, "get_client", lambda: client)
+
+    vector_store.upsert_pages([])
+
+    assert client.calls == 0

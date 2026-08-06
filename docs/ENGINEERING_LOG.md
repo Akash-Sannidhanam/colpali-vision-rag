@@ -1559,21 +1559,42 @@ Both are regression-tested by breaking them: with the gate stubbed to a no-op th
 test fails, and with the shield removed the disconnect test fails. A test that passes
 against the broken code proves nothing, and these were checked, not assumed.
 
-**Measured against a live server**, not argued — a 20-page ingest (175.5 s total, ~8.8
-s/page on this M5) with one `/query` fired 20.2 s in:
+**Measured against a live server**, over three interleaved rounds — and the first attempt
+at this measurement was wrong in a way worth recording, because it was wrong by *this
+repo's own standard*. A single round gave "13.8 s query against 155.3 s of remaining
+ingest, 11.2×", and that headline shipped for one commit. Re-running it did not reproduce:
+57.1 s, 2.1×, and a failed ingest. The ingest-throughput pass already established that this
+box has a ~50% noise floor and that arms must be interleaved and reported as medians; the
+number was published without meeting the bar the same repo sets three sections earlier.
 
-| | |
-|---|---|
-| query latency, end to end | **13.8 s** |
-| …of which the pipeline's own work (`meta.latency_ms`, two Gemini calls) | 12.6 s |
-| …so the GPU queueing cost | **~1.2 s** |
-| ingest remaining at that moment — the pre-gate wait | **155.3 s** |
-| | **11.2×** |
+**The stable statistic is the queueing cost, not an end-to-end multiple.** End-to-end
+latency is dominated by Gemini, which varied 8× within one session (15.7 s to 131.9 s of
+pipeline time for the identical query), so any "speedup" computed from it is mostly
+measuring Gemini's mood. What the gate actually changes is how long a query waits *for the
+model*, and that is what to report. Three rounds, 13-page ingest, query fired 15 s in:
 
-The query returned the correct answer (`180,000`, cited to `sales_report.pdf` p1) while the
-ingest was mid-document, and the ingest then finished cleanly through page 20. The queueing
-cost lands *below* one page because the query slots in at the next batch boundary rather
-than waiting for a whole one — the ~1 s figure is the tail of the batch in flight.
+| round | queueing cost | ingest remaining (the pre-gate wait) | ingest completed |
+|---|---|---|---|
+| 1 | 3.7 s | 247.2 s | ✅ |
+| 2 | 8.4 s | 126.8 s | ✅ |
+| 3 | 8.2 s | 135.3 s | ✅ |
+| **median** | **8.2 s** | **135.3 s** | **≈16×** |
+
+Read it as: the wait for the model drops from *the rest of the document* to *about one page
+batch*. That is the claim the mechanism supports, it is stable across rounds, and it does
+not move when Gemini does.
+
+**One upsert stalling used to kill a whole ingest.** The re-run that failed did so at page 8
+of 20, on a Qdrant upsert that hit the client's invisible 60 s default timeout while a query
+held the GPU. `_StoreWorker`'s failure aborts the document, so one slow HTTP call discarded
+every page embedded so far. The obvious hypothesis — the gate parks the ingest long enough
+for Qdrant to reap the idle keep-alive connection — was **tested and refuted**: 70 s idle,
+the next upsert still returned in 0.02 s. Whatever the stall was (this 16 GB box runs a
+query and an ingest against one GPU), the right fix is the same and stands on its own:
+`QDRANT_TIMEOUT_S` is now stated rather than inherited, and `upsert_pages` retries transient
+transport failures the way `gemini_client.generate` already does. Retrying is safe because
+the write is idempotent — point ids derive from (pdf, page). All three rounds above
+completed; the pre-fix run did not.
 
 ### Two properties that hold the arbiter together
 

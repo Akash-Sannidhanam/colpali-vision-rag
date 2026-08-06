@@ -359,6 +359,8 @@ throttled too and key guessing isn't free.
 | `CORS_ALLOW_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | comma-separated browser origins allowed to call the API; `*` allows any. Irrelevant in the Docker deployment, where the UI is served from the same origin |
 | `MAX_UPLOAD_MB` | `50` | reject larger PDF uploads to `POST /ingest` |
 | `GPU_WAIT_TIMEOUT_S` | `60` | how long a request may wait for the model before it is shed as `503` + `Retry-After`; `0` waits forever |
+| `QDRANT_TIMEOUT_S` | `60` | per-request Qdrant timeout. Stated rather than inherited — a stalled upsert aborts a whole ingest |
+| `QDRANT_MAX_RETRIES` | `3` | attempts on a transient Qdrant transport failure (timeouts / connection resets only) |
 | `PAGE_IMAGES_DIR` | `./page_images` | where rendered pages and crops live. **Persist and back this up with the Qdrant storage** — see above |
 | `PDFS_DIR` | `./pdfs` | where uploaded source documents are kept |
 | `QDRANT_PATH` | `./qdrant_data` | on-disk location of the embedded fallback store (unused when `QDRANT_URL` is set) |
@@ -446,7 +448,12 @@ request serialized through `src/gpu_arbiter.py`. Two things it does beyond a pla
 
 - **An ingest yields the model between page batches.** A long upload used to hold it for the
   whole document, so a concurrent question waited minutes. It now hands the GPU to a queued
-  query at each page boundary — a wait of roughly one page.
+  query at each page boundary. Measured over three interleaved rounds, the wait for the model
+  drops from the rest of the document to about one page batch — median **8.2 s against 135 s**
+  ([details](docs/EXPERIMENTS.md#deployment)).
+- **A stalled Qdrant upsert no longer kills an ingest.** `QDRANT_TIMEOUT_S` is explicit rather
+  than an invisible library default, and the write retries — safely, since point ids make it
+  idempotent. One slow HTTP call used to discard every page embedded so far.
 - **It sheds instead of hanging.** Past `GPU_WAIT_TIMEOUT_S` a request gets `503` with a
   `Retry-After`, the same shape as the rate limiter's `429`. And a client that disconnects
   mid-query cannot release the model out from under its own running forward pass.
