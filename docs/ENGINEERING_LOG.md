@@ -1618,6 +1618,33 @@ a vacuous assertion of exactly the kind this pass otherwise went looking for.
 Both Major fixes are regression-tested by reverting them: restore the bare count and five
 tests fail; move the acquire back inside the generator and the shedding test fails.
 
+**The first fix for (2) was worse than the bug, and only checking the comment caught it.**
+The obvious repair — acquire in the endpoint, close the context inside the generator — was
+written with a comment claiming the lock still releases when a client disconnects. That
+claim was verified rather than trusted, and half of it was false. Driving the real ASGI app
+with a `send()` that fails on the *first* message (the connection breaking before the
+headers go out) showed Starlette raising out of `http.response.start` and **never starting
+the body generator at all**, so its `finally` never runs: `body_started=False`,
+`finally_ran=False`. The GPU lock is then held for the life of the process and every later
+request sheds forever. Trading a truncated stream for a permanently wedged server is a bad
+trade.
+
+What ships instead probes at the door — `async with _gpu.acquire(): pass` — to make the
+shed decision with the real timeout, releases, and lets the generator take the lock for the
+build. Acquire and release sit in the same frame and cannot leak. The probe is advisory, so
+the generator's own acquire still degrades to a terminal `error` frame rather than dying
+silently.
+
+**And the first version of *that* test was vacuous, for a reason worth writing down.**
+Asserting `not _lock.locked()` after `asyncio.run(drive())` passes against the leaking
+implementation: `asyncio.run` ends by calling `loop.shutdown_asyncgens()`, which closes the
+`@asynccontextmanager` generator behind `acquire()` and releases the lock as a side effect
+of loop teardown. A uvicorn process never tears its loop down between requests, so that
+cleanup does not exist in production — the assertion had to move *inside* the loop to
+measure the thing production would. Instrumented, the leaking version reports `lock held
+INSIDE the loop: True` and `AFTER the loop: False`. Same lesson as the `_noop_gate` test in
+this batch: a test that passes against the broken code is not a test.
+
 **One suggestion was taken with its reasoning narrowed.** A proposed guard on `_yield_slice`
 was described as preventing a release of a lock held by *another* request. It cannot —
 `asyncio.Lock` tracks no owner, so `locked()` cannot distinguish "held by me" from "held by

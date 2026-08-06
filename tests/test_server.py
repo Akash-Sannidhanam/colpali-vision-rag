@@ -15,6 +15,7 @@ raise for the degraded-health case without breaking startup).
 
 import asyncio
 import base64
+import contextlib
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -636,3 +637,100 @@ def test_ingest_stream_releases_the_model_when_the_build_finishes(warm, monkeypa
     # A leaked lock would make every subsequent request hang or shed.
     assert not server._gpu._lock.locked()
     assert not server._gpu.contended()
+
+
+def test_ingest_stream_never_holds_the_model_across_the_response_boundary(
+        warm, monkeypatch, tmp_path):
+    """The lock must not survive a connection that breaks before the headers go out.
+
+    Holding it in the endpoint and closing the context *inside* the generator looks
+    equivalent and is not: when send() fails on the first message Starlette never starts
+    the body at all, so its `finally` never runs and the model stays locked for the life
+    of the process — every later request sheds forever. That is strictly worse than the
+    truncated-200 bug it was fixing, so acquire and release live in the same frame.
+    """
+    monkeypatch.setattr(server, "PDFS_DIR", tmp_path)
+    monkeypatch.setattr(server, "run_ingest", lambda paths, progress, *, gate=None: 1)
+
+    body = (b'--b\r\nContent-Disposition: form-data; name="file"; filename="doc.pdf"\r\n'
+            b"Content-Type: application/pdf\r\n\r\n%PDF-1.4 fake\r\n--b--\r\n")
+
+    async def drive():
+        """Call the ASGI app directly with a send() that fails on the FIRST message.
+
+        That is the abandoned-stream shape: Starlette raises out of `http.response.start`
+        and never advances the body generator, so any cleanup written in the generator
+        never runs. TestClient cannot produce this — it always consumes the body.
+        """
+        async def send(message):
+            raise OSError("client vanished before the headers went out")
+
+        sent = False
+
+        async def receive():
+            nonlocal sent
+            if not sent:
+                sent = True
+                return {"type": "http.request", "body": body, "more_body": False}
+            return {"type": "http.disconnect"}
+
+        scope = {
+            "type": "http", "http_version": "1.1", "method": "POST",
+            "path": "/ingest/stream", "raw_path": b"/ingest/stream", "query_string": b"",
+            "root_path": "", "scheme": "http", "client": ("test", 1),
+            "server": ("test", 80), "app": server.app,
+            "headers": [(b"host", b"test"), (b"content-type", b"multipart/form-data; boundary=b"),
+                        (b"content-length", str(len(body)).encode())],
+        }
+        with contextlib.suppress(Exception):     # the broken send propagates; that's the point
+            await server.app(scope, receive, send)
+
+        # Asserted INSIDE the loop, deliberately. `asyncio.run` ends by calling
+        # `loop.shutdown_asyncgens()`, which closes the `@asynccontextmanager` generator
+        # behind `acquire()` and releases the lock as a side effect - so a check after
+        # `asyncio.run` returns passes against the leaking implementation too. A real
+        # uvicorn process never tears its loop down between requests, so that cleanup does
+        # not exist in production and the check has to happen where production would be.
+        assert not server._gpu._lock.locked(), "the model stayed locked - the server is wedged"
+        assert not server._gpu.contended()
+
+    asyncio.run(drive())
+
+
+def test_ingest_stream_reports_a_lost_shed_race_in_the_stream(warm, monkeypatch, tmp_path):
+    """The door probe is advisory, so the generator's own acquire must degrade cleanly.
+
+    Headers are already out by then, so a lost race cannot become a 503 — it has to be a
+    terminal `error` frame rather than a stream that just stops.
+    """
+    monkeypatch.setattr(server, "PDFS_DIR", tmp_path)
+    monkeypatch.setattr(server, "run_ingest",
+                        lambda *a, **k: pytest.fail("the build must never start"))
+
+    calls = {"n": 0}
+    real_acquire = server._gpu.acquire
+
+    def flaky_acquire(*args, **kwargs):
+        """Let the door probe through, then shed the generator's acquire."""
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return real_acquire(*args, **kwargs)
+
+        class _Busy:
+            async def __aenter__(self):
+                raise server.GpuBusy(30.0)
+
+            async def __aexit__(self, *exc):
+                return False
+
+        return _Busy()
+
+    monkeypatch.setattr(server._gpu, "acquire", flaky_acquire)
+
+    resp = warm.post("/ingest/stream",
+                     files={"file": ("doc.pdf", b"%PDF-1.4 fake", "application/pdf")})
+
+    assert resp.status_code == 200                       # headers were already sent
+    assert '"phase": "error"' in resp.text                # ...so it says so in the stream
+    assert '"retry_after"' in resp.text
+    assert not server._gpu._lock.locked()                 # and still no leak

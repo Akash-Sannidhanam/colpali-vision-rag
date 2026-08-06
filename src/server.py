@@ -32,7 +32,7 @@ owns the client lifecycle: opened lazily, closed once on shutdown.
 import asyncio
 import base64
 import json
-from contextlib import AsyncExitStack, asynccontextmanager
+from contextlib import asynccontextmanager
 from functools import partial
 from pathlib import Path
 from urllib.parse import urljoin
@@ -609,43 +609,62 @@ async def ingest_stream(file: UploadFile = File(...)):
         """Hop one worker-thread progress event back onto the event loop's queue."""
         loop.call_soon_threadsafe(queue.put_nowait, event)   # called from the worker thread
 
-    # The model is acquired HERE, not inside event_stream(), so a shed request is a real
-    # 503 + Retry-After exactly like /ingest. FastAPI sends a StreamingResponse's 200
-    # headers before it ever iterates the generator, so a GpuBusy raised in there could
-    # not reach _gpu_busy_handler - the client would get a truncated 200 stream with no
-    # status and no Retry-After, and the two ingest endpoints would disagree under load.
+    # Shedding has to be decided BEFORE the response starts and the lock must never be
+    # held across the endpoint/generator boundary. Those pull in opposite directions, and
+    # getting either wrong is worse than the problem:
     #
-    # The stack is entered here and closed by `async with stack` inside the generator, so
-    # the lock is still held for the whole build and released when the stream ends -
-    # including the client-disconnect path, where Starlette closes the generator and the
-    # `finally` below still runs.
-    stack = AsyncExitStack()
-    await stack.enter_async_context(_gpu.acquire())
+    #   * Acquiring inside event_stream() puts GpuBusy permanently out of reach of
+    #     _gpu_busy_handler - FastAPI sends a StreamingResponse's 200 headers before it
+    #     ever iterates the generator - so an overloaded server answers a truncated 200
+    #     with no Retry-After while plain /ingest correctly sheds.
+    #   * Acquiring here and closing the context *inside* the generator leaks the lock
+    #     outright. If the connection breaks before the headers go out, Starlette raises
+    #     from send() and never starts the body at all, so its `finally` never runs -
+    #     measured, not assumed - and the model stays locked for the life of the process.
+    #     Every later request then sheds forever. A wedged server is far worse than a
+    #     truncated stream.
+    #
+    # So: probe at the door with the real timeout to make the shed decision, release it,
+    # and let the generator take the lock for the actual build. Acquire and release then
+    # sit in the same frame and cannot leak. The probe is advisory - another request can
+    # slip in between - which is why the generator's own acquire still degrades to a
+    # terminal `error` frame rather than dying silently. That race costs a queued client
+    # a wait; the alternatives cost correctness.
+    async with _gpu.acquire():                               # raises GpuBusy -> 503 here
+        pass
 
     async def event_stream():
         """Drain the progress queue into SSE frames until the build finishes or fails."""
-        async with stack:                                    # holds the model for the build
-            task = asyncio.create_task(
-                asyncio.to_thread(partial(run_ingest, all_pdfs, progress, gate=gate))
-            )
-            task.add_done_callback(lambda _t: loop.call_soon_threadsafe(queue.put_nowait, done))
-            try:
-                while True:
-                    event = await queue.get()
-                    if event is done:
-                        break
-                    yield _sse(event)
-                indexed = task.result()                      # task is finished here; re-raises on failure
-                yield _sse({"phase": "done", "pdf": name, "indexed_pages": indexed})
-            except Exception as exc:
-                log.warning("ingest stream failed", exc_info=exc)
-                yield _sse({"phase": "error", "detail": str(exc)})
-            finally:
-                # If the client disconnected mid-build, don't release the model lock until
-                # the in-flight embed loop actually finishes (a concurrent query forward
-                # pass on the one GPU model would otherwise race it).
-                if not task.done():
-                    await asyncio.shield(task)
+        try:
+            async with _gpu.acquire():                       # holds the model for the build
+                task = asyncio.create_task(
+                    asyncio.to_thread(partial(run_ingest, all_pdfs, progress, gate=gate))
+                )
+                task.add_done_callback(
+                    lambda _t: loop.call_soon_threadsafe(queue.put_nowait, done))
+                try:
+                    while True:
+                        event = await queue.get()
+                        if event is done:
+                            break
+                        yield _sse(event)
+                    indexed = task.result()                  # task is finished here; re-raises on failure
+                    yield _sse({"phase": "done", "pdf": name, "indexed_pages": indexed})
+                except Exception as exc:
+                    log.warning("ingest stream failed", exc_info=exc)
+                    yield _sse({"phase": "error", "detail": str(exc)})
+                finally:
+                    # If the client disconnected mid-build, don't release the model lock
+                    # until the in-flight embed loop actually finishes (a concurrent query
+                    # forward pass on the one GPU model would otherwise race it).
+                    if not task.done():
+                        await asyncio.shield(task)
+        except GpuBusy as exc:
+            # Lost the race after the door probe. The headers are already out, so this
+            # cannot be a 503 - say so in the stream instead of truncating it.
+            log.warning("ingest stream shed after the response started")
+            yield _sse({"phase": "error", "detail": str(exc),
+                        "retry_after": exc.retry_after})
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
