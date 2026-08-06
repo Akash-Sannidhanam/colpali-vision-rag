@@ -302,17 +302,18 @@ request is warm.
 PYTHONPATH=. uv run uvicorn src.server:app --host 127.0.0.1 --port 8000
 ```
 
-Run a **single worker** — the one GPU-resident model is shared and serialized behind a lock, so
-`--workers >1` would load N copies and break that assumption. On startup you see the model load once
-and a `server warm` log line; the live OpenAPI schema is at `/docs`.
+Run a **single worker** — the one GPU-resident model is shared and serialized behind
+`src/gpu_arbiter.py`, so `--workers >1` would load N copies and break that assumption. On startup
+you see the model load once and a `server warm` log line; the live OpenAPI schema is at `/docs`.
+See [Concurrency](#concurrency) for what the arbiter does that a plain lock doesn't.
 
 | Method & path | What it does |
 |---|---|
 | `POST /query` `{question}` | Answer + citation (with `box`) + the used pages + crop/annotated images + a per-request `meta` (request_id, latency, tokens, cost, and a per-stage breakdown). Add `?inline=true` to also get images as base64 data-URIs (for a sandboxed UI); the default returns `/images/...` URLs. |
 | `POST /heatmap` `{question, pdf, page_number}` | Per-patch **MaxSim heatmap** for one page — an `n_x × n_y` grid of query→page match strengths in `[0,1]`. Powers the viewer's **"why this page?"** toggle (which patches the query lit up, vs. the crop's *where the answer was read*). On-demand: it recomputes two forward passes on the model lock, so it's a separate call, not part of `/query`. |
-| `GET /health` | `model_loaded` + Qdrant reachability. `503` when Qdrant is unreachable. |
+| `GET /health` | `model_loaded` + Qdrant reachability + `corpus` integrity (whether any indexed document has lost its page images). `503` when Qdrant is unreachable. |
 | `GET /corpus` | Indexed documents + page counts (powers the UI's corpus rail). |
-| `POST /ingest` (multipart PDF) | Render → embed → index an uploaded PDF. Blocking and long-running — it holds the model lock for the whole build. Only the uploaded document is embedded; re-uploading an unchanged one is recognised and costs nothing. |
+| `POST /ingest` (multipart PDF) | Render → embed → index an uploaded PDF. Long-running, but it **yields the model between page batches**, so a concurrent question waits about a page rather than the whole document. Only the uploaded document is embedded; re-uploading an unchanged one is recognised and costs nothing. |
 | `DELETE /corpus/{pdf}` | Remove a document completely — its vectors, page images, crops, and the stored PDF. `404` when it isn't indexed. Takes no model lock, so it stays responsive during a query or ingest. |
 | `GET /images/...` | Static page / crop / annotated PNGs. |
 
@@ -357,6 +358,10 @@ throttled too and key guessing isn't free.
 | `TRUST_PROXY_HEADERS` | `false` | read the client IP from `X-Forwarded-For`. Only enable behind a trusted proxy — otherwise any client can forge it and get a fresh rate-limit bucket |
 | `CORS_ALLOW_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | comma-separated browser origins allowed to call the API; `*` allows any. Irrelevant in the Docker deployment, where the UI is served from the same origin |
 | `MAX_UPLOAD_MB` | `50` | reject larger PDF uploads to `POST /ingest` |
+| `GPU_WAIT_TIMEOUT_S` | `60` | how long a request may wait for the model before it is shed as `503` + `Retry-After`; `0` waits forever |
+| `PAGE_IMAGES_DIR` | `./page_images` | where rendered pages and crops live. **Persist and back this up with the Qdrant storage** — see above |
+| `PDFS_DIR` | `./pdfs` | where uploaded source documents are kept |
+| `QDRANT_PATH` | `./qdrant_data` | on-disk location of the embedded fallback store (unused when `QDRANT_URL` is set) |
 
 ### UI (`ui/`)
 
@@ -407,8 +412,44 @@ docker run --rm -p 8000:8000 \
   -e API_KEY=$API_KEY \
   -e QDRANT_URL=http://host.docker.internal:6333 \
   -v vision-rag-hf:/home/appuser/.cache/huggingface \   # persist the model download
+  -v vision-rag-pages:/app/page_images \                # REQUIRED — half the corpus
+  -v vision-rag-pdfs:/app/pdfs \                        # the source documents
   vision-rag                                            # add --gpus all on a GPU host
 ```
+
+### The corpus is two halves, and they must persist together
+
+The vectors in Qdrant and the rendered page PNGs in `page_images/` are **one logical
+corpus**. Retrieval ranks a page by its vector and then *reads the answer off the PNG*, so a
+deployment that persists one without the other is broken in a way that looks fine:
+`GET /corpus` still lists every document (it reads Qdrant payloads), while every query drops
+its hits for a missing image and answers "not found". No error, no 500.
+
+Three things make that recoverable rather than a silent outage:
+
+- **`/health` reports it.** `corpus` is `ok`, or it names the documents whose page images are
+  short. The boot log carries the same at `ERROR`.
+- **A plain re-ingest repairs it.** `ingest` treats a document whose page images are missing as
+  stale, so `PYTHONPATH=. uv run python src/ingest.py` re-renders and re-embeds exactly those —
+  it does not need `--rebuild`, and it still skips the intact ones.
+- **The corpus is relocatable.** Page-image paths are stored relative to `PAGE_IMAGES_DIR`, so
+  moving the directory (or restoring a backup under a different root) doesn't invalidate the
+  index. Set `PAGE_IMAGES_DIR` / `PDFS_DIR` to put the data on a mounted disk.
+
+**Back up `qdrant_storage`, `page_images` and `pdfs` as one unit.** The HF cache is not corpus
+data — dropping it only costs a re-download.
+
+### Concurrency
+
+The server is single-worker by construction: one ColQwen2 in memory, and every GPU-touching
+request serialized through `src/gpu_arbiter.py`. Two things it does beyond a plain lock:
+
+- **An ingest yields the model between page batches.** A long upload used to hold it for the
+  whole document, so a concurrent question waited minutes. It now hands the GPU to a queued
+  query at each page boundary — a wait of roughly one page.
+- **It sheds instead of hanging.** Past `GPU_WAIT_TIMEOUT_S` a request gets `503` with a
+  `Retry-After`, the same shape as the rate limiter's `429`. And a client that disconnects
+  mid-query cannot release the model out from under its own running forward pass.
 
 First boot downloads the ~2B ColQwen2 model into the mounted HF cache (subsequent boots are warm);
 `/health` returns `503` until the model is loaded and Qdrant is reachable. On a GPU host, uncomment
@@ -533,7 +574,9 @@ qdrant_data/          # embedded on-disk fallback store (generated, gitignored)
   on success, so a mid-ingest crash leaves the previous index serving.
 - The sample PDF is deliberately **pixel-only** (no selectable text) to prove the vision path does
   the work.
-- Generated data (`qdrant_data/`, `page_images/`) is gitignored and rebuilt by ingest.
+- Generated data (`qdrant_data/`, `page_images/`) is gitignored and rebuilt by ingest — but in a
+  **deployment** `page_images/` is corpus data, not a cache: it must persist and be backed up
+  alongside the vectors. See [the corpus is two halves](#the-corpus-is-two-halves-and-they-must-persist-together).
 
 ## License
 

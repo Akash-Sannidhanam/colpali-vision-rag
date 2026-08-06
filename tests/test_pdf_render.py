@@ -79,3 +79,42 @@ def test_document_names_with_regex_metacharacters_are_escaped(tmp_path, monkeypa
 
     # an unescaped "." would also match "axb_page_1.png"
     assert [p.name for p in pdf_render.page_images_for("a.b.pdf")] == ["a.b_page_1.png"]
+
+
+# --- page_image_counts: the bulk form of page_images_for ---
+
+def test_page_image_counts_tallies_each_document(monkeypatch, tmp_path):
+    """One directory scan instead of one per document (vector_store.index_health, ingest._sync)."""
+    monkeypatch.setattr(pdf_render, "PAGE_IMAGES_DIR", tmp_path)
+    for name in ("a_page_1.png", "a_page_2.png", "b_page_1.png"):
+        (tmp_path / name).write_bytes(b"x")
+    (tmp_path / "notes.txt").write_bytes(b"x")           # not a page image
+    (tmp_path / "crops").mkdir()                          # not a file
+
+    assert pdf_render.page_image_counts() == {"a": 2, "b": 1}
+
+
+def test_page_image_counts_agrees_with_page_images_for(monkeypatch, tmp_path):
+    """The ambiguous filename that anchoring exists for, checked against the per-stem form.
+
+    `report_page_1.pdf` renders to `report_page_1_page_2.png`, which a loose `report_*`
+    match would credit to `report.pdf`. The bulk parser's greedy stem must make the same
+    call as `page_images_for`'s anchored regex, or index_health would report a phantom
+    complete document and _sync would skip a broken one.
+    """
+    monkeypatch.setattr(pdf_render, "PAGE_IMAGES_DIR", tmp_path)
+    for name in ("report_page_1.png", "report_page_1_page_1.png", "report_page_1_page_2.png"):
+        (tmp_path / name).write_bytes(b"x")
+
+    counts = pdf_render.page_image_counts()
+
+    assert counts == {"report": 1, "report_page_1": 2}
+    assert counts["report"] == len(pdf_render.page_images_for("report.pdf"))
+    assert counts["report_page_1"] == len(pdf_render.page_images_for("report_page_1.pdf"))
+
+
+def test_page_image_counts_is_empty_when_the_directory_is_missing(monkeypatch, tmp_path):
+    """A fresh checkout has no page_images/ yet; boot must not fail on that."""
+    monkeypatch.setattr(pdf_render, "PAGE_IMAGES_DIR", tmp_path / "nope")
+
+    assert pdf_render.page_image_counts() == {}

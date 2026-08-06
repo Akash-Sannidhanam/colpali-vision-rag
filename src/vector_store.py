@@ -30,6 +30,7 @@ from src.config import (
     CANDIDATE_FANOUT,
     COLLECTION_NAME,
     MAX_PAGES_PER_DOC,
+    PAGE_IMAGES_DIR,
     QDRANT_API_KEY,
     QDRANT_PATH,
     QDRANT_URL,
@@ -38,6 +39,7 @@ from src.config import (
     VECTOR_DIM,
 )
 from src.logging_setup import get_logger
+from src.pdf_render import page_image_counts
 from src.query_decompose import fuse_rrf
 
 log = get_logger("qdrant")
@@ -299,6 +301,36 @@ def point_id(pdf_name: str, page_number: int) -> str:
     """
     return str(uuid.uuid5(_POINT_NAMESPACE, f"{pdf_name}:{page_number}"))
 
+def _store_image_path(image_path) -> str:
+    """The payload form of a page image's path: relative to PAGE_IMAGES_DIR when it can be.
+
+    Stored relative so the corpus is *relocatable*. An absolute path pins every point to
+    the directory layout of the machine that ingested it, so moving PAGE_IMAGES_DIR (or
+    restoring a backup under a different root) makes `_fetch` drop every hit for a missing
+    image - the same silent failure as losing the images outright, and just as invisible.
+
+    Falls back to the absolute string for a path outside the root, which should not happen
+    (`pdf_render.save_page_image` always writes under it) but is not worth failing an
+    ingest over. `_resolve_image_path` reads both forms.
+    """
+    path = Path(image_path)
+    try:
+        return path.resolve().relative_to(PAGE_IMAGES_DIR).as_posix()
+    except ValueError:
+        return str(path)
+
+
+def _resolve_image_path(stored: str) -> Path:
+    """The absolute path for a payload's `image_path`, in either stored form.
+
+    Points written before paths went relative hold an absolute string; those are used
+    as-is, which is what makes the change backward-compatible with an existing index -
+    it is payload, not vector data, so no re-ingest and no EMBED_VERSION bump.
+    """
+    path = Path(stored)
+    return path if path.is_absolute() else PAGE_IMAGES_DIR / path
+
+
 def build_point(
     multivector, pdf_name, page_number, image_path, content_hash="", embed_version="",
 ) -> qm.PointStruct:
@@ -307,6 +339,10 @@ def build_point(
     `content_hash` + `embed_version` are what let a later ingest decide whether this
     page is still current (see `ingest.run_ingest`) - the PDF's bytes and the embedding
     config that produced the vector, respectively.
+
+    `image_path` is stored *relative* to PAGE_IMAGES_DIR - see `_store_image_path` for
+    why, and `_fetch` for the resolution back to an absolute path that every reader
+    downstream still receives.
     """
     return qm.PointStruct(
         id = point_id(pdf_name, page_number),
@@ -314,7 +350,7 @@ def build_point(
         payload = {
             "pdf": pdf_name,
             "page_number": page_number,
-            "image_path": str(image_path),
+            "image_path": _store_image_path(image_path),
             "content_hash": content_hash,
             "embed_version": embed_version,
         },
@@ -371,6 +407,13 @@ def _fetch(query_multivector: list[list[float]], fetch_k: int) -> list[dict]:
     persisted index outlives a wiped `page_images/`. Each drop is logged at WARNING so
     a stale index stays visible rather than silently answering off a shrunken set;
     downstream (rerank/answer/highlight) can then assume every hit resolves to a page.
+    A whole corpus in that state is not a per-query concern, though: `index_health`
+    reports it at boot, because a WARNING per dropped hit is not what an operator reads.
+
+    The payload's `image_path` is relative to PAGE_IMAGES_DIR (or absolute, for points
+    written before that change). It is resolved here, once, so every hit dict handed
+    downstream carries an **absolute** path exactly as it always did - `server._to_url`,
+    `highlight` and the eval harness are unaffected by the storage form.
 
     Split out of `search` so a decomposed question can issue one of these per sub-query
     without duplicating the validation contract (see `search_multi`).
@@ -406,11 +449,12 @@ def _fetch(query_multivector: list[list[float]], fetch_k: int) -> list[dict]:
         if not isinstance(payload["page_number"], int):
             log.warning("dropped hit with invalid page_number", extra={"point_id": p.id})
             continue
-        if not Path(payload["image_path"]).exists():
+        image_path = _resolve_image_path(payload["image_path"])
+        if not image_path.exists():
             log.warning("dropped hit with missing image file",
-                        extra={"point_id": p.id, "image_path": payload["image_path"]})
+                        extra={"point_id": p.id, "image_path": str(image_path)})
             continue
-        hits.append({**payload, "score": round(p.score, 4)})
+        hits.append({**payload, "image_path": str(image_path), "score": round(p.score, 4)})
     return hits
 
 
@@ -495,3 +539,31 @@ def document_index() -> dict[str, dict]:
 def list_documents() -> list[dict]:
     """List the indexed PDFs and their page counts, by name (powers GET /corpus)."""
     return [{"pdf": pdf, "page_count": e["page_count"]} for pdf, e in document_index().items()]
+
+
+def index_health() -> dict:
+    """Which indexed documents are missing page images: `{ok, checked, incomplete}`.
+
+    The vectors and the page PNGs are two halves of one corpus, and the failure mode
+    when they diverge is invisible from the outside: `document_index` still lists every
+    document (it reads Qdrant payloads), while `_fetch` drops every hit whose image is
+    gone - so `/corpus` shows a full corpus and every query answers "not found". That
+    is what this reports, at boot and on `/health`, instead of leaving it to be inferred
+    from a WARNING per dropped hit.
+
+    The usual cause is a restore or a container recreate that persisted the Qdrant
+    storage but not PAGE_IMAGES_DIR. The repair is a plain re-ingest: `ingest._sync`
+    treats a document with missing images as stale, so it re-renders and re-embeds.
+
+    `incomplete` entries are `{pdf, indexed_pages, images_present}`; a document with
+    *more* images than indexed pages is not reported, since a leftover PNG from a
+    shortened revision is cosmetic and breaks no query.
+    """
+    index = document_index()
+    counts = page_image_counts()
+    incomplete = [
+        {"pdf": pdf, "indexed_pages": entry["page_count"], "images_present": present}
+        for pdf, entry in index.items()
+        if (present := counts.get(Path(pdf).stem, 0)) < entry["page_count"]
+    ]
+    return {"ok": not incomplete, "checked": len(index), "incomplete": incomplete}

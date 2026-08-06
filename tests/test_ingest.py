@@ -14,9 +14,20 @@ import pytest
 from src import ingest
 
 
-def _stub_pipeline(monkeypatch, pages_per_pdf: int, indexed: dict | None = None) -> list[str]:
-    """Stub every I/O boundary; return the list that records embedded PDF names."""
+def _stub_pipeline(monkeypatch, pages_per_pdf: int, indexed: dict | None = None,
+                   image_counts: dict | None = None) -> list[str]:
+    """Stub every I/O boundary; return the list that records embedded PDF names.
+
+    `image_counts` is the on-disk page-image census `_sync` cross-checks the index
+    against. It defaults to "every indexed document has all of its images", which is the
+    healthy corpus - so a test about content hashes or embed versions keeps testing only
+    that. Pass it explicitly to exercise the half-restored case.
+    """
     embedded: list[str] = []
+    if image_counts is None:
+        image_counts = {name.removesuffix(".pdf"): entry["page_count"]
+                        for name, entry in (indexed or {}).items()}
+    monkeypatch.setattr(ingest, "page_image_counts", lambda: dict(image_counts))
     monkeypatch.setattr(ingest, "ping", lambda: None)
     monkeypatch.setattr(ingest, "begin_ingest", lambda: "pdf_pages_1")
     monkeypatch.setattr(ingest, "finish_ingest", lambda target: None)
@@ -383,3 +394,92 @@ def test_a_failure_in_the_final_flush_does_not_hang(monkeypatch, tmp_path):
 
     assert not worker.is_alive(), "ingest hung on a failure in the final flush"
     assert isinstance(caught[0], RuntimeError)
+
+
+def test_sync_re_embeds_a_document_whose_page_images_are_gone(monkeypatch, tmp_path):
+    """The repair path for a half-restored corpus, and the reason a re-run fixes it.
+
+    A deployment that persisted its Qdrant volume but not PAGE_IMAGES_DIR leaves every
+    document hashing as current while every query drops its hits for a missing image.
+    Keyed on the hash alone, sync skipped exactly the documents that most needed
+    rebuilding - so the obvious repair (re-run ingest) was a no-op.
+    """
+    pdf = _pdf(tmp_path)
+    indexed = {"doc.pdf": {"page_count": 3,
+                           "content_hash": ingest._fingerprint(pdf),
+                           "embed_version": ingest.EMBED_VERSION}}
+    embedded = _stub_pipeline(monkeypatch, pages_per_pdf=3, indexed=indexed, image_counts={})
+
+    assert ingest.run_ingest([pdf], progress=lambda e: None) == 3
+    assert embedded == ["doc.pdf"] * 3
+
+
+def test_sync_re_embeds_a_document_whose_page_images_are_partial(monkeypatch, tmp_path):
+    """A truncated render counts as stale too - a short document is still a broken one."""
+    pdf = _pdf(tmp_path)
+    indexed = {"doc.pdf": {"page_count": 3,
+                           "content_hash": ingest._fingerprint(pdf),
+                           "embed_version": ingest.EMBED_VERSION}}
+    embedded = _stub_pipeline(monkeypatch, pages_per_pdf=3, indexed=indexed,
+                              image_counts={"doc": 2})
+
+    assert ingest.run_ingest([pdf], progress=lambda e: None) == 3
+    assert embedded == ["doc.pdf"] * 3
+
+
+def test_sync_still_skips_when_the_images_are_all_present(monkeypatch, tmp_path):
+    """The added check must not cost the no-op re-run its no-op-ness."""
+    pdf = _pdf(tmp_path)
+    indexed = {"doc.pdf": {"page_count": 3,
+                           "content_hash": ingest._fingerprint(pdf),
+                           "embed_version": ingest.EMBED_VERSION}}
+    embedded = _stub_pipeline(monkeypatch, pages_per_pdf=3, indexed=indexed,
+                              image_counts={"doc": 3})
+
+    events: list[dict] = []
+    assert ingest.run_ingest([pdf], progress=events.append) == 0
+    assert embedded == []
+    assert events == [{"phase": "skip", "pdf": "doc.pdf", "total": 3}]
+
+
+# --- the GPU yield gate ---
+
+def test_gate_is_called_once_per_embed_batch(monkeypatch, tmp_path):
+    """The server hands the model to a queued query here, so it must run every batch.
+
+    Called once per batch, not once per page: it is the point between two forward passes,
+    which is the only moment the GPU is free to lend out.
+    """
+    _stub_pipeline(monkeypatch, pages_per_pdf=7)      # batches of 3 -> 3 batches
+    calls = []
+
+    ingest.run_ingest([_pdf(tmp_path)], progress=lambda e: None,
+                      gate=lambda: calls.append(1))
+
+    assert len(calls) == 3
+
+
+def test_the_default_gate_is_reached_and_does_nothing(monkeypatch, tmp_path):
+    """No gate argument means no pause: the CLI owns the GPU and yields to nobody.
+
+    Asserts both halves - that the default is actually wired in (a `None` reaching
+    `ingest_pdf` would raise on call, not silently skip) and that it does nothing.
+    """
+    _stub_pipeline(monkeypatch, pages_per_pdf=7)      # batches of 3 -> 3 batches
+    calls = []
+    monkeypatch.setattr(ingest, "_noop_gate", lambda: calls.append(1))
+
+    assert ingest.run_ingest([_pdf(tmp_path)], progress=lambda e: None) == 7
+    assert len(calls) == 3                            # the default is what got called
+    assert ingest._noop_gate() is None                # ...and the real one is inert
+
+
+def test_rebuild_yields_too(monkeypatch, tmp_path):
+    """--rebuild is the longer of the two paths, so it needs the gate more, not less."""
+    _stub_pipeline(monkeypatch, pages_per_pdf=4)      # batches of 3 -> 2 batches
+    calls = []
+
+    ingest.run_ingest([_pdf(tmp_path)], progress=lambda e: None,
+                      rebuild=True, gate=lambda: calls.append(1))
+
+    assert len(calls) == 2

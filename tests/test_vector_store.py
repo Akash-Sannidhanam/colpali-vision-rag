@@ -728,3 +728,101 @@ def test_search_multi_with_one_subquery_matches_search(monkeypatch, tmp_path):
     assert (vector_store.search_multi([[[0.0] * 128]], top_k=5)
             == vector_store.search([[0.0] * 128], top_k=5))
     assert vector_store.search([[0.0] * 128], top_k=5)[0]["score"] == 0.99
+
+
+# --- page-image path storage (relocatable corpus) ---
+
+def test_build_point_stores_the_image_path_relative_to_the_root(monkeypatch, tmp_path):
+    """An absolute path pins every point to the machine that ingested it.
+
+    Storing it relative is what lets PAGE_IMAGES_DIR move - a restore under a different
+    root, a volume mounted elsewhere - without every hit being dropped for a "missing"
+    image, which is the same silent failure as losing the images outright.
+    """
+    monkeypatch.setattr(vector_store, "PAGE_IMAGES_DIR", tmp_path)
+    point = vector_store.build_point(
+        [[0.0] * 128], "a.pdf", 1, tmp_path / "a_page_1.png", "hash", "model@150")
+
+    assert point.payload["image_path"] == "a_page_1.png"
+
+
+def test_build_point_keeps_a_path_outside_the_root_absolute(monkeypatch, tmp_path):
+    """A path that isn't under PAGE_IMAGES_DIR has no relative form; don't fail the ingest."""
+    monkeypatch.setattr(vector_store, "PAGE_IMAGES_DIR", tmp_path / "images")
+    outside = tmp_path / "elsewhere" / "a_page_1.png"
+    point = vector_store.build_point([[0.0] * 128], "a.pdf", 1, outside)
+
+    assert point.payload["image_path"] == str(outside)
+
+
+def test_search_resolves_a_relative_image_path_to_an_absolute_one(monkeypatch, tmp_path):
+    """Downstream (server._to_url, highlight, the eval harness) still gets an absolute path.
+
+    The storage form is an internal detail of the write/read pair; changing what callers
+    receive would have meant touching every reader instead of two functions.
+    """
+    monkeypatch.setattr(vector_store, "PAGE_IMAGES_DIR", tmp_path)
+    img = tmp_path / "a_page_1.png"
+    img.write_bytes(b"x")
+    points = [SimpleNamespace(id=1, score=0.99, payload={
+        "pdf": "a.pdf", "page_number": 1, "image_path": "a_page_1.png"})]
+    monkeypatch.setattr(vector_store, "get_client", lambda: _search_client(points))
+
+    hits = vector_store.search([[0.0] * 128])
+
+    assert hits[0]["image_path"] == str(img)
+
+
+def test_search_still_reads_a_legacy_absolute_image_path(monkeypatch, tmp_path):
+    """Backward compat is what makes this payload change need no re-ingest.
+
+    Points written before paths went relative hold an absolute string. If those were
+    resolved against PAGE_IMAGES_DIR they would all miss, and an existing index would
+    go dark on upgrade - the exact failure the change exists to prevent.
+    """
+    monkeypatch.setattr(vector_store, "PAGE_IMAGES_DIR", tmp_path / "unused")
+    img = tmp_path / "legacy_page_1.png"
+    img.write_bytes(b"x")
+    points = [SimpleNamespace(id=1, score=0.99, payload={
+        "pdf": "legacy.pdf", "page_number": 1, "image_path": str(img)})]
+    monkeypatch.setattr(vector_store, "get_client", lambda: _search_client(points))
+
+    hits = vector_store.search([[0.0] * 128])
+
+    assert hits[0]["image_path"] == str(img)
+
+
+# --- index_health: the vectors-without-images split ---
+
+def test_index_health_is_ok_when_every_document_has_its_images(monkeypatch):
+    """The healthy corpus reports ok and names nothing."""
+    monkeypatch.setattr(vector_store, "document_index",
+                        lambda: {"a.pdf": {"page_count": 3}, "b.pdf": {"page_count": 2}})
+    monkeypatch.setattr(vector_store, "page_image_counts", lambda: {"a": 3, "b": 2})
+
+    assert vector_store.index_health() == {"ok": True, "checked": 2, "incomplete": []}
+
+
+def test_index_health_reports_a_document_whose_images_are_gone(monkeypatch):
+    """The failure this exists for: Qdrant storage restored, page images not.
+
+    Every one of b.pdf's queries drops its hits for a missing image while /corpus still
+    lists it, so without this the deployment looks healthy and answers nothing.
+    """
+    monkeypatch.setattr(vector_store, "document_index",
+                        lambda: {"a.pdf": {"page_count": 3}, "b.pdf": {"page_count": 2}})
+    monkeypatch.setattr(vector_store, "page_image_counts", lambda: {"a": 3})
+
+    health = vector_store.index_health()
+
+    assert health["ok"] is False
+    assert health["checked"] == 2
+    assert health["incomplete"] == [{"pdf": "b.pdf", "indexed_pages": 2, "images_present": 0}]
+
+
+def test_index_health_ignores_a_leftover_extra_image(monkeypatch):
+    """More images than indexed pages is cosmetic - a stale PNG breaks no query."""
+    monkeypatch.setattr(vector_store, "document_index", lambda: {"a.pdf": {"page_count": 2}})
+    monkeypatch.setattr(vector_store, "page_image_counts", lambda: {"a": 5})
+
+    assert vector_store.index_health()["ok"] is True

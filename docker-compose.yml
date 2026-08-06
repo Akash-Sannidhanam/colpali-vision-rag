@@ -42,10 +42,23 @@ services:
       - RATE_LIMIT_PER_MINUTE=${RATE_LIMIT_PER_MINUTE:-30}
       - RATE_LIMIT_INGEST_PER_HOUR=${RATE_LIMIT_INGEST_PER_HOUR:-10}
       - TRUST_PROXY_HEADERS=${TRUST_PROXY_HEADERS:-false}
+      # How long a request may wait for the one GPU-resident model before it is shed as
+      # 503 + Retry-After. An ingest yields the model between page batches, so a queued
+      # query normally waits about a page - this bound is for a wedged server.
+      - GPU_WAIT_TIMEOUT_S=${GPU_WAIT_TIMEOUT_S:-60}
       # No CORS_ALLOW_ORIGINS: the image serves the UI itself, so the browser calls the
       # API from its own origin. Set it only if you point a separate frontend at this.
     volumes:
       - hf_cache:/home/appuser/.cache/huggingface   # persist the ~2B model download
+      # **These two and qdrant_storage are ONE backup unit.** The page PNGs and the
+      # vectors are halves of one corpus: restoring either without the other leaves an
+      # index whose every hit is dropped for a missing image, and the failure is silent -
+      # /corpus still lists every document (it reads Qdrant payloads) while every query
+      # answers "not found". Without these volumes that happened on any `docker compose
+      # down`. The server reports it at boot and on /health (vector_store.index_health),
+      # and a plain re-ingest repairs it.
+      - page_images:/app/page_images                # rendered pages + answer-time crops
+      - pdfs:/app/pdfs                              # the uploaded source documents
     restart: unless-stopped
     # GPU passthrough: uncomment on a host with the NVIDIA container toolkit installed.
     # deploy:
@@ -57,5 +70,9 @@ services:
     #           capabilities: [gpu]
 
 volumes:
+  # qdrant_storage + page_images + pdfs are the corpus. Back them up together; a restore
+  # that brings back one without the others is the failure described on the mounts above.
   qdrant_storage:
-  hf_cache:
+  page_images:
+  pdfs:
+  hf_cache:      # not corpus data - just a download cache, safe to drop and re-fetch

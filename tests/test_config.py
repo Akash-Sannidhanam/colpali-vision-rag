@@ -92,3 +92,39 @@ def test_validate_allows_an_unset_visual_token_budget(monkeypatch):
     monkeypatch.setattr(config, "EMBED_VISUAL_TOKENS", None)
 
     assert config.validate() is None
+
+
+# --- data directory overrides (see config._dir_from_env) ---
+
+def test_data_dirs_default_under_the_repo_root(monkeypatch):
+    """Unset env keeps every existing command and test pointing where it always did."""
+    monkeypatch.delenv("PAGE_IMAGES_DIR", raising=False)
+
+    assert config._dir_from_env("PAGE_IMAGES_DIR", config.ROOT_DIR / "page_images") == \
+        config.ROOT_DIR / "page_images"
+
+
+def test_data_dirs_honour_their_env_override(monkeypatch, tmp_path):
+    """Overridable so a deployment can put its state on a mounted disk.
+
+    Without this the only way to persist page_images/ is to bind-mount over the
+    application directory, which is what left it ephemeral in the first place.
+    """
+    monkeypatch.setenv("PAGE_IMAGES_DIR", str(tmp_path / "elsewhere"))
+
+    assert config._dir_from_env("PAGE_IMAGES_DIR", config.ROOT_DIR / "page_images") == \
+        tmp_path / "elsewhere"
+
+
+def test_a_relative_override_is_resolved_to_an_absolute_path(monkeypatch):
+    """These paths are compared against each other, so a relative one would break that.
+
+    `server._to_url` takes a page image's path relative to PAGE_IMAGES_DIR, and
+    `vector_store._store_image_path` does the same on write - both need a stable
+    absolute root regardless of the process's working directory.
+    """
+    monkeypatch.setenv("PAGE_IMAGES_DIR", "images")
+
+    result = config._dir_from_env("PAGE_IMAGES_DIR", config.ROOT_DIR / "page_images")
+
+    assert result.is_absolute()

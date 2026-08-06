@@ -15,6 +15,7 @@ raise for the degraded-health case without breaking startup).
 
 import asyncio
 import base64
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -82,6 +83,10 @@ def warm(monkeypatch):
     monkeypatch.setattr(server, "ping", lambda: None)
     monkeypatch.setattr(server, "is_loaded", lambda: True)
     monkeypatch.setattr(server, "close_client", lambda: None)
+    # A whole corpus by default (lifespan checks it, and /health reports it); the
+    # half-restored case is driven per-test by re-patching this.
+    monkeypatch.setattr(server, "index_health",
+                        lambda: {"ok": True, "checked": 0, "incomplete": []})
     with TestClient(server.app) as client:
         yield client
 
@@ -89,10 +94,11 @@ def warm(monkeypatch):
 # --- /health ---
 
 def test_health_ok(warm):
-    """A warm server with a reachable Qdrant reports ok."""
+    """A warm server with a reachable Qdrant and a whole corpus reports ok."""
     resp = warm.get("/health")
     assert resp.status_code == 200
-    assert resp.json() == {"status": "ok", "model_loaded": True, "qdrant": "ok"}
+    assert resp.json() == {"status": "ok", "model_loaded": True,
+                           "qdrant": "ok", "corpus": "ok"}
 
 
 def test_health_degraded_when_qdrant_unreachable(warm, monkeypatch):
@@ -363,9 +369,10 @@ def test_ingest_happy_path(warm, monkeypatch, tmp_path):
     """An upload is saved under PDFS_DIR and handed to the ingest by path."""
     captured = {}
 
-    def fake_run_ingest(paths):
+    def fake_run_ingest(paths, *, gate=None):
         """Record what the endpoint handed the ingest, and report a page count."""
         captured["paths"] = paths
+        captured["gate"] = gate
         return 7
 
     monkeypatch.setattr(server, "PDFS_DIR", tmp_path)                  # don't write into the repo's pdfs/
@@ -375,6 +382,9 @@ def test_ingest_happy_path(warm, monkeypatch, tmp_path):
     assert resp.json() == {"pdf": "doc.pdf", "indexed_pages": 7}
     assert (tmp_path / "doc.pdf").read_bytes() == b"%PDF-1.4 fake"     # saved under PDFS_DIR
     assert captured["paths"] == [tmp_path / "doc.pdf"]                 # run_ingest got the saved path
+    # Without a gate the ingest holds the model for the whole document, which is the
+    # head-of-line blocking this endpoint used to impose on every concurrent query.
+    assert callable(captured["gate"])
 
 
 def test_ingest_does_not_re_embed_the_rest_of_the_corpus(warm, monkeypatch, tmp_path):
@@ -384,7 +394,8 @@ def test_ingest_does_not_re_embed_the_rest_of_the_corpus(warm, monkeypatch, tmp_
     (tmp_path / "already_indexed.pdf").write_bytes(b"%PDF-1.4 old")
     captured = {}
     monkeypatch.setattr(server, "PDFS_DIR", tmp_path)
-    monkeypatch.setattr(server, "run_ingest", lambda paths: captured.update(paths=paths) or 2)
+    monkeypatch.setattr(server, "run_ingest",
+                        lambda paths, *, gate=None: captured.update(paths=paths) or 2)
 
     warm.post("/ingest", files={"file": ("new.pdf", b"%PDF-1.4 new", "application/pdf")})
 
@@ -401,8 +412,9 @@ def test_ingest_stream_emits_progress_and_done(warm, monkeypatch, tmp_path):
     """The SSE endpoint streams per-page progress and a final done frame."""
     monkeypatch.setattr(server, "PDFS_DIR", tmp_path)
 
-    def fake_run_ingest(paths, progress):
+    def fake_run_ingest(paths, progress, *, gate=None):
         """Record what the endpoint handed the ingest, and report a page count."""
+        assert callable(gate)          # the SSE path yields the model between batches too
         progress({"phase": "render", "pdf": "doc.pdf"})
         progress({"phase": "embed", "pdf": "doc.pdf", "page": 1, "total": 1})
         return 1
@@ -519,3 +531,58 @@ def test_serving_the_ui_does_not_shadow_the_api(built_dist, warm):
         assert warm.get("/").status_code == 200         # and the UI still serves
     finally:
         server.app.router.routes = original_routes
+
+
+# --- load shedding + corpus integrity ---
+
+@pytest.mark.parametrize("path,body", [
+    ("/query", {"question": "what?"}),
+    ("/heatmap", {"question": "what?", "pdf": "a.pdf", "page_number": 1}),
+])
+def test_gpu_busy_is_shed_as_503_with_retry_after(warm, monkeypatch, path, body):
+    """A saturated server answers 503 + Retry-After rather than hanging the client.
+
+    The arbiter's own shedding is covered in test_gpu_arbiter; what is server-side here
+    is the mapping - a GpuBusy escaping any GPU endpoint must reach the client as a
+    retryable 503, the same shape ratelimit gives a 429, not a bare 500.
+    """
+    async def busy(*args, **kwargs):
+        raise server.GpuBusy(30.0)
+
+    monkeypatch.setattr(server._gpu, "run_exclusive", busy)
+    # An existing page, so /heatmap reaches the model instead of 404ing first.
+    monkeypatch.setattr(server, "page_image_path", lambda pdf, n: Path(__file__))
+
+    resp = warm.post(path, json=body)
+
+    assert resp.status_code == 503
+    assert int(resp.headers["Retry-After"]) >= 1
+    assert "busy" in resp.json()["detail"].lower()
+
+
+def test_health_reports_a_corpus_missing_its_page_images(warm, monkeypatch):
+    """The vectors-without-images split is named on /health, not left to be inferred.
+
+    /corpus still lists the document (it reads Qdrant payloads) and every query answers
+    "not found", so without this the deployment looks entirely healthy.
+    """
+    monkeypatch.setattr(server, "index_health", lambda: {
+        "ok": False, "checked": 2,
+        "incomplete": [{"pdf": "b.pdf", "indexed_pages": 2, "images_present": 0}]})
+
+    body = warm.get("/health").json()
+
+    assert body["status"] == "ok"            # the server is serving; the corpus is not whole
+    assert "b.pdf" in body["corpus"] and "re-run ingest" in body["corpus"]
+
+
+def test_health_survives_an_index_health_failure(warm, monkeypatch):
+    """A broken integrity check must not take down the liveness probe with it."""
+    def boom():
+        raise RuntimeError("scroll failed")
+
+    monkeypatch.setattr(server, "index_health", boom)
+    body = warm.get("/health").json()
+
+    assert body["status"] == "ok"
+    assert body["corpus"].startswith("unknown:")

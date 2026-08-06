@@ -25,7 +25,7 @@ from typing import Literal
 
 from src.config import EMBED_VERSION, PDFS_DIR, UPSERT_BATCH_SIZE
 from src.embedder import iter_embedded
-from src.pdf_render import pdf_to_images, save_page_image
+from src.pdf_render import page_image_counts, pdf_to_images, save_page_image
 from src.vector_store import (
     abort_ingest,
     begin_ingest,
@@ -43,6 +43,16 @@ from src.vector_store import (
 # callback is invoked from whatever thread runs the ingest, so a consumer that touches
 # an event loop (the server's SSE endpoint) must hop back to it.
 Progress = Callable[[dict], None]
+
+# Called between page batches, on the ingest's own thread, at the one moment the GPU is
+# idle. The server passes `gpu_arbiter.thread_gate`, which blocks here while a queued
+# query takes the model - so a long ingest costs a concurrent query one page of latency
+# instead of the whole document. Default None (never yield) keeps the CLI unchanged.
+Gate = Callable[[], None]
+
+
+def _noop_gate() -> None:
+    """The default gate: an ingest with no one to yield to never pauses."""
 
 
 def _print_progress(evt: dict) -> None:
@@ -181,6 +191,7 @@ class _StoreWorker:
 
 def ingest_pdf(
     pdf_path: Path, collection_name: str, progress: Progress, content_hash: str = "",
+    gate: Gate = _noop_gate,
 ) -> int:
     """Render, embed, and store every page of one PDF, flushing in batches; return the
     page count.
@@ -206,6 +217,12 @@ def ingest_pdf(
     `_StoreWorker` takes the PNG save and the Qdrant upsert behind it. This loop does the
     forward pass and nothing more. Measured: GPU idle 9.7% -> 7.0%, the lookahead earning
     all of it (see `_StoreWorker` for the per-half attribution).
+
+    **`gate` is called once per batch, and this is the only correct place for it.** It runs
+    after the forward pass that just finished and before the next is requested, which is
+    the one moment in the loop the GPU is idle - so a server can hand the model to a waiting
+    query there without ever interleaving two forward passes. The lookahead preprocess and
+    `_StoreWorker`'s upserts keep running while it blocks, since neither touches the GPU.
     """
     name = pdf_path.name
     progress({"phase": "render", "pdf": name})
@@ -215,6 +232,7 @@ def ingest_pdf(
 
     with _StoreWorker(name, collection_name, content_hash, total, progress) as store:
         for start, multivectors in iter_embedded(pages):
+            gate()
             for i, multivector in enumerate(multivectors):
                 page_number = start + i + 1
                 store.submit(page_number, pages[start + i], multivector)
@@ -223,14 +241,14 @@ def ingest_pdf(
     return total
 
 
-def _rebuild(pdfs: list[Path], emit: Progress) -> int:
+def _rebuild(pdfs: list[Path], emit: Progress, gate: Gate) -> int:
     """Atomic wholesale build: everything into a fresh collection, published on success."""
     target = begin_ingest()
     total = 0
     try:
         for pdf in pdfs:
             if pdf.exists():
-                total += ingest_pdf(pdf, target, emit, _fingerprint(pdf))
+                total += ingest_pdf(pdf, target, emit, _fingerprint(pdf), gate)
         finish_ingest(target)  # atomic alias swap (server) / no-op (embedded)
     except BaseException:  # incl. KeyboardInterrupt: drop the partial, keep old index
         abort_ingest(target)
@@ -238,20 +256,31 @@ def _rebuild(pdfs: list[Path], emit: Progress) -> int:
     return total
 
 
-def _sync(pdfs: list[Path], emit: Progress) -> int:
+def _sync(pdfs: list[Path], emit: Progress, gate: Gate) -> int:
     """Embed only what changed, upserting into the live collection.
 
-    A document is current when both its content hash and the embedding config that
-    produced it still match, in which case it is skipped outright. Otherwise its pages
-    are deleted first and re-embedded: point ids are stable per (pdf, page), so an
-    upsert alone would overwrite pages 1..n but strand pages n+1.. of a longer previous
-    revision.
+    A document is current when its content hash and embedding config still match **and
+    its rendered page images are still on disk**, in which case it is skipped outright.
+    Otherwise its pages are deleted first and re-embedded: point ids are stable per
+    (pdf, page), so an upsert alone would overwrite pages 1..n but strand pages n+1.. of
+    a longer previous revision.
+
+    The page-image half of that test is what makes a plain re-run the repair for a
+    half-restored corpus. The images and the vectors are two halves of one corpus, but
+    only the vectors carry the fingerprint - so a deployment that persisted its Qdrant
+    storage and not its page images leaves every document hashing as current while every
+    query drops its hits for a missing image (see `vector_store.index_health`). Matching
+    on the hash alone, this skipped exactly the documents that most needed rebuilding.
+
+    Page images are counted once for the whole corpus rather than per document, because
+    the directory holds one file per page of every document in it.
 
     No rollback: existing documents are never touched, so an interrupted run leaves the
     rest of the index serving and the offending document is completed on the next pass.
     """
     target = live_collection()
     indexed = document_index()
+    image_counts = page_image_counts()
     total = 0
     for pdf in pdfs:
         if not pdf.exists():
@@ -261,16 +290,20 @@ def _sync(pdfs: list[Path], emit: Progress) -> int:
         current = indexed.get(name)
         if (current
                 and current["content_hash"] == fingerprint
-                and current["embed_version"] == EMBED_VERSION):
+                and current["embed_version"] == EMBED_VERSION
+                and image_counts.get(pdf.stem, 0) >= current["page_count"]):
             emit({"phase": "skip", "pdf": name, "total": current["page_count"]})
             continue
         if current:
             delete_document(name)
-        total += ingest_pdf(pdf, target, emit, fingerprint)
+        total += ingest_pdf(pdf, target, emit, fingerprint, gate)
     return total
 
 
-def run_ingest(pdfs: list[Path], progress: Progress | None = None, *, rebuild: bool = False) -> int:
+def run_ingest(
+    pdfs: list[Path], progress: Progress | None = None, *,
+    rebuild: bool = False, gate: Gate | None = None,
+) -> int:
     """Index `pdfs` and return the number of pages embedded *this run*.
 
     The client-teardown-free core seam (mirrors `main.run_query` vs `run`): a warm
@@ -284,10 +317,15 @@ def run_ingest(pdfs: list[Path], progress: Progress | None = None, *, rebuild: b
 
     `progress` receives one event dict per render/embed/store/skip step; it defaults to
     printing the same lines the CLI always has, so the CLI is unchanged.
+
+    `gate` is called between page batches so a caller sharing the GPU (the server) can
+    take the model back mid-document; it defaults to never yielding, which is what the
+    CLI wants - it is the only thing running.
     """
     emit = progress or _print_progress
     ping()  # fail fast with a clear message before the expensive render/embed loop
-    return _rebuild(pdfs, emit) if rebuild else _sync(pdfs, emit)
+    yield_gpu = gate or _noop_gate
+    return _rebuild(pdfs, emit, yield_gpu) if rebuild else _sync(pdfs, emit, yield_gpu)
 
 
 def main(argv: list[str]) -> None:
