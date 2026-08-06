@@ -798,7 +798,8 @@ def test_index_health_is_ok_when_every_document_has_its_images(monkeypatch):
     """The healthy corpus reports ok and names nothing."""
     monkeypatch.setattr(vector_store, "document_index",
                         lambda: {"a.pdf": {"page_count": 3}, "b.pdf": {"page_count": 2}})
-    monkeypatch.setattr(vector_store, "page_image_counts", lambda: {"a": 3, "b": 2})
+    monkeypatch.setattr(vector_store, "page_image_numbers",
+                        lambda: {"a": {1, 2, 3}, "b": {1, 2}})
 
     assert vector_store.index_health() == {"ok": True, "checked": 2, "incomplete": []}
 
@@ -811,18 +812,37 @@ def test_index_health_reports_a_document_whose_images_are_gone(monkeypatch):
     """
     monkeypatch.setattr(vector_store, "document_index",
                         lambda: {"a.pdf": {"page_count": 3}, "b.pdf": {"page_count": 2}})
-    monkeypatch.setattr(vector_store, "page_image_counts", lambda: {"a": 3})
+    monkeypatch.setattr(vector_store, "page_image_numbers", lambda: {"a": {1, 2, 3}})
 
     health = vector_store.index_health()
 
     assert health["ok"] is False
     assert health["checked"] == 2
-    assert health["incomplete"] == [{"pdf": "b.pdf", "indexed_pages": 2, "images_present": 0}]
+    assert health["incomplete"] == [{"pdf": "b.pdf", "indexed_pages": 2,
+                                    "images_present": 0, "missing_pages": [1, 2]}]
 
 
 def test_index_health_ignores_a_leftover_extra_image(monkeypatch):
     """More images than indexed pages is cosmetic - a stale PNG breaks no query."""
     monkeypatch.setattr(vector_store, "document_index", lambda: {"a.pdf": {"page_count": 2}})
-    monkeypatch.setattr(vector_store, "page_image_counts", lambda: {"a": 5})
+    monkeypatch.setattr(vector_store, "page_image_numbers",
+                        lambda: {"a": {1, 2, 3, 4, 5}})
 
     assert vector_store.index_health()["ok"] is True
+
+
+def test_index_health_is_not_fooled_by_a_leftover_covering_a_missing_page(monkeypatch):
+    """The counting bug: 4 images against 2 indexed pages, but page 1 is gone.
+
+    `_sync` never removes a shortened revision's old page images, so high-numbered
+    leftovers are normal. Against a bare count this corpus reads as healthy while every
+    query for page 1 silently drops its hit - the exact failure this check exists for.
+    """
+    monkeypatch.setattr(vector_store, "document_index", lambda: {"a.pdf": {"page_count": 2}})
+    monkeypatch.setattr(vector_store, "page_image_numbers", lambda: {"a": {2, 3, 4, 5}})
+
+    health = vector_store.index_health()
+
+    assert health["ok"] is False
+    assert health["incomplete"] == [{"pdf": "a.pdf", "indexed_pages": 2,
+                                     "images_present": 1, "missing_pages": [1]}]

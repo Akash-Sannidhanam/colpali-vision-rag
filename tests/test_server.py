@@ -576,13 +576,63 @@ def test_health_reports_a_corpus_missing_its_page_images(warm, monkeypatch):
     assert "b.pdf" in body["corpus"] and "re-run ingest" in body["corpus"]
 
 
-def test_health_survives_an_index_health_failure(warm, monkeypatch):
-    """A broken integrity check must not take down the liveness probe with it."""
+def test_health_survives_an_index_health_failure_without_leaking_the_reason(warm, monkeypatch):
+    """A broken integrity check must not take down the liveness probe - or leak internals.
+
+    /health is registered on `app`, not the gated `api` router, so its body is world
+    -readable. An exception string here can carry internal hostnames, filesystem paths or
+    collection names, so the reason goes to the log and the client gets a bare status.
+    """
     def boom():
-        raise RuntimeError("scroll failed")
+        raise RuntimeError("connect failed to qdrant-internal.svc:6333")
 
     monkeypatch.setattr(server, "index_health", boom)
     body = warm.get("/health").json()
 
     assert body["status"] == "ok"
-    assert body["corpus"].startswith("unknown:")
+    assert body["corpus"] == "unknown"
+    assert "qdrant-internal" not in body["corpus"]
+
+
+def test_ingest_stream_sheds_as_503_before_the_stream_opens(warm, monkeypatch, tmp_path):
+    """A shed SSE ingest must be a real 503, not a truncated 200 with no status.
+
+    FastAPI sends a StreamingResponse's 200 headers before it ever iterates the generator,
+    so acquiring the model *inside* event_stream() put GpuBusy out of reach of the
+    exception handler - the client got a 200, an empty body, and no Retry-After, while
+    plain /ingest sheds correctly. The two ingest endpoints must agree under load.
+    """
+    monkeypatch.setattr(server, "PDFS_DIR", tmp_path)
+
+    class _BusyAcquire:
+        async def __aenter__(self):
+            raise server.GpuBusy(30.0)
+
+        async def __aexit__(self, *exc):
+            return False
+
+    monkeypatch.setattr(server._gpu, "acquire", lambda *a, **k: _BusyAcquire())
+    monkeypatch.setattr(server, "run_ingest",
+                        lambda *a, **k: pytest.fail("the build must never start"))
+
+    resp = warm.post("/ingest/stream",
+                     files={"file": ("doc.pdf", b"%PDF-1.4 fake", "application/pdf")})
+
+    assert resp.status_code == 503
+    assert int(resp.headers["Retry-After"]) >= 1
+    assert "text/event-stream" not in resp.headers.get("content-type", "")
+
+
+def test_ingest_stream_releases_the_model_when_the_build_finishes(warm, monkeypatch, tmp_path):
+    """The lock is now taken in the endpoint, so the generator must still give it back."""
+    monkeypatch.setattr(server, "PDFS_DIR", tmp_path)
+    monkeypatch.setattr(server, "run_ingest", lambda paths, progress, *, gate=None: 1)
+
+    resp = warm.post("/ingest/stream",
+                     files={"file": ("doc.pdf", b"%PDF-1.4 fake", "application/pdf")})
+    assert resp.status_code == 200
+    assert '"phase": "done"' in resp.text
+
+    # A leaked lock would make every subsequent request hang or shed.
+    assert not server._gpu._lock.locked()
+    assert not server._gpu.contended()

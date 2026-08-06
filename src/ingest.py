@@ -25,7 +25,12 @@ from typing import Literal
 
 from src.config import EMBED_VERSION, PDFS_DIR, UPSERT_BATCH_SIZE
 from src.embedder import iter_embedded
-from src.pdf_render import page_image_counts, pdf_to_images, save_page_image
+from src.pdf_render import (
+    missing_page_numbers,
+    page_image_numbers,
+    pdf_to_images,
+    save_page_image,
+)
 from src.vector_store import (
     abort_ingest,
     begin_ingest,
@@ -272,15 +277,19 @@ def _sync(pdfs: list[Path], emit: Progress, gate: Gate) -> int:
     query drops its hits for a missing image (see `vector_store.index_health`). Matching
     on the hash alone, this skipped exactly the documents that most needed rebuilding.
 
-    Page images are counted once for the whole corpus rather than per document, because
-    the directory holds one file per page of every document in it.
+    Page images are scanned once for the whole corpus rather than per document, because
+    the directory holds one file per page of every document in it. The completeness test
+    is per *page number* (`pdf_render.missing_page_numbers`, shared with `index_health`
+    so the two can never disagree): a bare count would let a leftover PNG from a longer
+    previous revision mask a genuinely missing page, and this path skipping a document is
+    exactly what makes that failure permanent.
 
     No rollback: existing documents are never touched, so an interrupted run leaves the
     rest of the index serving and the offending document is completed on the next pass.
     """
     target = live_collection()
     indexed = document_index()
-    image_counts = page_image_counts()
+    rendered = page_image_numbers()
     total = 0
     for pdf in pdfs:
         if not pdf.exists():
@@ -291,7 +300,7 @@ def _sync(pdfs: list[Path], emit: Progress, gate: Gate) -> int:
         if (current
                 and current["content_hash"] == fingerprint
                 and current["embed_version"] == EMBED_VERSION
-                and image_counts.get(pdf.stem, 0) >= current["page_count"]):
+                and not missing_page_numbers(pdf.stem, current["page_count"], rendered)):
             emit({"phase": "skip", "pdf": name, "total": current["page_count"]})
             continue
         if current:

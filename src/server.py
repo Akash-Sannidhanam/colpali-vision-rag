@@ -32,7 +32,7 @@ owns the client lifecycle: opened lazily, closed once on shutdown.
 import asyncio
 import base64
 import json
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from functools import partial
 from pathlib import Path
 from urllib.parse import urljoin
@@ -411,11 +411,19 @@ async def _build_query_response(request: Request, result: dict, inline: bool) ->
 # --- Endpoints ---
 
 def _corpus_status() -> str:
-    """`index_health` as a one-line status string for /health (never raises)."""
+    """`index_health` as a one-line status string for /health (never raises).
+
+    The failure branch logs the exception and returns a bare "unknown" rather than the
+    exception text: /health is on `app`, not the gated `api` router, so its body is world
+    -readable and a raw exception can carry internal hostnames or filesystem paths.
+    (The `qdrant` field above still interpolates its exception - pre-existing behaviour a
+    test asserts on, so changing it belongs in its own change, not this one.)
+    """
     try:
         health = index_health()
-    except Exception as exc:
-        return f"unknown: {exc}"
+    except Exception:
+        log.warning("corpus health check failed", exc_info=True)
+        return "unknown"
     if health["ok"]:
         return "ok"
     count = len(health["incomplete"])
@@ -601,9 +609,22 @@ async def ingest_stream(file: UploadFile = File(...)):
         """Hop one worker-thread progress event back onto the event loop's queue."""
         loop.call_soon_threadsafe(queue.put_nowait, event)   # called from the worker thread
 
+    # The model is acquired HERE, not inside event_stream(), so a shed request is a real
+    # 503 + Retry-After exactly like /ingest. FastAPI sends a StreamingResponse's 200
+    # headers before it ever iterates the generator, so a GpuBusy raised in there could
+    # not reach _gpu_busy_handler - the client would get a truncated 200 stream with no
+    # status and no Retry-After, and the two ingest endpoints would disagree under load.
+    #
+    # The stack is entered here and closed by `async with stack` inside the generator, so
+    # the lock is still held for the whole build and released when the stream ends -
+    # including the client-disconnect path, where Starlette closes the generator and the
+    # `finally` below still runs.
+    stack = AsyncExitStack()
+    await stack.enter_async_context(_gpu.acquire())
+
     async def event_stream():
         """Drain the progress queue into SSE frames until the build finishes or fails."""
-        async with _gpu.acquire():                           # hold the model for the build
+        async with stack:                                    # holds the model for the build
             task = asyncio.create_task(
                 asyncio.to_thread(partial(run_ingest, all_pdfs, progress, gate=gate))
             )

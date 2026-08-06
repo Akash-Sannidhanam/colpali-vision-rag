@@ -1588,6 +1588,43 @@ Neither is visible from the code, so both are in the module docstring:
   an optimization. Stated explicitly because the *absence* of a lock otherwise reads as an
   oversight.
 
+### Review found two more instances of the same failure class
+
+Both were mine, both were introduced *by this pass*, and both fail the way everything else
+here does — silently, in the direction of looking healthy:
+
+**1. A bare page-image count let a leftover mask a missing page.** `_sync` deletes a changed
+document's vectors but never its old page images, so a 5-page revision shortened to 2 leaves
+`_page_3..5.png` on disk. Against a *count*, losing `_page_1.png` from that document still
+totals 4 ≥ 2 and reads as complete — while page 1's hit is dropped on every query, and
+`_sync` skips the repair that would have fixed it. The check now compares page *numbers*
+through one helper (`pdf_render.missing_page_numbers`) shared by `index_health` and `_sync`,
+so the reporter and the repairer cannot disagree about what "complete" means.
+
+**2. A shed SSE ingest was a truncated 200, not a 503.** FastAPI sends a `StreamingResponse`'s
+headers before it ever iterates the generator, so acquiring the model *inside* `event_stream()`
+put `GpuBusy` permanently out of reach of the exception handler: the client got a 200, an empty
+body, and no `Retry-After`, while plain `/ingest` shed correctly — the two ingest endpoints
+disagreeing under exactly the load the arbiter exists for. The acquire moved into the endpoint
+(an `AsyncExitStack` entered there and closed by the generator), so the decision happens before
+the response starts and the lock is still released on the client-disconnect path.
+
+Three smaller ones: `/health` interpolated an exception string on an endpoint that is
+deliberately unauthenticated (now logged, with a bare `"unknown"` returned); `_waiters`'
+comment claimed it counted holders when `acquire` decrements on acquisition; and one of this
+pass's own tests asserted against a monkeypatched stand-in rather than the real `_noop_gate` —
+a vacuous assertion of exactly the kind this pass otherwise went looking for.
+
+Both Major fixes are regression-tested by reverting them: restore the bare count and five
+tests fail; move the acquire back inside the generator and the shedding test fails.
+
+**One suggestion was taken with its reasoning narrowed.** A proposed guard on `_yield_slice`
+was described as preventing a release of a lock held by *another* request. It cannot —
+`asyncio.Lock` tracks no owner, so `locked()` cannot distinguish "held by me" from "held by
+someone else". It was added anyway (a clear error beats asyncio's bare "Lock is not acquired")
+with a docstring saying what it does and does not catch, and naming the thing that actually
+prevents the bad case: `thread_gate` is only ever handed to a worker inside `run_exclusive`.
+
 ### What is left
 
 - **The `/images` mount is still unauthenticated, with guessable paths**

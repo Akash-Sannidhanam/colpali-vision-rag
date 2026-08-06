@@ -65,10 +65,15 @@ class GpuArbiter:
 
     def __init__(self) -> None:
         self._lock = asyncio.Lock()
-        self._waiters = 0     # requests waiting for or holding the lock; see module docstring
+        self._waiters = 0     # requests *queued* for the lock, never its holder (see acquire)
 
     def contended(self) -> bool:
-        """Whether anyone is waiting for or holding the lock (safe to call off-loop)."""
+        """Whether anyone is queued for the lock (safe to call off-loop).
+
+        Holders are excluded deliberately - `acquire` decrements on acquisition - which is
+        what makes this the right question for the gate: an ingest that counted itself
+        would yield to nobody on every batch.
+        """
         return self._waiters > 0
 
     @asynccontextmanager
@@ -134,6 +139,17 @@ class GpuArbiter:
         return gate
 
     async def _yield_slice(self) -> None:
-        """Hand the lock to the queued waiters, then take it back (FIFO; see docstring)."""
+        """Hand the lock to the queued waiters, then take it back (FIFO; see docstring).
+
+        The precondition is that the caller's request already holds the lock. The check
+        below only catches the *unlocked* case and turns asyncio's bare "Lock is not
+        acquired" into something that names the caller; it deliberately does not claim to
+        catch the worse case - releasing a lock held by a *different* request - because
+        `asyncio.Lock` tracks no owner and that is not detectable here. What actually
+        prevents it is that `thread_gate` is only ever handed to a worker running inside
+        `run_exclusive`/`acquire`.
+        """
+        if not self._lock.locked():
+            raise RuntimeError("gate() called without holding the GPU lock")
         self._lock.release()
         await self._lock.acquire()

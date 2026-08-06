@@ -15,19 +15,19 @@ from src import ingest
 
 
 def _stub_pipeline(monkeypatch, pages_per_pdf: int, indexed: dict | None = None,
-                   image_counts: dict | None = None) -> list[str]:
+                   rendered: dict | None = None) -> list[str]:
     """Stub every I/O boundary; return the list that records embedded PDF names.
 
-    `image_counts` is the on-disk page-image census `_sync` cross-checks the index
-    against. It defaults to "every indexed document has all of its images", which is the
-    healthy corpus - so a test about content hashes or embed versions keeps testing only
-    that. Pass it explicitly to exercise the half-restored case.
+    `rendered` is the on-disk page-image census `_sync` cross-checks the index against:
+    stem -> the set of page numbers present. It defaults to "every indexed document has
+    all of its images", which is the healthy corpus - so a test about content hashes or
+    embed versions keeps testing only that. Pass it explicitly for the half-restored case.
     """
     embedded: list[str] = []
-    if image_counts is None:
-        image_counts = {name.removesuffix(".pdf"): entry["page_count"]
-                        for name, entry in (indexed or {}).items()}
-    monkeypatch.setattr(ingest, "page_image_counts", lambda: dict(image_counts))
+    if rendered is None:
+        rendered = {name.removesuffix(".pdf"): set(range(1, entry["page_count"] + 1))
+                    for name, entry in (indexed or {}).items()}
+    monkeypatch.setattr(ingest, "page_image_numbers", lambda: {k: set(v) for k, v in rendered.items()})
     monkeypatch.setattr(ingest, "ping", lambda: None)
     monkeypatch.setattr(ingest, "begin_ingest", lambda: "pdf_pages_1")
     monkeypatch.setattr(ingest, "finish_ingest", lambda target: None)
@@ -408,7 +408,7 @@ def test_sync_re_embeds_a_document_whose_page_images_are_gone(monkeypatch, tmp_p
     indexed = {"doc.pdf": {"page_count": 3,
                            "content_hash": ingest._fingerprint(pdf),
                            "embed_version": ingest.EMBED_VERSION}}
-    embedded = _stub_pipeline(monkeypatch, pages_per_pdf=3, indexed=indexed, image_counts={})
+    embedded = _stub_pipeline(monkeypatch, pages_per_pdf=3, indexed=indexed, rendered={})
 
     assert ingest.run_ingest([pdf], progress=lambda e: None) == 3
     assert embedded == ["doc.pdf"] * 3
@@ -421,7 +421,7 @@ def test_sync_re_embeds_a_document_whose_page_images_are_partial(monkeypatch, tm
                            "content_hash": ingest._fingerprint(pdf),
                            "embed_version": ingest.EMBED_VERSION}}
     embedded = _stub_pipeline(monkeypatch, pages_per_pdf=3, indexed=indexed,
-                              image_counts={"doc": 2})
+                              rendered={"doc": {1, 2}})
 
     assert ingest.run_ingest([pdf], progress=lambda e: None) == 3
     assert embedded == ["doc.pdf"] * 3
@@ -434,7 +434,7 @@ def test_sync_still_skips_when_the_images_are_all_present(monkeypatch, tmp_path)
                            "content_hash": ingest._fingerprint(pdf),
                            "embed_version": ingest.EMBED_VERSION}}
     embedded = _stub_pipeline(monkeypatch, pages_per_pdf=3, indexed=indexed,
-                              image_counts={"doc": 3})
+                              rendered={"doc": {1, 2, 3}})
 
     events: list[dict] = []
     assert ingest.run_ingest([pdf], progress=events.append) == 0
@@ -466,12 +466,13 @@ def test_the_default_gate_is_reached_and_does_nothing(monkeypatch, tmp_path):
     `ingest_pdf` would raise on call, not silently skip) and that it does nothing.
     """
     _stub_pipeline(monkeypatch, pages_per_pdf=7)      # batches of 3 -> 3 batches
-    calls = []
+    real_noop = ingest._noop_gate                     # capture BEFORE patching, or the
+    calls = []                                        # assertion below tests the stand-in
     monkeypatch.setattr(ingest, "_noop_gate", lambda: calls.append(1))
 
     assert ingest.run_ingest([_pdf(tmp_path)], progress=lambda e: None) == 7
     assert len(calls) == 3                            # the default is what got called
-    assert ingest._noop_gate() is None                # ...and the real one is inert
+    assert real_noop() is None                        # ...and the real one is inert
 
 
 def test_rebuild_yields_too(monkeypatch, tmp_path):
@@ -483,3 +484,25 @@ def test_rebuild_yields_too(monkeypatch, tmp_path):
                       rebuild=True, gate=lambda: calls.append(1))
 
     assert len(calls) == 2
+
+
+def test_a_leftover_image_from_a_longer_revision_cannot_mask_a_missing_page(
+        monkeypatch, tmp_path):
+    """The counting bug this check was rewritten to avoid.
+
+    `_sync` deletes a changed document's vectors but never its old page images, so a
+    5-page revision shortened to 2 leaves `_page_3..5.png` behind. Against a bare *count*,
+    losing `_page_1.png` from that document still totals 4 >= 2 and reads as complete -
+    while page 1's hit is dropped on every query, permanently, because this is the path
+    that would have repaired it.
+    """
+    pdf = _pdf(tmp_path)
+    indexed = {"doc.pdf": {"page_count": 2,
+                           "content_hash": ingest._fingerprint(pdf),
+                           "embed_version": ingest.EMBED_VERSION}}
+    # page 1 gone; 3/4/5 are leftovers from a longer previous revision. Count says 4.
+    embedded = _stub_pipeline(monkeypatch, pages_per_pdf=2, indexed=indexed,
+                              rendered={"doc": {2, 3, 4, 5}})
+
+    assert ingest.run_ingest([pdf], progress=lambda e: None) == 2
+    assert embedded == ["doc.pdf"] * 2

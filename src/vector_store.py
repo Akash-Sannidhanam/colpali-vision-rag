@@ -39,7 +39,7 @@ from src.config import (
     VECTOR_DIM,
 )
 from src.logging_setup import get_logger
-from src.pdf_render import page_image_counts
+from src.pdf_render import missing_page_numbers, page_image_numbers
 from src.query_decompose import fuse_rrf
 
 log = get_logger("qdrant")
@@ -555,15 +555,23 @@ def index_health() -> dict:
     storage but not PAGE_IMAGES_DIR. The repair is a plain re-ingest: `ingest._sync`
     treats a document with missing images as stale, so it re-renders and re-embeds.
 
-    `incomplete` entries are `{pdf, indexed_pages, images_present}`; a document with
-    *more* images than indexed pages is not reported, since a leftover PNG from a
-    shortened revision is cosmetic and breaks no query.
+    `incomplete` entries are `{pdf, indexed_pages, images_present, missing_pages}`. The
+    check is per *page number*, not a count: a leftover PNG from a longer previous
+    revision would otherwise mask a genuinely missing page (see
+    `pdf_render.missing_page_numbers`). Extra images beyond the indexed page count are
+    still ignored - they are cosmetic and break no query.
     """
     index = document_index()
-    counts = page_image_counts()
-    incomplete = [
-        {"pdf": pdf, "indexed_pages": entry["page_count"], "images_present": present}
-        for pdf, entry in index.items()
-        if (present := counts.get(Path(pdf).stem, 0)) < entry["page_count"]
-    ]
+    rendered = page_image_numbers()
+    incomplete = []
+    for pdf, entry in index.items():
+        page_count = entry["page_count"]
+        missing = missing_page_numbers(Path(pdf).stem, page_count, rendered)
+        if missing:
+            incomplete.append({
+                "pdf": pdf,
+                "indexed_pages": page_count,
+                "images_present": page_count - len(missing),
+                "missing_pages": missing[:10],   # bounded: this lands in a log line
+            })
     return {"ok": not incomplete, "checked": len(index), "incomplete": incomplete}
