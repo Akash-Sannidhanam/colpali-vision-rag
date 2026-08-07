@@ -609,8 +609,26 @@ def index_health() -> dict:
     revision would otherwise mask a genuinely missing page (see
     `pdf_render.missing_page_numbers`). Extra images beyond the indexed page count are
     still ignored - they are cosmetic and break no query.
+
+    **Never raises, and that is load-bearing.** `server.lifespan` calls this at boot, so
+    an exception here refuses the whole deployment. The commonest way to hit one is the
+    most ordinary situation there is: a *fresh* install, where the collection does not
+    exist until the first ingest creates it (`ping` passes, since it only lists
+    collections). Shipping a corpus-integrity check that stops a brand-new server from
+    starting would be a worse bug than the silent half-corpus it exists to catch - which
+    is exactly what happened, and what `tests/test_vector_store.py` now guards.
+
+    An unreadable index reports `checked: 0`: nothing was examined, so nothing was found
+    missing. `ok` means "no evidence of missing images", and `checked` is what says how
+    much that is worth.
     """
-    index = document_index()
+    try:
+        index = document_index()
+    except Exception:
+        log.warning("corpus health check could not read the index - reporting nothing "
+                    "checked (a fresh install has no collection until the first ingest)",
+                    exc_info=True)
+        return {"ok": True, "checked": 0, "incomplete": []}
     rendered = page_image_numbers()
     incomplete = []
     for pdf, entry in index.items():

@@ -927,3 +927,26 @@ def test_upsert_skips_the_round_trip_for_an_empty_batch(monkeypatch):
     vector_store.upsert_pages([])
 
     assert client.calls == 0
+
+
+def test_index_health_never_raises_when_the_index_cannot_be_read(monkeypatch):
+    """A diagnostic must not be able to take down the thing it diagnoses.
+
+    `server.lifespan` calls this at boot, so an exception refuses the whole deployment -
+    and the commonest way to hit one is the most ordinary situation there is: a fresh
+    install, whose collection does not exist until the first ingest creates it (`ping`
+    passes, since it only lists collections). That shipped once and stopped a brand-new
+    server from starting, which is a worse bug than the silent half-corpus this check
+    exists to catch.
+    """
+    def unreadable():
+        raise ValueError("Collection pdf_pages not found")
+
+    monkeypatch.setattr(vector_store, "document_index", unreadable)
+    monkeypatch.setattr(vector_store, "page_image_numbers", dict)
+
+    health = vector_store.index_health()
+
+    # checked=0 is the honest part: nothing was examined, so `ok` claims only that no
+    # evidence of missing images was found - not that the corpus was verified.
+    assert health == {"ok": True, "checked": 0, "incomplete": []}

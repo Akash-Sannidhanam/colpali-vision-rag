@@ -256,12 +256,21 @@ async def lifespan(app: FastAPI):
     # it is stated here rather than left to be inferred from a WARNING per dropped hit.
     # ERROR, not a refusal to boot: config errors fail fast, recoverable data states
     # degrade - and this one is repaired by re-running ingest, which needs a live server.
-    corpus = index_health()
+    #
+    # Belt and braces on top of `index_health`'s own guarantee never to raise. A
+    # *diagnostic* must not be able to take down the thing it diagnoses, and this one
+    # already did once: before the guard, a fresh install (no collection until the first
+    # ingest) raised here and uvicorn refused to start.
+    try:
+        corpus = index_health()
+    except Exception:
+        log.warning("corpus health check failed at boot - starting anyway", exc_info=True)
+        corpus = {"ok": True, "checked": 0, "incomplete": []}
     if not corpus["ok"]:
         log.error("indexed documents are missing page images - re-run ingest to repair",
                   extra={"incomplete": corpus["incomplete"], "checked": corpus["checked"]})
     log.info("server warm", extra={"model_loaded": is_loaded(), "auth": auth_enabled(),
-                                   "corpus_ok": corpus["ok"]})
+                                   "corpus_ok": corpus["ok"], "corpus_checked": corpus["checked"]})
     yield
     close_client()                               # the one place the server closes Qdrant
 
