@@ -1465,3 +1465,230 @@ its decisiveness reads `1.58× uniform` where the old chip read `13%`.
   rows. The model says "high" almost always, so the self-report is close to a constant and
   its accuracy is close to `citation_accuracy` by construction. Worth deciding whether it
   earns its chip on the same evidentiary standard applied here to the retrieval signal.
+
+## Deployment-durability + concurrency pass (follow-on) ✅ DONE
+
+Work on branch **`feat/deployment-durability-concurrency`**. Everything above hardens the
+*pipeline*; this pass is the first to look at the **deployment**, and it found two defects
+that a real multi-user install hits in its first week. Both are invisible when they fire,
+which is the only thing they have in common — and the reason neither had been noticed.
+
+### 1. The corpus is two halves, and only one of them was persisted
+
+`docker-compose.yml` gave the `app` service exactly one volume: the HuggingFace model
+cache. `page_images/` and `pdfs/` lived inside the container. The vectors, meanwhile,
+persisted in `qdrant_storage`.
+
+So **any** container recreate — `docker compose down`, an image update, a restart policy
+firing — kept every vector and destroyed every page PNG. What that produces is not an
+error:
+
+- `document_index()` reads Qdrant payloads, so `GET /corpus` still lists all 19 documents
+  and all 363 pages.
+- `_fetch` drops each hit whose `image_path` is gone, so **every** query returns an empty
+  slate and answers "not found".
+- The only trace is one WARNING per dropped hit, which is not what an operator reads.
+
+And the obvious repair did not repair it. `_sync` skipped a document whose `content_hash`
+and `embed_version` still matched — which they did, because only the images were gone. So
+`python src/ingest.py` skipped exactly the documents that most needed rebuilding.
+
+**A second trigger for the same failure, one layer down.** `build_point` stored
+`image_path` **absolute**, which pins every point to the directory layout of the machine
+that ingested it. Moving `PAGE_IMAGES_DIR`, or restoring a backup under a different root,
+breaks the corpus identically. That made the env-configurable data directories this pass
+adds a loaded gun rather than a feature, so both were fixed together.
+
+Four changes, and the ordering matters — the volumes alone would have left the corpus
+un-relocatable and un-repairable:
+
+| Change | What it buys |
+|---|---|
+| `page_images` + `pdfs` volumes (`docker-compose.yml`) | the failure stops happening |
+| `image_path` stored **relative** to `PAGE_IMAGES_DIR` | the corpus relocates; reads still accept legacy absolute paths, so **no re-ingest and no `EMBED_VERSION` bump** — this is payload, not vector data |
+| `_sync` counts missing page images as **stale** | `python src/ingest.py` becomes the repair instead of a no-op |
+| `index_health()` → boot ERROR + `/health.corpus` | the split is reported, not inferred |
+
+Reproduced and repaired end-to-end on an isolated collection: ingest → healthy → delete the
+PNGs → `/corpus` still lists the document while `index_health` names it
+(`indexed_pages 2, images_present 0`) → plain re-ingest → healthy. **`--rebuild` is not
+needed**, which is the whole point.
+
+**The regression guard is the reason to trust the payload change.** Its failure mode is
+*silently dropping hits* — the same bug, one layer down — so a summary that merely looked
+plausible would have proved nothing. `durability_check.json` (retrieval-only, no API key)
+against the pinned `baseline_decomposed.json`:
+
+| Metric | Baseline | After |
+|---|---|---|
+| `recall@1` / `recall@3` / `recall@12` | 0.6712 / 0.8493 / 1.0 | **identical** |
+| `candidate_coverage_avg` | 0.850 | 0.850 |
+| `gold_rank`, per row | avg 2.0548 | avg 2.0548 — **73/73 unchanged, 0 flipped** |
+
+Row-level, not summary-level: 73 of 73 paired rows unchanged is a much stronger statement
+than an average that matches. Note the pinned index was written with **absolute** paths, so
+that run is also the backward-compat proof.
+
+### 2. One upload froze every user
+
+`/ingest` took the GPU lock and held it across the whole render/embed/upsert; `/query` and
+`/heatmap` contend for the same lock. A 20-page PDF measured at 175 s on this box, and every
+second of it was time in which another user's question hung — no response, no queue
+position, no timeout.
+
+The fix is not to make queries wait more politely. It is to make the **ingest give the GPU
+back**: `ingest_pdf` calls a `gate()` at the top of its `iter_embedded` loop, which is the
+one moment in the loop the GPU is idle (after the forward pass that just finished, before
+the next is requested). The server's gate hands the lock to whoever is queued and takes it
+back. The lookahead preprocess and `_StoreWorker`'s upserts keep running through it, since
+neither touches the GPU — so the yield costs the ingest only the query's own GPU time.
+
+Two more things moved into `src/gpu_arbiter.py` rather than staying per-endpoint, on the
+same reasoning that put auth on a router instead of on each route:
+
+- **A bounded wait.** Past `GPU_WAIT_TIMEOUT_S` a request is shed as 503 + `Retry-After`,
+  the shape `ratelimit` already gives a 429. A client told to come back can back off; one
+  left hanging on a socket can only guess.
+- **Disconnect safety, which was an actual live bug.** `await asyncio.to_thread(...)`
+  cancels the *awaiting task*, never the thread, so `async with lock:` around it released
+  the model the instant a client went away — while the worker was still mid-forward-pass.
+  Two passes on one model, silently. `ingest_stream` already shielded against this;
+  `/query` and `/heatmap` did not. `run_exclusive` now shields all of them.
+
+Both are regression-tested by breaking them: with the gate stubbed to a no-op the ordering
+test fails, and with the shield removed the disconnect test fails. A test that passes
+against the broken code proves nothing, and these were checked, not assumed.
+
+**Measured against a live server**, over three interleaved rounds — and the first attempt
+at this measurement was wrong in a way worth recording, because it was wrong by *this
+repo's own standard*. A single round gave "13.8 s query against 155.3 s of remaining
+ingest, 11.2×", and that headline shipped for one commit. Re-running it did not reproduce:
+57.1 s, 2.1×, and a failed ingest. The ingest-throughput pass already established that this
+box has a ~50% noise floor and that arms must be interleaved and reported as medians; the
+number was published without meeting the bar the same repo sets three sections earlier.
+
+**The stable statistic is the queueing cost, not an end-to-end multiple.** End-to-end
+latency is dominated by Gemini, which varied 8× within one session (15.7 s to 131.9 s of
+pipeline time for the identical query), so any "speedup" computed from it is mostly
+measuring Gemini's mood. What the gate actually changes is how long a query waits *for the
+model*, and that is what to report. Three rounds, 13-page ingest, query fired 15 s in:
+
+| round | queueing cost | ingest remaining (the pre-gate wait) | ingest completed |
+|---|---|---|---|
+| 1 | 3.7 s | 247.2 s | ✅ |
+| 2 | 8.4 s | 126.8 s | ✅ |
+| 3 | 8.2 s | 135.3 s | ✅ |
+| **median** | **8.2 s** | **135.3 s** | **≈16×** |
+
+Read it as: the wait for the model drops from *the rest of the document* to *about one page
+batch*. That is the claim the mechanism supports, it is stable across rounds, and it does
+not move when Gemini does.
+
+**One upsert stalling used to kill a whole ingest.** The re-run that failed did so at page 8
+of 20, on a Qdrant upsert that hit the client's invisible 60 s default timeout while a query
+held the GPU. `_StoreWorker`'s failure aborts the document, so one slow HTTP call discarded
+every page embedded so far. The obvious hypothesis — the gate parks the ingest long enough
+for Qdrant to reap the idle keep-alive connection — was **tested and refuted**: 70 s idle,
+the next upsert still returned in 0.02 s. Whatever the stall was (this 16 GB box runs a
+query and an ingest against one GPU), the right fix is the same and stands on its own:
+`QDRANT_TIMEOUT_S` is now stated rather than inherited, and `upsert_pages` retries transient
+transport failures the way `gemini_client.generate` already does. Retrying is safe because
+the write is idempotent — point ids derive from (pdf, page). All three rounds above
+completed; the pre-fix run did not.
+
+### Two properties that hold the arbiter together
+
+Neither is visible from the code, so both are in the module docstring:
+
+- **`asyncio.Lock` wakes waiters FIFO.** `_yield_slice`'s re-acquire therefore lands behind
+  exactly the requests queued at that instant and ahead of any arriving later — ingest
+  starvation is bounded by construction, and a priority queue would buy nothing.
+- **`_waiters` needs no lock.** Written only on the event-loop thread, read from the
+  ingest's worker thread, where an int read is atomic under the GIL. A stale read costs at
+  most one skipped or one extra yield; correctness rests on the lock, and the gate is only
+  an optimization. Stated explicitly because the *absence* of a lock otherwise reads as an
+  oversight.
+
+### Review found two more instances of the same failure class
+
+Both were mine, both were introduced *by this pass*, and both fail the way everything else
+here does — silently, in the direction of looking healthy:
+
+**1. A bare page-image count let a leftover mask a missing page.** `_sync` deletes a changed
+document's vectors but never its old page images, so a 5-page revision shortened to 2 leaves
+`_page_3..5.png` on disk. Against a *count*, losing `_page_1.png` from that document still
+totals 4 ≥ 2 and reads as complete — while page 1's hit is dropped on every query, and
+`_sync` skips the repair that would have fixed it. The check now compares page *numbers*
+through one helper (`pdf_render.missing_page_numbers`) shared by `index_health` and `_sync`,
+so the reporter and the repairer cannot disagree about what "complete" means.
+
+**2. A shed SSE ingest was a truncated 200, not a 503.** FastAPI sends a `StreamingResponse`'s
+headers before it ever iterates the generator, so acquiring the model *inside* `event_stream()`
+put `GpuBusy` permanently out of reach of the exception handler: the client got a 200, an empty
+body, and no `Retry-After`, while plain `/ingest` shed correctly — the two ingest endpoints
+disagreeing under exactly the load the arbiter exists for. The acquire moved into the endpoint
+(an `AsyncExitStack` entered there and closed by the generator), so the decision happens before
+the response starts and the lock is still released on the client-disconnect path.
+
+Three smaller ones: `/health` interpolated an exception string on an endpoint that is
+deliberately unauthenticated (now logged, with a bare `"unknown"` returned); `_waiters`'
+comment claimed it counted holders when `acquire` decrements on acquisition; and one of this
+pass's own tests asserted against a monkeypatched stand-in rather than the real `_noop_gate` —
+a vacuous assertion of exactly the kind this pass otherwise went looking for.
+
+Both Major fixes are regression-tested by reverting them: restore the bare count and five
+tests fail; move the acquire back inside the generator and the shedding test fails.
+
+**The first fix for (2) was worse than the bug, and only checking the comment caught it.**
+The obvious repair — acquire in the endpoint, close the context inside the generator — was
+written with a comment claiming the lock still releases when a client disconnects. That
+claim was verified rather than trusted, and half of it was false. Driving the real ASGI app
+with a `send()` that fails on the *first* message (the connection breaking before the
+headers go out) showed Starlette raising out of `http.response.start` and **never starting
+the body generator at all**, so its `finally` never runs: `body_started=False`,
+`finally_ran=False`. The GPU lock is then held for the life of the process and every later
+request sheds forever. Trading a truncated stream for a permanently wedged server is a bad
+trade.
+
+What ships instead probes at the door — `async with _gpu.acquire(): pass` — to make the
+shed decision with the real timeout, releases, and lets the generator take the lock for the
+build. Acquire and release sit in the same frame and cannot leak. The probe is advisory, so
+the generator's own acquire still degrades to a terminal `error` frame rather than dying
+silently.
+
+**And the first version of *that* test was vacuous, for a reason worth writing down.**
+Asserting `not _lock.locked()` after `asyncio.run(drive())` passes against the leaking
+implementation: `asyncio.run` ends by calling `loop.shutdown_asyncgens()`, which closes the
+`@asynccontextmanager` generator behind `acquire()` and releases the lock as a side effect
+of loop teardown. A uvicorn process never tears its loop down between requests, so that
+cleanup does not exist in production — the assertion had to move *inside* the loop to
+measure the thing production would. Instrumented, the leaking version reports `lock held
+INSIDE the loop: True` and `AFTER the loop: False`. Same lesson as the `_noop_gate` test in
+this batch: a test that passes against the broken code is not a test.
+
+**One suggestion was taken with its reasoning narrowed.** A proposed guard on `_yield_slice`
+was described as preventing a release of a lock held by *another* request. It cannot —
+`asyncio.Lock` tracks no owner, so `locked()` cannot distinguish "held by me" from "held by
+someone else". It was added anyway (a clear error beats asyncio's bare "Lock is not acquired")
+with a docstring saying what it does and does not catch, and naming the thing that actually
+prevents the bad case: `thread_gate` is only ever handed to a worker inside `run_exclusive`.
+
+### What is left
+
+- **The `/images` mount is still unauthenticated, with guessable paths**
+  (`<stem>_page_<n>.png`). Fine for a demo corpus; a confidentiality leak the moment real
+  users upload their own PDFs. Signed expiring URLs would close it while keeping `<img
+  src>` working, which is why the hole exists in the first place.
+- **One shared `API_KEY` means one shared corpus.** Every holder can `DELETE` every other
+  holder's documents. Per-key corpus scoping is the middle ground short of real tenancy.
+- **Nothing bounds total Gemini spend.** Per-IP rate limits do not: 50 addresses at 30/min
+  each is unbounded. `request_context` already computes `est_cost_usd` per call, so a daily
+  ceiling with a kill switch is cheap to add at the same choke point.
+- **`GPU_WAIT_TIMEOUT_S = 60` is a judgement, not a derivation.** It wants to sit above one
+  gated page batch and below a client's own timeout; neither bound was measured.
+- **The store-worker/gate interaction has not been profiled.** A gated ingest keeps its
+  upsert thread running while the main thread is parked, which is the same GIL-contention
+  question `_StoreWorker` was left open on. Worth folding into the next
+  `scripts/bench_pipeline.py` run rather than reasoning about.
+- **CI still never builds the Docker image**, so a Dockerfile or compose regression — the
+  exact class of defect this pass fixed — ships without a gate.

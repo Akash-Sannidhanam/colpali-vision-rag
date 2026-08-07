@@ -2,13 +2,17 @@
 
 A single-worker HTTP surface over the LangGraph pipeline. The ~2B ColQwen2 model is
 loaded once at boot (`lifespan`), so the cold start is paid at startup, not per query.
-All heavy work runs in a threadpool behind an `asyncio.Lock`, so the one GPU-resident
-model is never asked to run two forward passes at once and `/health` stays responsive.
+All heavy work runs in a threadpool behind `gpu_arbiter.GpuArbiter`, so the one
+GPU-resident model is never asked to run two forward passes at once and `/health` stays
+responsive. Anything touching the model goes through `_gpu.run_exclusive` rather than
+taking a lock itself - that is what makes shedding (503 + `Retry-After` past
+`GPU_WAIT_TIMEOUT_S`), disconnect-safety, and an ingest that yields between page batches
+properties of the server rather than of each endpoint that remembered them.
 
 Endpoints:
   POST /query   {question}          -> answer + visual citation + used pages + meta
   POST /heatmap {question,pdf,page_number} -> per-patch MaxSim heatmap grid for one page (on-demand)
-  GET  /health                      -> model-loaded flag + Qdrant reachability (503 if down)
+  GET  /health                      -> model-loaded + Qdrant reachability + corpus integrity
   GET  /corpus                      -> indexed documents + page counts (for the UI rail)
   POST /ingest  (multipart PDF)     -> render/embed/index a PDF (blocking, holds the lock)
   DELETE /corpus/{pdf}              -> drop a document's vectors, page images, crops, PDF
@@ -29,6 +33,7 @@ import asyncio
 import base64
 import json
 from contextlib import asynccontextmanager
+from functools import partial
 from pathlib import Path
 from urllib.parse import urljoin
 
@@ -52,6 +57,7 @@ from src.config import (
     validate,
 )
 from src.embedder import is_loaded, load_model
+from src.gpu_arbiter import GpuArbiter, GpuBusy
 from src.graph import get_graph
 from src.heatmap import page_similarity
 from src.ingest import run_ingest
@@ -59,7 +65,14 @@ from src.logging_setup import get_logger
 from src.main import run_query
 from src.pdf_render import crop_images_for, page_image_path, page_images_for
 from src.ratelimit import rate_limit, rate_limit_ingest
-from src.vector_store import close_client, delete_document, document_index, list_documents, ping
+from src.vector_store import (
+    close_client,
+    delete_document,
+    document_index,
+    index_health,
+    list_documents,
+    ping,
+)
 
 log = get_logger("server")
 
@@ -172,11 +185,18 @@ class CorpusResponse(BaseModel):
 
 
 class HealthResponse(BaseModel):
-    """Liveness: whether the model is warm and whether Qdrant is reachable."""
+    """Liveness: whether the model is warm, Qdrant is reachable, and the corpus is whole.
+
+    `corpus` reports the vectors-without-page-images split (see `vector_store.index_health`),
+    which is otherwise invisible: the corpus still lists, and every query just answers
+    "not found". It does not affect `status` - the server is serving, some documents
+    just cannot be read from - so an orchestrator's liveness probe is unchanged.
+    """
 
     status: str
     model_loaded: bool
     qdrant: str
+    corpus: str = "ok"
 
 
 class IngestResponse(BaseModel):
@@ -231,7 +251,17 @@ async def lifespan(app: FastAPI):
     # the deployment they just started is open to the world.
     if not auth_enabled():
         log.warning("API_KEY is unset - every endpoint is open, including DELETE /corpus")
-    log.info("server warm", extra={"model_loaded": is_loaded(), "auth": auth_enabled()})
+    # Same reasoning for the corpus. A restore that brought back the Qdrant volume but
+    # not PAGE_IMAGES_DIR boots perfectly and then answers "not found" to everything, so
+    # it is stated here rather than left to be inferred from a WARNING per dropped hit.
+    # ERROR, not a refusal to boot: config errors fail fast, recoverable data states
+    # degrade - and this one is repaired by re-running ingest, which needs a live server.
+    corpus = index_health()
+    if not corpus["ok"]:
+        log.error("indexed documents are missing page images - re-run ingest to repair",
+                  extra={"incomplete": corpus["incomplete"], "checked": corpus["checked"]})
+    log.info("server warm", extra={"model_loaded": is_loaded(), "auth": auth_enabled(),
+                                   "corpus_ok": corpus["ok"]})
     yield
     close_client()                               # the one place the server closes Qdrant
 
@@ -256,7 +286,11 @@ app.mount("/images", StaticFiles(directory=PAGE_IMAGES_DIR), name="images")
 # and unauthenticated floods unbounded. Limiting first throttles both.
 api = APIRouter(dependencies=[Depends(rate_limit), Depends(require_api_key)])
 
-_gpu_lock = asyncio.Lock()     # serialize the single GPU-resident model across requests
+# Serializes the single GPU-resident model across requests. Not a bare asyncio.Lock:
+# it also bounds the wait (503 instead of a hung socket), refuses to release under a
+# forward pass whose client has disconnected, and lets a long ingest hand the model
+# back between page batches. See src/gpu_arbiter.py.
+_gpu = GpuArbiter()
 
 
 # --- Image helpers ---
@@ -376,18 +410,44 @@ async def _build_query_response(request: Request, result: dict, inline: bool) ->
 
 # --- Endpoints ---
 
+def _corpus_status() -> str:
+    """`index_health` as a one-line status string for /health (never raises).
+
+    The failure branch logs the exception and returns a bare "unknown" rather than the
+    exception text: /health is on `app`, not the gated `api` router, so its body is world
+    -readable and a raw exception can carry internal hostnames or filesystem paths.
+    (The `qdrant` field above still interpolates its exception - pre-existing behaviour a
+    test asserts on, so changing it belongs in its own change, not this one.)
+    """
+    try:
+        health = index_health()
+    except Exception:
+        log.warning("corpus health check failed", exc_info=True)
+        return "unknown"
+    if health["ok"]:
+        return "ok"
+    count = len(health["incomplete"])
+    return (f"{count} document(s) missing page images "
+            f"({', '.join(d['pdf'] for d in health['incomplete'][:5])}) - re-run ingest")
+
+
 @app.get("/health", response_model=HealthResponse)
 async def health():
-    """Model-loaded flag + Qdrant reachability. 503 (degraded) when Qdrant is down."""
+    """Model-loaded flag, Qdrant reachability, corpus integrity. 503 when Qdrant is down."""
     try:
         await asyncio.to_thread(ping)
     except Exception as exc:
         return JSONResponse(
             status_code=503,
             content={"status": "degraded", "model_loaded": is_loaded(),
-                     "qdrant": f"unreachable: {exc}"},
+                     "qdrant": f"unreachable: {exc}", "corpus": "unknown"},
         )
-    return HealthResponse(status="ok", model_loaded=is_loaded(), qdrant="ok")
+    return HealthResponse(
+        status="ok",
+        model_loaded=is_loaded(),
+        qdrant="ok",
+        corpus=await asyncio.to_thread(_corpus_status),
+    )
 
 
 @api.get("/corpus", response_model=CorpusResponse)
@@ -452,9 +512,13 @@ async def delete_corpus_document(pdf: str):
 
 @api.post("/query", response_model=QueryResponse)
 async def query(req: QueryRequest, request: Request, inline: bool = Query(default=False)):
-    """Answer one question. Serializes on the model lock; base64 reads happen outside it."""
-    async with _gpu_lock:
-        result = await asyncio.to_thread(run_query, req.question)
+    """Answer one question. Serializes on the model; base64 reads happen outside the lock.
+
+    503 (with `Retry-After`) rather than a hung request when the model stays busy past
+    `GPU_WAIT_TIMEOUT_S` - though a concurrent ingest yields between page batches, so the
+    normal wait behind one is a page, not a document.
+    """
+    result = await _gpu.run_exclusive(run_query, req.question)
     return await _build_query_response(request, result, inline)
 
 
@@ -463,15 +527,14 @@ async def heatmap(req: HeatmapRequest):
     """Per-patch MaxSim heatmap for one page - which patches the query lit up ("why this
     page?"). On-demand (the UI's toggle), not folded into /query, because it costs two
     extra model forward passes; stateless - the page is named explicitly by (pdf, page).
-    Serializes on the same model lock as /query so the one GPU model runs one pass at a time."""
+    Serializes on the same arbiter as /query so the one GPU model runs one pass at a time."""
     image_path = page_image_path(req.pdf, req.page_number)
     if not image_path.exists():
         raise HTTPException(
             status_code=404,
             detail=f"No indexed page image for {req.pdf} p.{req.page_number}.",
         )
-    async with _gpu_lock:
-        grid, n_x, n_y = await asyncio.to_thread(page_similarity, req.question, image_path)
+    grid, n_x, n_y = await _gpu.run_exclusive(page_similarity, req.question, image_path)
     return HeatmapResponse(
         pdf=req.pdf, page_number=req.page_number, n_x=n_x, n_y=n_y, grid=grid
     )
@@ -510,14 +573,18 @@ def _sse(event: dict) -> str:
 
 @api.post("/ingest", response_model=IngestResponse, dependencies=[Depends(rate_limit_ingest)])
 async def ingest(file: UploadFile = File(...)):
-    """Upload and index a single PDF. Blocking and long-running - it holds the model
-    lock for the whole render/embed/upsert build, so queries wait while it runs.
+    """Upload and index a single PDF. Blocking and long-running - the response does not
+    come back until the whole render/embed/upsert build has finished.
+
+    It no longer *monopolizes* the model for that whole time, though: the gate hands the
+    GPU to any queued query at each page boundary, so a concurrent /query waits about a
+    page rather than the rest of the document.
 
     Carries the hourly ingest limit on top of the router's per-minute one, because a
-    single upload costs minutes of exclusive GPU time rather than one forward pass."""
+    single upload costs minutes of GPU time rather than one forward pass."""
     name, all_pdfs = await _save_upload(file)
-    async with _gpu_lock:
-        indexed = await asyncio.to_thread(run_ingest, all_pdfs)
+    gate = _gpu.thread_gate(asyncio.get_running_loop())
+    indexed = await _gpu.run_exclusive(partial(run_ingest, all_pdfs, gate=gate))
     return IngestResponse(pdf=name, indexed_pages=indexed)
 
 
@@ -525,43 +592,79 @@ async def ingest(file: UploadFile = File(...)):
 async def ingest_stream(file: UploadFile = File(...)):
     """Same as /ingest, but streams per-page progress as Server-Sent Events.
 
-    The render/embed loop runs in a worker thread (holding the model lock the whole
-    time, exactly like /ingest); its progress callback hops each event back onto the
-    loop via an asyncio.Queue, and an async generator drains the queue into SSE frames.
-    A done-callback pushes a sentinel so the generator knows the build finished, then
-    re-raises any build failure as a final `error` event.
+    The render/embed loop runs in a worker thread (holding the model the whole time,
+    exactly like /ingest, and yielding it at the same page boundaries); its progress
+    callback hops each event back onto the loop via an asyncio.Queue, and an async
+    generator drains the queue into SSE frames. A done-callback pushes a sentinel so the
+    generator knows the build finished, then re-raises any build failure as a final
+    `error` event.
     """
     name, all_pdfs = await _save_upload(file)
     loop = asyncio.get_running_loop()
     queue: asyncio.Queue = asyncio.Queue()
     done = object()
+    gate = _gpu.thread_gate(loop)
 
     def progress(event: dict) -> None:
         """Hop one worker-thread progress event back onto the event loop's queue."""
         loop.call_soon_threadsafe(queue.put_nowait, event)   # called from the worker thread
 
+    # Shedding has to be decided BEFORE the response starts and the lock must never be
+    # held across the endpoint/generator boundary. Those pull in opposite directions, and
+    # getting either wrong is worse than the problem:
+    #
+    #   * Acquiring inside event_stream() puts GpuBusy permanently out of reach of
+    #     _gpu_busy_handler - FastAPI sends a StreamingResponse's 200 headers before it
+    #     ever iterates the generator - so an overloaded server answers a truncated 200
+    #     with no Retry-After while plain /ingest correctly sheds.
+    #   * Acquiring here and closing the context *inside* the generator leaks the lock
+    #     outright. If the connection breaks before the headers go out, Starlette raises
+    #     from send() and never starts the body at all, so its `finally` never runs -
+    #     measured, not assumed - and the model stays locked for the life of the process.
+    #     Every later request then sheds forever. A wedged server is far worse than a
+    #     truncated stream.
+    #
+    # So: probe at the door with the real timeout to make the shed decision, release it,
+    # and let the generator take the lock for the actual build. Acquire and release then
+    # sit in the same frame and cannot leak. The probe is advisory - another request can
+    # slip in between - which is why the generator's own acquire still degrades to a
+    # terminal `error` frame rather than dying silently. That race costs a queued client
+    # a wait; the alternatives cost correctness.
+    async with _gpu.acquire():                               # raises GpuBusy -> 503 here
+        pass
+
     async def event_stream():
         """Drain the progress queue into SSE frames until the build finishes or fails."""
-        async with _gpu_lock:                                # hold the model lock for the build
-            task = asyncio.create_task(asyncio.to_thread(run_ingest, all_pdfs, progress))
-            task.add_done_callback(lambda _t: loop.call_soon_threadsafe(queue.put_nowait, done))
-            try:
-                while True:
-                    event = await queue.get()
-                    if event is done:
-                        break
-                    yield _sse(event)
-                indexed = task.result()                      # task is finished here; re-raises on failure
-                yield _sse({"phase": "done", "pdf": name, "indexed_pages": indexed})
-            except Exception as exc:
-                log.warning("ingest stream failed", exc_info=exc)
-                yield _sse({"phase": "error", "detail": str(exc)})
-            finally:
-                # If the client disconnected mid-build, don't release the model lock until
-                # the in-flight embed loop actually finishes (a concurrent query forward
-                # pass on the one GPU model would otherwise race it).
-                if not task.done():
-                    await asyncio.shield(task)
+        try:
+            async with _gpu.acquire():                       # holds the model for the build
+                task = asyncio.create_task(
+                    asyncio.to_thread(partial(run_ingest, all_pdfs, progress, gate=gate))
+                )
+                task.add_done_callback(
+                    lambda _t: loop.call_soon_threadsafe(queue.put_nowait, done))
+                try:
+                    while True:
+                        event = await queue.get()
+                        if event is done:
+                            break
+                        yield _sse(event)
+                    indexed = task.result()                  # task is finished here; re-raises on failure
+                    yield _sse({"phase": "done", "pdf": name, "indexed_pages": indexed})
+                except Exception as exc:
+                    log.warning("ingest stream failed", exc_info=exc)
+                    yield _sse({"phase": "error", "detail": str(exc)})
+                finally:
+                    # If the client disconnected mid-build, don't release the model lock
+                    # until the in-flight embed loop actually finishes (a concurrent query
+                    # forward pass on the one GPU model would otherwise race it).
+                    if not task.done():
+                        await asyncio.shield(task)
+        except GpuBusy as exc:
+            # Lost the race after the door probe. The headers are already out, so this
+            # cannot be a 503 - say so in the stream instead of truncating it.
+            log.warning("ingest stream shed after the response started")
+            yield _sse({"phase": "error", "detail": str(exc),
+                        "retry_after": exc.retry_after})
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
@@ -571,6 +674,19 @@ async def _runtime_error_handler(request: Request, exc: RuntimeError):
     """Surface our actionable RuntimeErrors (e.g. Qdrant unreachable) as 503, not 500."""
     log.warning("request failed", exc_info=exc, extra={"path": request.url.path})
     return JSONResponse(status_code=503, content={"detail": str(exc)})
+
+
+@app.exception_handler(GpuBusy)
+async def _gpu_busy_handler(request: Request, exc: GpuBusy):
+    """Shed a request that waited too long for the model: 503 + Retry-After.
+
+    Deliberately shaped like ratelimit's 429 - a client that is told to come back can
+    back off, where one left hanging on the socket can only time out and guess."""
+    return JSONResponse(
+        status_code=503,
+        content={"detail": str(exc)},
+        headers={"Retry-After": str(exc.retry_after)},
+    )
 
 
 # --- The UI, served from the same origin as the API ---

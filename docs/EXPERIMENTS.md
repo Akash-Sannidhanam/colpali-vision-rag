@@ -297,6 +297,84 @@ stops guarding.
 
 ---
 
+## Deployment
+
+Everything above tunes the pipeline. These two are about the *deployment*, and both are defects
+rather than arms — kept here because their shared property is the interesting part: **each one
+fails silently**, which is why neither showed up in any metric above.
+
+### The corpus was half-persisted (and the obvious repair was a no-op)
+
+The `app` service mounted exactly one volume, the model cache. Page PNGs lived inside the
+container; vectors lived in `qdrant_storage`. So any container recreate kept every vector and
+destroyed every page — and what that produces is *not* an error. `GET /corpus` still listed all 19
+documents (it reads Qdrant payloads), while every query dropped its whole slate for missing images
+and answered "not found". One WARNING per dropped hit was the only trace.
+
+The trap underneath it: `_sync` skipped a document whose content hash and embed version still
+matched — which they did, since only the images were gone. **`python src/ingest.py` skipped exactly
+the documents that most needed rebuilding.** A second trigger existed one layer down: `image_path`
+was stored *absolute*, so relocating the directory broke the corpus identically.
+
+Fixed as four changes, because the volumes alone leave it un-relocatable and un-repairable: volumes
+for `page_images`/`pdfs`; `image_path` stored **relative** to `PAGE_IMAGES_DIR` (reads still accept
+legacy absolute paths, so no re-ingest and **no `EMBED_VERSION` bump** — this is payload, not vector
+data); `_sync` treating missing page images as stale, which makes a plain re-ingest the repair; and
+`index_health()` reporting the split at boot and on `/health`.
+
+**The guard matters more than the fix.** A change to the retrieval read path fails by *silently
+dropping hits* — the same bug it fixes. Retrieval-only against the pinned baseline:
+
+| Metric | Baseline | After |
+|---|---|---|
+| `recall@1` / `recall@3` / `recall@12` | 0.6712 / 0.8493 / 1.0 | identical |
+| `candidate_coverage_avg` | 0.850 | 0.850 |
+| `gold_rank`, **per row** | avg 2.0548 | avg 2.0548 — **73/73 unchanged, 0 flipped** |
+
+Row-level, not summary-level. And since the pinned index was written with absolute paths, that run
+doubles as the backward-compat proof.
+
+### One upload froze every user — ~16× on the wait for the model ✅ ADOPTED
+
+`/ingest` held the GPU lock across the whole build while `/query` contended for it. The fix is not
+politer waiting; it is making the ingest **give the GPU back** at each page boundary — the one
+moment in the loop it is idle.
+
+**The first version of this measurement was a single run, and it did not reproduce** — 11.2× became
+2.1× on a re-run, plus a failed ingest. That is the noise floor this repo already documented for
+this box in the ingest-throughput pass, applied to a number published without meeting it. The
+corrected framing reports the statistic the mechanism actually moves: end-to-end latency is
+dominated by Gemini (15.7 s → 131.9 s of pipeline time for the *same* query within one session), so
+a "speedup" from it mostly measures Gemini. What the gate changes is the **wait for the model**.
+Three interleaved rounds, 13-page ingest, query fired 15 s in:
+
+| round | queueing cost | ingest remaining (the pre-gate wait) |
+|---|---|---|
+| 1 | 3.7 s | 247.2 s |
+| 2 | 8.4 s | 126.8 s |
+| 3 | 8.2 s | 135.3 s |
+| **median** | **8.2 s** | **135.3 s** — ≈**16×** |
+
+The wait drops from *the rest of the document* to *about one page batch*, and it is stable across
+rounds where the end-to-end figure is not.
+
+**A stalled upsert used to kill the whole ingest.** The failing re-run died at page 8 of 20 on a
+Qdrant upsert hitting the client's invisible 60 s default. `_StoreWorker`'s failure aborts the
+document, so one slow HTTP call discarded every page embedded so far. The obvious hypothesis — the
+gate parking the ingest long enough for the idle connection to be reaped — was **tested and
+refuted** (70 s idle, next upsert 0.02 s). The fix stands on its own regardless: `QDRANT_TIMEOUT_S`
+is stated rather than inherited, and `upsert_pages` retries transient transport failures the way
+`gemini_client` already does, safely, because point ids make the write idempotent.
+
+Two further behaviours moved into `src/gpu_arbiter.py` rather than staying per-endpoint: a bounded
+wait (503 + `Retry-After` past `GPU_WAIT_TIMEOUT_S`), and **disconnect safety, which was a live
+bug** — `await asyncio.to_thread(...)` cancels the awaiting task, never the thread, so a client
+going away released the model out from under its own running forward pass. Both are regression
+-tested by *breaking* them: stub the gate and the ordering test fails; remove the shield and the
+disconnect test fails.
+
+---
+
 ## What's still open
 
 - **`gold_coverage_avg` (0.825) trails its ceiling `candidate_coverage_avg` (0.850)** — rerank is
@@ -319,3 +397,16 @@ stops guarding.
   token-budget trade all measured against a saturated MPS device.
 - **`EMBED_VISUAL_TOKENS` has never been swept on a mostly-prose corpus**, which is the case where
   it would be free speed.
+- **`/images` is unauthenticated with guessable paths** (`<stem>_page_<n>.png`). Deliberate — an
+  `<img src>` cannot send a header — and fine for a demo corpus, but a confidentiality leak the
+  moment real users upload their own PDFs. Signed expiring URLs would close it without breaking
+  `<img>`.
+- **One shared `API_KEY` means one shared corpus**: every holder can `DELETE` every other holder's
+  documents. Per-key corpus scoping is the middle ground short of real tenancy.
+- **Nothing bounds total Gemini spend.** Per-IP rate limits do not — 50 addresses at 30/min each is
+  unbounded. `request_context` already computes `est_cost_usd` per call, so a daily ceiling with a
+  kill switch is cheap at the same choke point.
+- **`GPU_WAIT_TIMEOUT_S = 60` is a judgement, not a derivation.** It wants to sit above one gated
+  page batch and below a client's own timeout; neither bound was measured.
+- **CI never builds the Docker image**, so a Dockerfile or compose regression — the exact class of
+  defect the deployment pass fixed — ships without a gate.

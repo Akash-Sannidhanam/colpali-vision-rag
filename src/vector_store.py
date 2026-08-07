@@ -19,25 +19,37 @@ Two write paths, both reached through the mode-hiding seam at the bottom so
 physical collection transparently.
 """
 
+import logging
 import uuid
 from pathlib import Path
 from typing import Any
 
 from qdrant_client import QdrantClient
 from qdrant_client import models as qm
+from tenacity import (
+    before_sleep_log,
+    retry,
+    retry_if_exception,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 from src.config import (
     CANDIDATE_FANOUT,
     COLLECTION_NAME,
     MAX_PAGES_PER_DOC,
+    PAGE_IMAGES_DIR,
     QDRANT_API_KEY,
+    QDRANT_MAX_RETRIES,
     QDRANT_PATH,
+    QDRANT_TIMEOUT_S,
     QDRANT_URL,
     RESCORE_OVERSAMPLING,
     RETRIEVE_K,
     VECTOR_DIM,
 )
 from src.logging_setup import get_logger
+from src.pdf_render import missing_page_numbers, page_image_numbers
 from src.query_decompose import fuse_rrf
 
 log = get_logger("qdrant")
@@ -62,7 +74,11 @@ def get_client() -> QdrantClient:
     global _client
     if _client is None:
         if QDRANT_URL:
-            _client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
+            # Timeout stated explicitly rather than inherited. The client's own default is
+            # 60 s and invisible in the code, which is a bad property for the one call that
+            # can discard minutes of GPU work when it stalls (see `upsert_pages`).
+            _client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY,
+                                   timeout=int(QDRANT_TIMEOUT_S))
         else:
             _client = QdrantClient(path=str(QDRANT_PATH))  # local prototyping fallback
     return _client
@@ -299,6 +315,36 @@ def point_id(pdf_name: str, page_number: int) -> str:
     """
     return str(uuid.uuid5(_POINT_NAMESPACE, f"{pdf_name}:{page_number}"))
 
+def _store_image_path(image_path) -> str:
+    """The payload form of a page image's path: relative to PAGE_IMAGES_DIR when it can be.
+
+    Stored relative so the corpus is *relocatable*. An absolute path pins every point to
+    the directory layout of the machine that ingested it, so moving PAGE_IMAGES_DIR (or
+    restoring a backup under a different root) makes `_fetch` drop every hit for a missing
+    image - the same silent failure as losing the images outright, and just as invisible.
+
+    Falls back to the absolute string for a path outside the root, which should not happen
+    (`pdf_render.save_page_image` always writes under it) but is not worth failing an
+    ingest over. `_resolve_image_path` reads both forms.
+    """
+    path = Path(image_path)
+    try:
+        return path.resolve().relative_to(PAGE_IMAGES_DIR).as_posix()
+    except ValueError:
+        return str(path)
+
+
+def _resolve_image_path(stored: str) -> Path:
+    """The absolute path for a payload's `image_path`, in either stored form.
+
+    Points written before paths went relative hold an absolute string; those are used
+    as-is, which is what makes the change backward-compatible with an existing index -
+    it is payload, not vector data, so no re-ingest and no EMBED_VERSION bump.
+    """
+    path = Path(stored)
+    return path if path.is_absolute() else PAGE_IMAGES_DIR / path
+
+
 def build_point(
     multivector, pdf_name, page_number, image_path, content_hash="", embed_version="",
 ) -> qm.PointStruct:
@@ -307,6 +353,10 @@ def build_point(
     `content_hash` + `embed_version` are what let a later ingest decide whether this
     page is still current (see `ingest.run_ingest`) - the PDF's bytes and the embedding
     config that produced the vector, respectively.
+
+    `image_path` is stored *relative* to PAGE_IMAGES_DIR - see `_store_image_path` for
+    why, and `_fetch` for the resolution back to an absolute path that every reader
+    downstream still receives.
     """
     return qm.PointStruct(
         id = point_id(pdf_name, page_number),
@@ -314,22 +364,57 @@ def build_point(
         payload = {
             "pdf": pdf_name,
             "page_number": page_number,
-            "image_path": str(image_path),
+            "image_path": _store_image_path(image_path),
             "content_hash": content_hash,
             "embed_version": embed_version,
         },
     )
+
+def _is_retryable(exc: BaseException) -> bool:
+    """True for transient transport failures worth retrying, False for permanent ones.
+
+    Matches `gemini_client._is_retryable`'s shape deliberately: name-based, so it covers
+    httpx/httpcore timeouts and connection resets without importing their exception tree,
+    and it never retries a 4xx (a malformed point or a missing collection will fail the
+    same way forever, and retrying only delays the error).
+    """
+    name = type(exc).__name__.lower()
+    return "timeout" in name or "connection" in name or "writeerror" in name
+
 
 def upsert_pages(points: list[qm.PointStruct], collection_name: str = COLLECTION_NAME) -> None:
     """Store a batch of page points in a single round-trip (skips empty batches).
 
     During an atomic server ingest, `collection_name` is the new physical collection
     being built - the alias still points at the previous index until finish_ingest.
+
+    **Retried, because this call is disproportionately expensive to lose.** It runs on
+    `ingest._StoreWorker`, whose failure aborts the whole document - so one slow HTTP call
+    used to discard every page embedded so far, minutes of GPU time, and leave a truncated
+    document that `_sync` would then have to catch. Observed once for real: an upsert
+    issued while a query held the GPU stalled past the client timeout and killed a 20-page
+    ingest at page 8.
+
+    Retrying is safe because the write is **idempotent** - point ids are derived from
+    (pdf, page) in `build_point`, so re-sending a batch that partially landed overwrites
+    those points in place rather than duplicating them.
     """
     if not points:
         return
     client = get_client()
-    client.upsert(collection_name=collection_name, points=points)
+
+    @retry(
+        reraise=True,
+        stop=stop_after_attempt(max(1, QDRANT_MAX_RETRIES)),
+        wait=wait_exponential(multiplier=1, min=1, max=20),
+        retry=retry_if_exception(_is_retryable),
+        before_sleep=before_sleep_log(log, logging.WARNING),
+    )
+    def _upsert() -> None:
+        """One upsert attempt, retried on a transient transport failure."""
+        client.upsert(collection_name=collection_name, points=points)
+
+    _upsert()
 
 def _diversify(hits: list[dict], cap: int, k: int) -> list[dict]:
     """Keep score order, but let no single `pdf` occupy more than `cap` of the k slots.
@@ -371,6 +456,13 @@ def _fetch(query_multivector: list[list[float]], fetch_k: int) -> list[dict]:
     persisted index outlives a wiped `page_images/`. Each drop is logged at WARNING so
     a stale index stays visible rather than silently answering off a shrunken set;
     downstream (rerank/answer/highlight) can then assume every hit resolves to a page.
+    A whole corpus in that state is not a per-query concern, though: `index_health`
+    reports it at boot, because a WARNING per dropped hit is not what an operator reads.
+
+    The payload's `image_path` is relative to PAGE_IMAGES_DIR (or absolute, for points
+    written before that change). It is resolved here, once, so every hit dict handed
+    downstream carries an **absolute** path exactly as it always did - `server._to_url`,
+    `highlight` and the eval harness are unaffected by the storage form.
 
     Split out of `search` so a decomposed question can issue one of these per sub-query
     without duplicating the validation contract (see `search_multi`).
@@ -406,11 +498,12 @@ def _fetch(query_multivector: list[list[float]], fetch_k: int) -> list[dict]:
         if not isinstance(payload["page_number"], int):
             log.warning("dropped hit with invalid page_number", extra={"point_id": p.id})
             continue
-        if not Path(payload["image_path"]).exists():
+        image_path = _resolve_image_path(payload["image_path"])
+        if not image_path.exists():
             log.warning("dropped hit with missing image file",
-                        extra={"point_id": p.id, "image_path": payload["image_path"]})
+                        extra={"point_id": p.id, "image_path": str(image_path)})
             continue
-        hits.append({**payload, "score": round(p.score, 4)})
+        hits.append({**payload, "image_path": str(image_path), "score": round(p.score, 4)})
     return hits
 
 
@@ -495,3 +588,39 @@ def document_index() -> dict[str, dict]:
 def list_documents() -> list[dict]:
     """List the indexed PDFs and their page counts, by name (powers GET /corpus)."""
     return [{"pdf": pdf, "page_count": e["page_count"]} for pdf, e in document_index().items()]
+
+
+def index_health() -> dict:
+    """Which indexed documents are missing page images: `{ok, checked, incomplete}`.
+
+    The vectors and the page PNGs are two halves of one corpus, and the failure mode
+    when they diverge is invisible from the outside: `document_index` still lists every
+    document (it reads Qdrant payloads), while `_fetch` drops every hit whose image is
+    gone - so `/corpus` shows a full corpus and every query answers "not found". That
+    is what this reports, at boot and on `/health`, instead of leaving it to be inferred
+    from a WARNING per dropped hit.
+
+    The usual cause is a restore or a container recreate that persisted the Qdrant
+    storage but not PAGE_IMAGES_DIR. The repair is a plain re-ingest: `ingest._sync`
+    treats a document with missing images as stale, so it re-renders and re-embeds.
+
+    `incomplete` entries are `{pdf, indexed_pages, images_present, missing_pages}`. The
+    check is per *page number*, not a count: a leftover PNG from a longer previous
+    revision would otherwise mask a genuinely missing page (see
+    `pdf_render.missing_page_numbers`). Extra images beyond the indexed page count are
+    still ignored - they are cosmetic and break no query.
+    """
+    index = document_index()
+    rendered = page_image_numbers()
+    incomplete = []
+    for pdf, entry in index.items():
+        page_count = entry["page_count"]
+        missing = missing_page_numbers(Path(pdf).stem, page_count, rendered)
+        if missing:
+            incomplete.append({
+                "pdf": pdf,
+                "indexed_pages": page_count,
+                "images_present": page_count - len(missing),
+                "missing_pages": missing[:10],   # bounded: this lands in a log line
+            })
+    return {"ok": not incomplete, "checked": len(index), "incomplete": incomplete}

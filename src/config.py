@@ -10,8 +10,25 @@ from dotenv import load_dotenv
 
 load_dotenv()
 ROOT_DIR = Path(__file__).resolve().parent.parent
-PDFS_DIR = ROOT_DIR / "pdfs"
-PAGE_IMAGES_DIR = ROOT_DIR / "page_images"
+
+
+def _dir_from_env(var: str, default: Path) -> Path:
+    """A directory setting, overridable by env, always resolved to an absolute path.
+
+    Env-overridable so a deployment can point its state at a mounted disk instead of
+    bind-mounting over the app directory. Resolved because these are compared against
+    each other - `server._to_url` takes a page image's path relative to PAGE_IMAGES_DIR,
+    which a relative override would break.
+    """
+    return Path(os.getenv(var) or default).resolve()
+
+
+# The three persistent data directories. **They are one backup unit with the Qdrant
+# storage**: the vectors in Qdrant and the page PNGs here are halves of one corpus, and
+# restoring either without the other leaves an index whose every hit is dropped for a
+# missing image (see vector_store._fetch, and index_health for how that is reported).
+PDFS_DIR = _dir_from_env("PDFS_DIR", ROOT_DIR / "pdfs")
+PAGE_IMAGES_DIR = _dir_from_env("PAGE_IMAGES_DIR", ROOT_DIR / "page_images")
 # Cropped/annotated chart slices produced at answer time. Under page_images/ but
 # never re-ingested (ingest only globs pdfs/).
 CROPS_DIR = PAGE_IMAGES_DIR / "crops"
@@ -21,7 +38,7 @@ CROPS_DIR = PAGE_IMAGES_DIR / "crops"
 # QDRANT_URL in .env (see docker-compose.yml).
 QDRANT_URL = os.getenv("QDRANT_URL")
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")  # None for the local unauthenticated container
-QDRANT_PATH = ROOT_DIR / "qdrant_data"        # embedded on-disk fallback store
+QDRANT_PATH = _dir_from_env("QDRANT_PATH", ROOT_DIR / "qdrant_data")  # embedded fallback store
 
 # Directory containing poppler's CLI tools (pdftoppm/pdftocairo), used by pdf2image.
 # Override via POPPLER_PATH; otherwise derive it from pdftoppm on PATH.
@@ -213,6 +230,12 @@ EVAL_JUDGE_MODEL = os.getenv("EVAL_JUDGE_MODEL") or GEMINI_MODEL
 GEMINI_TIMEOUT_S = float(os.getenv("GEMINI_TIMEOUT_S", "60"))   # per-request timeout
 GEMINI_MAX_RETRIES = int(os.getenv("GEMINI_MAX_RETRIES", "3"))  # attempts on transient errors
 
+# The same two for Qdrant (see src/vector_store.py). Stated rather than inherited: the
+# client's own default is 60 s and invisible, and a single upsert stalling that long used
+# to abort a whole ingest - minutes of GPU work discarded over one slow HTTP call.
+QDRANT_TIMEOUT_S = float(os.getenv("QDRANT_TIMEOUT_S", "60"))
+QDRANT_MAX_RETRIES = int(os.getenv("QDRANT_MAX_RETRIES", "3"))
+
 # Logging (see src/logging_setup.py). LOG_JSON emits one JSON object per line.
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 LOG_JSON = os.getenv("LOG_JSON", "false").strip().lower() in ("1", "true", "yes")
@@ -232,6 +255,11 @@ CORS_ALLOW_ORIGINS = [
 ]
 # Reject PDF uploads to POST /ingest larger than this (megabytes).
 MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "50"))
+# How long a request may wait for the one GPU-resident model before the server sheds it
+# as 503 + Retry-After (see src/gpu_arbiter.py). An ingest yields the GPU between page
+# batches, so a queued query normally waits about one page - this bound is for a wedged
+# server, not for normal contention. 0 waits forever (the pre-arbiter behaviour).
+GPU_WAIT_TIMEOUT_S = float(os.getenv("GPU_WAIT_TIMEOUT_S", "60"))
 
 # Built Vite bundle (ui/). When present, the server mounts it at "/" so the API and
 # the UI are one origin - the deployment shape (see Dockerfile). Absent in a dev

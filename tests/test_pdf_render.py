@@ -79,3 +79,63 @@ def test_document_names_with_regex_metacharacters_are_escaped(tmp_path, monkeypa
 
     # an unescaped "." would also match "axb_page_1.png"
     assert [p.name for p in pdf_render.page_images_for("a.b.pdf")] == ["a.b_page_1.png"]
+
+
+# --- page_image_numbers: the bulk form of page_images_for ---
+
+def test_page_image_numbers_records_which_pages_each_document_has(monkeypatch, tmp_path):
+    """One directory scan instead of one per document (vector_store.index_health, ingest._sync)."""
+    monkeypatch.setattr(pdf_render, "PAGE_IMAGES_DIR", tmp_path)
+    for name in ("a_page_1.png", "a_page_2.png", "b_page_1.png"):
+        (tmp_path / name).write_bytes(b"x")
+    (tmp_path / "notes.txt").write_bytes(b"x")           # not a page image
+    (tmp_path / "crops").mkdir()                          # not a file
+
+    assert pdf_render.page_image_numbers() == {"a": {1, 2}, "b": {1}}
+
+
+def test_page_image_numbers_agrees_with_page_images_for(monkeypatch, tmp_path):
+    """The ambiguous filename that anchoring exists for, checked against the per-stem form.
+
+    `report_page_1.pdf` renders to `report_page_1_page_2.png`, which a loose `report_*`
+    match would credit to `report.pdf`. The bulk parser's greedy stem must make the same
+    call as `page_images_for`'s anchored regex, or index_health would report a phantom
+    complete document and _sync would skip a broken one.
+    """
+    monkeypatch.setattr(pdf_render, "PAGE_IMAGES_DIR", tmp_path)
+    for name in ("report_page_1.png", "report_page_1_page_1.png", "report_page_1_page_2.png"):
+        (tmp_path / name).write_bytes(b"x")
+
+    numbers = pdf_render.page_image_numbers()
+
+    assert numbers == {"report": {1}, "report_page_1": {1, 2}}
+    assert len(numbers["report"]) == len(pdf_render.page_images_for("report.pdf"))
+    assert len(numbers["report_page_1"]) == len(pdf_render.page_images_for("report_page_1.pdf"))
+
+
+def test_page_image_numbers_is_empty_when_the_directory_is_missing(monkeypatch, tmp_path):
+    """A fresh checkout has no page_images/ yet; boot must not fail on that."""
+    monkeypatch.setattr(pdf_render, "PAGE_IMAGES_DIR", tmp_path / "nope")
+
+    assert pdf_render.page_image_numbers() == {}
+
+
+# --- missing_page_numbers: the shared definition of "complete" ---
+
+def test_missing_page_numbers_names_the_gaps():
+    """A document's pages are always 1..n, so the expected set needs no bookkeeping."""
+    assert pdf_render.missing_page_numbers("a", 4, {"a": {1, 3}}) == [2, 4]
+    assert pdf_render.missing_page_numbers("a", 3, {"a": {1, 2, 3}}) == []
+    assert pdf_render.missing_page_numbers("gone", 2, {}) == [1, 2]
+
+
+def test_missing_page_numbers_ignores_leftovers_but_not_gaps():
+    """The counting bug, at its source.
+
+    `_sync` never deletes a changed document's old page images, so a shortened revision
+    leaves high-numbered PNGs behind. A bare count of 4 against 2 indexed pages reads as
+    complete while page 1 is actually gone - so the check is over page *numbers*, and
+    extras past the count stay ignored because they break no query.
+    """
+    assert pdf_render.missing_page_numbers("a", 2, {"a": {2, 3, 4, 5}}) == [1]
+    assert pdf_render.missing_page_numbers("a", 2, {"a": {1, 2, 3, 4, 5}}) == []

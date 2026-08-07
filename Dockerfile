@@ -11,7 +11,17 @@
 #     -e GEMINI_API_KEY=... -e QDRANT_URL=http://host.docker.internal:6333 \
 #     -e API_KEY=...   \                                  # gate the API; see src/auth.py
 #     -v vision-rag-hf:/home/appuser/.cache/huggingface \ # persist the model download
+#     -v vision-rag-pages:/app/page_images \              # REQUIRED: half the corpus
+#     -v vision-rag-pdfs:/app/pdfs \                      # the source documents
 #     [--gpus all] vision-rag
+#
+# **page_images/ is not a cache.** It and the vectors in Qdrant are two halves of one
+# corpus, so they must persist and be backed up together. Run without that mount and a
+# container recreate keeps the vectors, loses the pages, and every query answers "not
+# found" while /corpus still lists a full corpus. The server reports the split at boot
+# and on /health; a plain re-ingest repairs it. (PAGE_IMAGES_DIR / PDFS_DIR relocate
+# these if you would rather mount elsewhere; stored image paths are relative, so moving
+# the directory is safe.)
 #
 # First boot downloads the ~2B ColQwen2 model from HuggingFace into the mounted cache;
 # subsequent boots are warm. Qdrant must be reachable at QDRANT_URL.
