@@ -1673,6 +1673,33 @@ someone else". It was added anyway (a clear error beats asyncio's bare "Lock is 
 with a docstring saying what it does and does not catch, and naming the thing that actually
 prevents the bad case: `thread_gate` is only ever handed to a worker inside `run_exclusive`.
 
+### The check meant to prevent a silent failure blocked boot instead
+
+Merged, then caught by the first CI run that actually executed — the outage had kept the
+branch unverified. `lifespan` calls `index_health()`, which scrolls the collection. On a
+**fresh install that collection does not exist yet**: `ping()` passes, because it only
+lists collections and never checks the target one, so boot got one step further and then
+raised `ValueError: Collection pdf_pages not found`. Nothing catches it, so uvicorn refused
+to start. **A brand-new deployment could not boot** — decisively worse than the silent
+half-corpus the check exists to catch, and the fourth time in this pass that a fix was worse
+than its bug in one specific edge case.
+
+Fixed in two layers, because a diagnostic must not be able to take down the thing it
+diagnoses: `index_health()` now reports `{ok: True, checked: 0}` when the index cannot be
+read (honest — `checked: 0` says nothing was verified, so `ok` claims only "no evidence of
+missing images"), and `lifespan` wraps the call anyway.
+
+**The reason it was not caught locally is the useful part, and it is now in CLAUDE.md.**
+`.env` sets `QDRANT_URL`, so a local `uv run pytest` talks to the live server *with the
+pinned collection already there*. CI has no `.env` and falls back to the embedded store with
+no collection. Every local gate — 464 tests, ruff, mypy, vitest, the production build — was
+green against a database state CI never has. Removing the two guards reproduces CI exactly:
+`452 passed, 12 errors`. The CI shape is one prefix:
+
+```bash
+QDRANT_URL= QDRANT_PATH=/tmp/ci_qdrant uv run pytest
+```
+
 ### What is left
 
 - **The `/images` mount is still unauthenticated, with guessable paths**

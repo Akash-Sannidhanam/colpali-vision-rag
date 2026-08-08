@@ -734,3 +734,26 @@ def test_ingest_stream_reports_a_lost_shed_race_in_the_stream(warm, monkeypatch,
     assert '"phase": "error"' in resp.text                # ...so it says so in the stream
     assert '"retry_after"' in resp.text
     assert not server._gpu._lock.locked()                 # and still no leak
+
+
+def test_the_server_still_boots_when_the_corpus_check_fails(monkeypatch):
+    """Belt and braces on index_health's own guarantee: boot survives a broken check.
+
+    A fresh deployment has no collection until the first ingest, and the boot-time
+    integrity check used to raise straight through lifespan - uvicorn refused to start.
+    Config errors should fail fast; a diagnostic should not.
+    """
+    monkeypatch.setattr(server, "validate", lambda: None)
+    monkeypatch.setattr(server, "load_model", lambda: None)
+    monkeypatch.setattr(server, "get_graph", lambda: None)
+    monkeypatch.setattr(server, "ping", lambda: None)
+    monkeypatch.setattr(server, "is_loaded", lambda: True)
+    monkeypatch.setattr(server, "close_client", lambda: None)
+
+    def boom():
+        raise ValueError("Collection pdf_pages not found")
+
+    monkeypatch.setattr(server, "index_health", boom)
+
+    with TestClient(server.app) as client:          # lifespan runs here; must not raise
+        assert client.get("/health").status_code == 200
