@@ -24,7 +24,7 @@ from fastapi import FastAPI
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
-from src import server
+from src import ratelimit, server
 
 
 def _canned_result(found: bool = True) -> dict:
@@ -78,6 +78,13 @@ def _canned_result(found: bool = True) -> dict:
 @pytest.fixture
 def warm(monkeypatch):
     """Stub every lifespan seam so startup runs nothing heavy; yield a live TestClient."""
+    # The limiter is a process-global sliding window keyed on client IP, and every test
+    # here is the same "testclient" address - so without this the *suite* is the client,
+    # and the 31st request in any 60s window 429s whichever test happens to make it.
+    # test_auth and test_ratelimit already reset in their fixtures; this file did not, and
+    # was sitting far enough under RATE_LIMIT_PER_MINUTE that it only surfaced when a batch
+    # of new tests was added.
+    ratelimit.reset()
     monkeypatch.setattr(server, "validate", lambda: None)
     monkeypatch.setattr(server, "load_model", lambda: None)
     monkeypatch.setattr(server, "get_graph", lambda: None)
