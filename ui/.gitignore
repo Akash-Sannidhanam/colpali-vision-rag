@@ -2,3 +2,9 @@ node_modules
 dist
 .vite
 *.local
+
+# playwright (e2e/ is tracked; its output is not)
+test-results
+playwright-report
+blob-report
+.playwright
