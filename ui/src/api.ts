@@ -1,6 +1,7 @@
 import type {
   CorpusResponse,
   DeleteResponse,
+  DocumentPagesResponse,
   HealthResponse,
   HeatmapResponse,
   IngestResponse,
@@ -144,6 +145,38 @@ export async function getHealth(): Promise<HealthResponse> {
 
 export async function getCorpus(): Promise<CorpusResponse> {
   return asJson<CorpusResponse>(await apiFetch('/corpus'))
+}
+
+/** Every page of one document, with its /images URL - the full-screen viewer's manifest. */
+export async function getDocumentPages(pdf: string): Promise<DocumentPagesResponse> {
+  const res = await apiFetch(`/corpus/${encodeURIComponent(pdf)}/pages`)
+  return asJson<DocumentPagesResponse>(res)
+}
+
+/**
+ * Download a document's original PDF.
+ *
+ * The endpoint is gated, and `<a href download>` cannot send X-API-Key any more than
+ * `<img src>` can - the same limitation that keeps /images open. It is gated anyway
+ * (/images exposes derived page rasters; this hands over whole source documents), so the
+ * bytes come through fetch and are handed to the browser as a short-lived object URL.
+ */
+export async function downloadDocument(pdf: string): Promise<void> {
+  const res = await apiFetch(`/corpus/${encodeURIComponent(pdf)}/file`)
+  // Route failures through asJson so a 401/429 raises the same typed error the JSON
+  // endpoints do. asJson always throws for a non-2xx, so control never returns here.
+  if (!res.ok) await asJson<never>(res)
+
+  const url = URL.createObjectURL(await res.blob())
+  const a = document.createElement('a')
+  a.href = url
+  a.download = pdf
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  // Revoked on the next task rather than synchronously: Safari cancels a download whose
+  // object URL is revoked in the same tick as the click.
+  setTimeout(() => URL.revokeObjectURL(url), 0)
 }
 
 /** Remove a document from the corpus: vectors, page images, crops, and the stored PDF. */

@@ -95,6 +95,24 @@ export interface DeleteResponse {
   removed_pages: number
 }
 
+// One page of a document (GET /corpus/{pdf}/pages).
+//
+// `image` is null when the page is indexed but its PNG is missing from disk. That is a
+// real state, not an error: the vectors and the page images are two halves of one corpus
+// and a restore can bring back Qdrant without PAGE_IMAGES_DIR (see
+// vector_store.index_health). The page is still listed, so pages[n-1] stays page n.
+export interface DocumentPage {
+  page_number: number // 1-based
+  image: ImageRef | null
+}
+
+export interface DocumentPagesResponse {
+  pdf: string
+  page_count: number // the *indexed* count; always pages.length
+  has_original: boolean // the source PDF is still on disk and can be downloaded
+  pages: DocumentPage[]
+}
+
 // Per-patch MaxSim heatmap for one page (POST /heatmap). grid[y][x] in [0,1] over an
 // n_x x n_y patch grid — the query's match strength at each ColQwen2 patch.
 export interface HeatmapResponse {

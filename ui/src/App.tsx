@@ -3,6 +3,7 @@ import { UnauthorizedError, deleteDocument, getCorpus, getHealth, query } from '
 import { ApiKeyModal } from './components/ApiKeyModal'
 import { CorpusRail } from './components/CorpusRail'
 import { Conversation } from './components/Conversation'
+import { DocumentModal } from './components/DocumentModal'
 import { IngestModal } from './components/IngestModal'
 import { Viewer } from './components/Viewer'
 import type {
@@ -10,6 +11,7 @@ import type {
   HealthResponse,
   IngestResponse,
   QueryResponse,
+  Region,
   Turn,
 } from './types'
 
@@ -20,6 +22,9 @@ export default function App() {
   const [viewer, setViewer] = useState<QueryResponse | null>(null)
   const [asking, setAsking] = useState(false)
   const [ingestOpen, setIngestOpen] = useState(false)
+  // The document open in the full-screen viewer, and where to open it. `regions` carries
+  // the citation through so the box is still drawn when you arrive from an answer.
+  const [doc, setDoc] = useState<{ pdf: string; page: number; regions: Region[] } | null>(null)
   const [toast, setToast] = useState<{ kind: 'ok' | 'err'; msg: string } | null>(null)
   // Set when the server rejects our key (or the absence of one). Every API call routes
   // its 401 here, so an expired key mid-session re-prompts just like a cold load does.
@@ -41,6 +46,18 @@ export default function App() {
         if (e instanceof UnauthorizedError) setNeedsKey(true)
       })
   }, [])
+
+  /** Open the document viewer at page 1 - the corpus-rail way in. */
+  const openDoc = useCallback((pdf: string) => setDoc({ pdf, page: 1, regions: [] }), [])
+
+  /** Open it at one page, carrying the answer's cited regions so the box is still drawn. */
+  const openPage = useCallback(
+    (pdf: string, page: number, regions: Region[]) => setDoc({ pdf, page, regions }),
+    [],
+  )
+
+  /** A 401 raised inside the document viewer has to reach here, or the prompt never opens. */
+  const onAuthError = useCallback(() => setNeedsKey(true), [])
 
   /** Retry the initial loads once a key has been entered. */
   const onKeyEntered = useCallback(() => {
@@ -97,6 +114,7 @@ export default function App() {
       setToast({ kind: 'ok', msg: `${r.pdf} removed · ${r.removed_pages} pages` })
       // The viewer renders page images that no longer exist once the document is gone.
       setViewer((v) => (v?.pages.some((p) => p.pdf === pdf) ? null : v))
+      setDoc((d) => (d?.pdf === pdf ? null : d))   // same reason: its pages are gone
       refreshCorpus()
     } catch (e) {
       if (e instanceof UnauthorizedError) setNeedsKey(true)
@@ -113,6 +131,7 @@ export default function App() {
         health={health}
         onIngest={() => setIngestOpen(true)}
         onDelete={onDelete}
+        onOpen={openDoc}
       />
       <Conversation
         turns={turns}
@@ -121,10 +140,22 @@ export default function App() {
         asking={asking}
         corpusEmpty={corpusEmpty}
       />
-      <Viewer res={viewer} loading={asking} />
+      <Viewer res={viewer} loading={asking} onOpenPage={openPage} />
 
       {ingestOpen && (
         <IngestModal onClose={() => setIngestOpen(false)} onDone={onIngestDone} />
+      )}
+      {/* Keyed on (pdf, page): initialPage seeds internal state, so remounting is what
+          makes re-opening the same document at a different page actually land there. */}
+      {doc && (
+        <DocumentModal
+          key={`${doc.pdf}@${doc.page}`}
+          pdf={doc.pdf}
+          initialPage={doc.page}
+          regions={doc.regions}
+          onClose={() => setDoc(null)}
+          onAuthError={onAuthError}
+        />
       )}
       {/* Last, so it stacks above the ingest modal if a key expires mid-upload. */}
       {needsKey && <ApiKeyModal onSubmit={onKeyEntered} />}

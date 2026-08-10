@@ -203,6 +203,42 @@ body {
 .doc:hover {
   background: var(--ln-1);
 }
+.doc-main {
+  flex: 1;
+  min-width: 0;
+}
+/* The row opens the document, the ✕ removes it: two *sibling* buttons, never nested - a
+   button inside a button is invalid and the inner one stops taking clicks. The inline
+   remove-confirm is a sibling of this button for the same reason. */
+.doc-open {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 6px;
+}
+.doc-open:disabled {
+  cursor: default;
+}
+.doc-open:focus-visible {
+  outline: 1px solid var(--acc-bd);
+  outline-offset: 3px;
+}
+.doc:hover .doc-name {
+  color: var(--t-strong);
+}
+/* Block boxes, because these are <span>s inside a <button> now (a <div> there is invalid)
+   and text-overflow needs a block box to overflow in. */
+.doc-name,
+.doc-sub {
+  display: block;
+}
 /* Remove affordance: revealed on hover/focus so the rail stays calm at rest, but
    always reachable by keyboard. */
 .doc-remove {
@@ -564,6 +600,60 @@ body {
   max-width: 100%;
   height: auto;
 }
+/* Opens the full-screen viewer at this page. Rendered as the LAST child of .page-frame so
+   it paints above .box-overlay's 9999px spotlight scrim - both are position:absolute with
+   z-index:auto, so paint order is DOM order; the z-index makes that explicit rather than
+   incidental. Revealed on hover/focus, the same idiom .doc-remove uses. */
+.page-expand {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--ln-4);
+  border-radius: 7px;
+  background: rgba(7, 8, 17, 0.72);
+  color: var(--t-2);
+  font: 500 12px var(--mono);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s, border-color 0.15s;
+}
+.page-frame:hover .page-expand,
+.page-expand:focus-visible {
+  opacity: 1;
+}
+.page-expand:hover {
+  color: var(--acc-text);
+  border-color: var(--acc-bd);
+}
+/* The viewer's filename opens the document at the cited page. Not `.file .file-btn`:
+   `.viewer-head .file` (0,2,0) would outrank .file-btn:hover's color on a tie. */
+.file-btn {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--t-ink);
+  cursor: pointer;
+  border-radius: 4px;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 3px;
+  transition: color 0.15s, text-decoration-color 0.15s;
+}
+.file-btn:hover {
+  color: var(--acc-text);
+  text-decoration-color: var(--acc-bd);
+}
+.file-btn:focus-visible {
+  outline: 1px solid var(--acc-bd);
+  outline-offset: 2px;
+}
 .box-overlay {
   position: absolute;
   border: 2px solid var(--acc);
@@ -687,6 +777,8 @@ body {
   padding: 10px 16px 16px;
   overflow-x: auto;
 }
+/* A <button> in both rails - it opens the page it shows - so it carries the reset.
+   padding:0 matters most: UA button padding would shrink the 3/4 box. */
 .thumb {
   width: 58px;
   flex: none;
@@ -697,15 +789,56 @@ body {
   border: 1px solid var(--ln-3);
   opacity: 0.6;
   background: var(--s-panel);
+  display: block;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: opacity 0.15s, border-color 0.15s;
 }
-.thumb.kept {
+.thumb:hover {
+  opacity: 1;
+}
+.thumb:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 2px;
+}
+/* `kept` = kept by rerank (candidate rail); `on` = the page on screen (filmstrip). */
+.thumb.kept,
+.thumb.on {
   border: 2px solid var(--acc);
   opacity: 1;
 }
+/* Insets rather than width/height 100%: a <button> lays its children out in an anonymous
+   UA box, and percentage *heights* through it are engine-dependent. */
 .thumb img {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+/* No page image on disk - the same ▧ the empty viewer uses, never a broken-image icon. */
+.thumb-missing {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--t-6);
+  font-size: 15px;
+}
+/* A page a citation landed on, so the filmstrip shows where the answer was read. */
+.thumb.cited::after {
+  content: '';
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--acc);
+  box-shadow: 0 0 6px var(--acc-glow);
 }
 .thumb-label {
   position: absolute;
@@ -899,6 +1032,170 @@ body {
 .error-line {
   color: var(--red);
   font: 500 12px var(--mono);
+}
+
+/* ---- full-screen document viewer (DocumentModal) ----
+   Its own overlay rather than .modal: that is a fixed 460px form card and this is a
+   reading surface. Same z-index as .overlay (40) - what stacks the API-key prompt above
+   this one when a key expires mid-read is DOM order, per App.tsx. */
+.doc-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--scrim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 40;
+  animation: fade-in 0.2s ease;
+}
+/* Viewport-relative, not breakpointed: the app is a fixed desktop grid with no media
+   queries anywhere, and this respects that. */
+.doc-shell {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  width: min(1360px, 94vw);
+  height: 94vh;
+  background: var(--s-deep);
+  border: 1px solid var(--ln-3);
+  border-radius: 16px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+  outline: none; /* focused on open so the dialog is announced; the frame is the cue */
+}
+.doc-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--ln-2);
+  background: var(--s-head);
+  font: 500 12px var(--mono);
+  color: var(--t-3);
+  min-width: 0;
+}
+.doc-head h2 {
+  margin: 0;
+  font: 500 12px var(--mono); /* a filename is machine text */
+  color: var(--t-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.doc-count {
+  font: 500 11px var(--mono);
+  color: var(--t-5);
+  flex: none;
+}
+.doc-head-gap {
+  margin-left: auto;
+}
+.doc-btn {
+  flex: none;
+  border: 1px solid var(--ln-4);
+  background: var(--s-btn);
+  color: var(--t-3);
+  font: 500 11px var(--mono);
+  padding: 5px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.doc-btn:hover:not(:disabled) {
+  color: var(--acc-text);
+  border-color: var(--acc-bd);
+  background: var(--acc-bg);
+}
+.doc-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.doc-stage {
+  position: relative;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px 68px;
+  background: radial-gradient(circle at 50% 38%, #0d0f18, var(--s-deep));
+}
+/* Not .page-frame: that caps the image at 62vh for the narrow third column, and here the
+   page gets the whole stage. .box-overlay drops in unchanged - it is percentage-based
+   inside any position:relative frame.
+
+   The wrapper carries the page's OWN aspect ratio, set inline from the image's natural
+   size (see DocumentModal), and that is load-bearing rather than decorative. `max-height:
+   100%` on the *image* silently does nothing: it resolves against this wrapper, whose own
+   height is content-based and therefore indefinite - so the image rendered at its full
+   1650px and `overflow: hidden` quietly cropped 1085px of every page away. Worse, the
+   citation overlay is positioned in percentages of this box, so a cropped box drew the
+   box in the wrong place - a wrong visual citation, which is the one thing this product
+   must never do. With a definite aspect ratio the wrapper sizes itself correctly against
+   the stage in either orientation and the image fills it exactly, so the two boxes are
+   always the same box. */
+.doc-page {
+  position: relative;
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.55);
+  animation: box-in 0.25s ease;
+}
+.doc-page img {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.doc-page-skeleton {
+  height: 100%;
+  aspect-ratio: 3 / 4;
+}
+.doc-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 38px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--ln-3);
+  border-radius: 10px;
+  background: var(--s-btn);
+  color: var(--t-3);
+  font: 500 18px var(--mono);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s, opacity 0.15s;
+}
+.doc-nav:hover:not(:disabled) {
+  color: var(--acc-text);
+  border-color: var(--acc-bd);
+  background: var(--acc-bg);
+}
+.doc-nav:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+.doc-nav.prev {
+  left: 14px;
+}
+.doc-nav.next {
+  right: 14px;
+}
+.doc-strip {
+  display: flex;
+  gap: 8px;
+  padding: 10px 14px;
+  overflow-x: auto;
+  border-top: 1px solid var(--ln-2);
+  background: var(--s-rail);
+}
+/* The page PNGs are full-resolution (~537 KB, 1241x1754) and a long document has 59 of
+   them, so the strip skips rendering work for thumbs that are scrolled out of view. The
+   <img>s are loading="lazy" for the same reason - see DocumentModal. */
+.doc-strip .thumb {
+  content-visibility: auto;
+  contain-intrinsic-size: 58px 77px;
 }
 
 /* toast */

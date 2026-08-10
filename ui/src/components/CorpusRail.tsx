@@ -10,11 +10,13 @@ export function CorpusRail({
   health,
   onIngest,
   onDelete,
+  onOpen,
 }: {
   corpus: CorpusResponse | null
   health: HealthResponse | null
   onIngest: () => void
   onDelete: (pdf: string) => Promise<void>
+  onOpen: (pdf: string) => void
 }) {
   const online = health?.qdrant === 'ok'
   const total = corpus?.total_pages ?? 0
@@ -48,9 +50,24 @@ export function CorpusRail({
         {corpus?.documents.map((d) => (
           <div className="doc" key={d.pdf}>
             <div className="doc-status" />
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div className="doc-name">{d.pdf}</div>
-              {confirming === d.pdf ? (
+            <div className="doc-main">
+              {/* The row opens the document; the ✕ and the confirm are *siblings* of this
+                  button, never children - nesting interactive content is invalid HTML and
+                  the inner control stops receiving clicks. */}
+              <button
+                className="doc-open"
+                title={`Open ${d.pdf}`}
+                disabled={confirming === d.pdf || removing === d.pdf}
+                onClick={() => onOpen(d.pdf)}
+              >
+                <span className="doc-name">{d.pdf}</span>
+                {confirming !== d.pdf && (
+                  <span className="doc-sub">
+                    {removing === d.pdf ? 'removing…' : `${d.page_count} pp · indexed`}
+                  </span>
+                )}
+              </button>
+              {confirming === d.pdf && (
                 <div className="doc-confirm">
                   remove?
                   <button className="doc-confirm-btn danger" onClick={() => remove(d.pdf)}>
@@ -59,10 +76,6 @@ export function CorpusRail({
                   <button className="doc-confirm-btn" onClick={() => setConfirming(null)}>
                     no
                   </button>
-                </div>
-              ) : (
-                <div className="doc-sub">
-                  {removing === d.pdf ? 'removing…' : `${d.page_count} pp · indexed`}
                 </div>
               )}
             </div>

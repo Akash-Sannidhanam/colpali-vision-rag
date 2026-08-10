@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ingestStream } from '../api'
 import type { IngestResponse } from '../types'
 
@@ -71,6 +71,19 @@ export function IngestModal({
   }
 
   const running = status.phase === 'running'
+
+  // Esc closes, gated exactly like the backdrop click below - an ingest in flight holds
+  // the model and must not be dismissed out from under itself. (The API-key modal
+  // deliberately has no such handler: escaping it leaves a UI that cannot do anything.)
+  useEffect(() => {
+    if (running) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [running, onClose])
+
   const prog = status.progress
   const pct = prog?.total ? Math.round(((prog.page ?? 0) / prog.total) * 100) : null
 

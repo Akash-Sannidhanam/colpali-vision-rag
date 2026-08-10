@@ -14,6 +14,8 @@ Endpoints:
   POST /heatmap {question,pdf,page_number} -> per-patch MaxSim heatmap grid for one page (on-demand)
   GET  /health                      -> model-loaded + Qdrant reachability + corpus integrity
   GET  /corpus                      -> indexed documents + page counts (for the UI rail)
+  GET  /corpus/{pdf}/pages          -> every page of one document + image URLs (the viewer)
+  GET  /corpus/{pdf}/file           -> download that document's original PDF
   POST /ingest  (multipart PDF)     -> render/embed/index a PDF (blocking, holds the lock)
   DELETE /corpus/{pdf}              -> drop a document's vectors, page images, crops, PDF
   /images/...                       -> static page/crop/annotated PNGs
@@ -182,6 +184,42 @@ class CorpusResponse(BaseModel):
     documents: list[DocumentInfo]
     total_pages: int
     qdrant: str
+
+
+class DocumentPage(BaseModel):
+    """One page of an indexed document: its 1-based number and its rendered page image.
+
+    `image` is null when the page is in the index but its PNG is not on disk. The page is
+    still listed, and that is two invariants at once. It keeps the vectors-without-page-
+    images split visible - the same reason `index_health` reports it rather than leaving
+    it to be inferred - and it keeps `pages[n-1]` being page n. Filtering would renumber
+    the list, so the viewer would draw page 5's citation box over page 6's image.
+    """
+
+    page_number: int                # 1-based; matches PageHit.page_number
+    image: ImageRef | None = None   # null when this page's PNG is missing from disk
+
+
+class DocumentPagesResponse(BaseModel):
+    """Every page of one indexed document - the full-screen viewer's manifest.
+
+    `page_count` is the *indexed* count, read from the Qdrant payloads, so it is always
+    len(pages) even when some of those pages have no image, and even when a leftover PNG
+    from a longer previous revision is sitting in PAGE_IMAGES_DIR (`ingest._sync` deletes
+    a changed document's vectors but not its old page images - see
+    `pdf_render.missing_page_numbers` for why that case is real).
+
+    `has_original` is whether the source PDF is still on disk. Indexed-with-no-source is a
+    genuine state - DELETE removes the PDF, and a restore can bring back the vectors and
+    the page images without pdfs/ - so the UI disables the download rather than offering a
+    link that 404s. Not `has_source`: `source_page` already means "1-based index into
+    pages[]" in RegionOut/CitationOut, and reusing the word here would read as that.
+    """
+
+    pdf: str
+    page_count: int
+    has_original: bool
+    pages: list[DocumentPage]
 
 
 class HealthResponse(BaseModel):
@@ -477,6 +515,112 @@ async def corpus():
     )
 
 
+async def _indexed_document(pdf: str) -> tuple[str, dict]:
+    """Normalize a `{pdf}` path parameter and resolve its index entry; 404 when unindexed.
+
+    The one guard behind every /corpus/{pdf} route, so the three of them cannot drift
+    apart - and drifting apart here means unlinking or serving the wrong file.
+
+    Two layers. A `{pdf}` path parameter does not match `/`, so anything carrying a
+    separator 404s in the router before this runs; `Path(pdf).name` normalizes what is
+    left. The layer that actually constrains the filesystem is index membership: only a
+    document the corpus already owns is addressable at all. That is what keeps DELETE from
+    reaching a PDF nobody ingested, and what keeps `GET .../file` from being a read
+    primitive over PDFS_DIR - which also holds every upload `_save_upload` wrote before its
+    ingest ran, and the fetched eval corpus.
+    """
+    name = Path(pdf).name
+    index = await asyncio.to_thread(document_index)
+    entry = index.get(name)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"{pdf} is not indexed.")
+    return name, entry
+
+
+def _page_files(name: str, page_count: int) -> tuple[list[Path | None], bool]:
+    """One document's page PNGs (None where missing), plus whether its source PDF is there.
+
+    One stat per *page*, deliberately not `pdf_render.page_image_numbers()`. That is the
+    bulk form, for callers needing every document at once (`index_health`, `ingest._sync`);
+    it costs a stat per page image in the whole corpus, because `Path.iterdir` discards the
+    DirEntry and its `is_file()` then re-stats each one - 363 stats today to answer a
+    15-page question, and the ratio only worsens as the corpus grows. Both routes resolve
+    names through `page_image_path`, so they can never disagree about what "present" means.
+
+    Blocking on purpose - PAGE_IMAGES_DIR may be a mounted disk (see `config._dir_from_env`)
+    - so callers hand it to a thread.
+    """
+    paths = [page_image_path(name, n) for n in range(1, page_count + 1)]
+    return [p if p.is_file() else None for p in paths], (PDFS_DIR / name).is_file()
+
+
+@api.get("/corpus/{pdf}/pages", response_model=DocumentPagesResponse)
+async def corpus_document_pages(pdf: str, request: Request):
+    """Every page of one indexed document, for the full-screen viewer. 404 when it isn't
+    indexed.
+
+    Takes no GPU lock and touches no model - a Qdrant scroll plus one stat per page - so
+    opening the viewer stays instant while a query or an ingest holds the GPU. Putting it
+    behind the arbiter would let a page listing be shed with 503 for want of a GPU it never
+    uses, and would queue it FIFO *ahead* of real model work.
+
+    Citation-agnostic by design: the box the viewer overlays already came back on /query's
+    response, so this stays a stateless per-document manifest rather than growing a
+    `?highlight=` parameter.
+
+    No `?inline=` data-URI mode, unlike /query. Inlining would read and base64-encode every
+    page of the document (~1.33x the bytes) to render one, and would throw away the
+    conditional responses the /images StaticFiles mount already gives page images for free.
+    The ImageRef shape leaves room to add per-page inlining if a sandboxed UI ever needs it.
+    """
+    name, entry = await _indexed_document(pdf)
+    page_count = entry["page_count"]
+    paths, has_original = await asyncio.to_thread(_page_files, name, page_count)
+    images = [
+        await _image_ref(request, str(path) if path else None, False) for path in paths
+    ]
+    return DocumentPagesResponse(
+        pdf=name,
+        page_count=page_count,
+        has_original=has_original,
+        pages=[DocumentPage(page_number=n, image=image)
+               for n, image in enumerate(images, start=1)],
+    )
+
+
+@api.get("/corpus/{pdf}/file", response_class=FileResponse)
+async def corpus_document_file(pdf: str):
+    """Download one indexed document's original PDF. 404 when it isn't indexed, and a
+    distinct 404 when the index has it but the file is gone.
+
+    **Gated like everything else on this router, and the UI pays for it.** An
+    `<a href download>` cannot send X-API-Key, so the UI fetches this, wraps the body in an
+    object URL and clicks a synthetic link. The /images exemption is deliberately not
+    extended here: that hole is scoped to derived page rasters (src/auth.py says so), while
+    this hands over whole source documents from a directory nothing has ever served over
+    HTTP. If a header-free link is ever needed, it is a short-lived signed token on this
+    route - not a third permanent exemption in a design whose gating is structural.
+
+    The indexed-but-no-file case is named rather than served as an empty 200 or a 500. It is
+    the same half-corpus class `index_health` reports for page images, and it is the state
+    `has_original` on /pages exists to keep out of the UI in the first place.
+
+    No GPU lock, and no to_thread around the response: FileResponse stats and streams the
+    file on anyio's own thread pool after this handler returns. Its `stat_result` is
+    deliberately left unset - re-stating costs one syscall and buys the case where the file
+    vanishes in between, which then surfaces as a clean 503 through the RuntimeError handler
+    instead of a truncated body after the headers have gone out.
+    """
+    name, _ = await _indexed_document(pdf)
+    path = PDFS_DIR / name
+    if not await asyncio.to_thread(path.is_file):
+        raise HTTPException(
+            status_code=404,
+            detail=f"{name} is indexed but its source PDF is not on disk.",
+        )
+    return FileResponse(path, media_type="application/pdf", filename=name)
+
+
 def _remove_document(name: str) -> int:
     """Drop one document's vectors, then its page/crop PNGs, then its source PDF.
 
@@ -504,17 +648,10 @@ async def delete_corpus_document(pdf: str):
     Takes no GPU lock - deletion is pure Qdrant + filesystem work, so it stays responsive
     while a query or ingest is running.
 
-    Two guards, because this unlinks files named by a URL path parameter. A `{pdf}` path
-    parameter does not match `/`, so anything carrying a separator 404s in the router
-    before this runs; `Path(pdf).name` then normalizes what is left. The one that actually
-    constrains the filesystem is the index-membership check: the normalized name must
-    already be indexed, so only a document the corpus owns can ever be deleted.
+    The two guards that make it safe to unlink files named by a URL path parameter live in
+    `_indexed_document`, shared with the two read routes above.
     """
-    name = Path(pdf).name
-    index = await asyncio.to_thread(document_index)
-    if name not in index:
-        raise HTTPException(status_code=404, detail=f"{pdf} is not indexed.")
-
+    name, _ = await _indexed_document(pdf)
     removed = await asyncio.to_thread(_remove_document, name)
     return DeleteResponse(pdf=name, removed_pages=removed)
 
