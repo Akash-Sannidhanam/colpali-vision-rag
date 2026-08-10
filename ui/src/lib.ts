@@ -64,6 +64,33 @@ export function pageIndex(
 }
 
 /**
+ * The inline style for the full-screen page frame, given the page image's natural size.
+ *
+ * The frame must never be laid out without a definite aspect ratio, and that is the whole
+ * point of this function rather than a nicety. `.doc-page img` is sized in percentages of
+ * this frame, and a frame whose own height is content-based is *indefinite* - so
+ * `max-height: 100%` on the image resolves to nothing, the image renders at its full
+ * natural height, and `overflow: hidden` crops the difference away in silence. Measured
+ * when this shipped broken: a 1650px page inside a 488px frame, 1085px gone.
+ *
+ * The cropping is the visible half. The dangerous half is that the citation overlay is
+ * positioned in percentages of this same frame, so a cropped frame draws the box against
+ * a different rectangle than the one the model measured - a confidently wrong visual
+ * citation, which is the one failure this product cannot have.
+ *
+ * So there are exactly two legal outcomes and no third: a definite ratio, or a frame that
+ * is not laid out at all. A degenerate size (the image has not decoded yet, so
+ * naturalWidth is 0) must take the second branch - `0 / 0` and `1275 / 0` are invalid
+ * `aspect-ratio` values that the browser drops, which is the original bug wearing a hat.
+ */
+export function pageFrameStyle(
+  natural: { w: number; h: number } | null | undefined,
+): { aspectRatio?: string; visibility?: 'hidden' } {
+  if (!natural || natural.w <= 0 || natural.h <= 0) return { visibility: 'hidden' }
+  return { aspectRatio: `${natural.w} / ${natural.h}` }
+}
+
+/**
  * Retrieval decisiveness as a multiple of an evenly-spread slate, or null if N/A.
  *
  * `retrieval_confidence` is the cited page's share of the softmax mass over `k`

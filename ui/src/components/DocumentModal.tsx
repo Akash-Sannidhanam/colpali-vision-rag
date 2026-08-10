@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { UnauthorizedError, downloadDocument, getDocumentPages, imageSrc } from '../api'
-import { boxToOverlay, pageIndex, regionsOnDocumentPage } from '../lib'
+import { boxToOverlay, pageFrameStyle, pageIndex, regionsOnDocumentPage } from '../lib'
 import type { DocumentPagesResponse, Region } from '../types'
 
 // Everything Tab can land on inside the dialog; used only to wrap at the two edges.
@@ -230,16 +230,11 @@ export function DocumentModal({
           ) : !doc ? (
             <div className="skeleton doc-page-skeleton" />
           ) : src && page ? (
-            <div
-              className="doc-page"
-              // Hidden rather than laid out until the ratio is known: an unsized frame
-              // renders the page at full height inside a clipped box for that frame.
-              style={
-                natural
-                  ? { aspectRatio: `${natural.w} / ${natural.h}` }
-                  : { visibility: 'hidden' }
-              }
-            >
+            /* The frame's aspect ratio is load-bearing, not decorative: without a definite
+               one the page is silently cropped and the citation box is drawn against the
+               wrong rectangle. pageFrameStyle owns that rule so it can be tested - see its
+               docstring in lib.ts. */
+            <div className="doc-page" style={pageFrameStyle(natural)}>
               {/* No key on the <img>: a stable element identity lets the browser hold the
                   previous page painted until the new one decodes, which is a smoother swap
                   than any skeleton — a skeleton would blank the frame on every turn. */}

@@ -4,6 +4,7 @@ import {
   citedPage,
   decisivenessVsUniform,
   heatmapRGBA,
+  pageFrameStyle,
   pageIndex,
   regionsOnDocumentPage,
   regionsOnPage,
@@ -170,5 +171,48 @@ describe('pageIndex', () => {
 
   it('falls back to the first page of an empty list', () => {
     expect(pageIndex([], 1)).toBe(0)
+  })
+})
+
+describe('pageFrameStyle', () => {
+  it('gives the frame the page image’s own aspect ratio', () => {
+    expect(pageFrameStyle({ w: 1275, h: 1650 })).toEqual({ aspectRatio: '1275 / 1650' })
+  })
+
+  it('does the same for a landscape page', () => {
+    expect(pageFrameStyle({ w: 1650, h: 1275 })).toEqual({ aspectRatio: '1650 / 1275' })
+  })
+
+  it('hides the frame rather than laying it out unsized', () => {
+    expect(pageFrameStyle(null)).toEqual({ visibility: 'hidden' })
+    expect(pageFrameStyle(undefined)).toEqual({ visibility: 'hidden' })
+  })
+
+  it('treats a not-yet-decoded image as unknown, not as a zero ratio', () => {
+    // naturalWidth/Height are 0 until the image decodes. `0 / 0` and `1275 / 0` are
+    // invalid aspect-ratio values that the browser drops - which is the crop bug wearing
+    // a hat, so these must take the hidden branch and never emit a ratio.
+    for (const natural of [{ w: 0, h: 0 }, { w: 1275, h: 0 }, { w: 0, h: 1650 }]) {
+      expect(pageFrameStyle(natural)).toEqual({ visibility: 'hidden' })
+    }
+  })
+
+  it('never lays the frame out without a definite ratio, for any input', () => {
+    // The regression guard. The frame carries the citation overlay's percentage
+    // coordinates, and its children are sized in percentages of it, so an *indefinite*
+    // frame silently crops the page and misplaces the box drawn on it. Exactly one of the
+    // two branches must always be taken - never neither, which is what shipped broken.
+    const inputs = [
+      null, undefined,
+      { w: 1275, h: 1650 }, { w: 1650, h: 1275 }, { w: 1, h: 1 },
+      { w: 0, h: 0 }, { w: 1275, h: 0 }, { w: 0, h: 1650 },
+      { w: -1, h: 100 }, { w: 100, h: -1 },
+    ]
+    for (const natural of inputs) {
+      const style = pageFrameStyle(natural)
+      const sized = typeof style.aspectRatio === 'string' && /^\d+ \/ \d+$/.test(style.aspectRatio)
+      const hidden = style.visibility === 'hidden'
+      expect(sized !== hidden).toBe(true) // exactly one, for every input
+    }
   })
 })
