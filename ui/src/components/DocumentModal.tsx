@@ -96,6 +96,13 @@ export function DocumentModal({
       // does not exist would throw inside the listener and take Escape down with it.
       const target = e.target as HTMLElement | null
       if (target?.closest?.('input, textarea, [contenteditable="true"]')) return
+      // Only process Escape and arrow keys when this dialog is active: the API-key prompt
+      // can be stacked above, and we must not steal its keys. Verify the active element is
+      // inside our shell or the shell itself is focused.
+      const active = document.activeElement
+      if (e.key === 'Escape' || e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End') {
+        if (!shellRef.current?.contains(active) && active !== shellRef.current) return
+      }
       if (e.key === 'Escape') {
         e.preventDefault()
         onClose()

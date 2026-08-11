@@ -29,6 +29,9 @@ export default function App() {
   // Set when the server rejects our key (or the absence of one). Every API call routes
   // its 401 here, so an expired key mid-session re-prompts just like a cold load does.
   const [needsKey, setNeedsKey] = useState(false)
+  // Monotonic nonce to force DocumentModal remount on every open action, including
+  // reopening the same PDF at the same page.
+  const [docNonce, setDocNonce] = useState(0)
 
   const refreshHealth = useCallback(() => {
     getHealth()
@@ -48,11 +51,17 @@ export default function App() {
   }, [])
 
   /** Open the document viewer at page 1 - the corpus-rail way in. */
-  const openDoc = useCallback((pdf: string) => setDoc({ pdf, page: 1, regions: [] }), [])
+  const openDoc = useCallback((pdf: string) => {
+    setDoc({ pdf, page: 1, regions: [] })
+    setDocNonce((n) => n + 1)
+  }, [])
 
   /** Open it at one page, carrying the answer's cited regions so the box is still drawn. */
   const openPage = useCallback(
-    (pdf: string, page: number, regions: Region[]) => setDoc({ pdf, page, regions }),
+    (pdf: string, page: number, regions: Region[]) => {
+      setDoc({ pdf, page, regions })
+      setDocNonce((n) => n + 1)
+    },
     [],
   )
 
@@ -145,11 +154,13 @@ export default function App() {
       {ingestOpen && (
         <IngestModal onClose={() => setIngestOpen(false)} onDone={onIngestDone} />
       )}
-      {/* Keyed on (pdf, page): initialPage seeds internal state, so remounting is what
-          makes re-opening the same document at a different page actually land there. */}
+      {/* Keyed on (pdf, page, nonce): initialPage seeds internal state, so remounting is what
+          makes re-opening the same document at a different page actually land there. The nonce
+          increments on every open action, ensuring reopening the same PDF at the same page
+          also remounts and re-seeds initialPage. */}
       {doc && (
         <DocumentModal
-          key={`${doc.pdf}@${doc.page}`}
+          key={`${doc.pdf}@${doc.page}@${docNonce}`}
           pdf={doc.pdf}
           initialPage={doc.page}
           regions={doc.regions}
