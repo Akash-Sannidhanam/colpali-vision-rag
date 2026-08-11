@@ -1132,11 +1132,18 @@ body {
    must never do. With a definite aspect ratio the wrapper sizes itself correctly against
    the stage in either orientation and the image fills it exactly, so the two boxes are
    always the same box. */
+/* No `aspect-ratio` here on purpose. The ratio is set inline, per page, from the image's
+   natural size - a static one in this rule would be a portrait assumption sitting in the
+   exact declaration whose whole point is that pages are not all one shape. It looks
+   harmless because the inline style outranks it, which is what makes it a trap: it reads
+   as though the inline one is redundant. Removing the inline ratio and trusting a static
+   `3 / 4` distorts every page that is not 3:4 and drags the citation overlay off with it
+   (e2e/document-viewer.spec.ts fails on exactly that). The pre-load frame needs no shape
+   from here either - it is `visibility: hidden` until the size is known. */
 .doc-page {
   position: relative;
   max-width: 100%;
   max-height: 100%;
-  aspect-ratio: 3 / 4;
   border-radius: 8px;
   overflow: hidden;
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.55);
