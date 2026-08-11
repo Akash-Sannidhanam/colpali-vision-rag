@@ -1,4 +1,4 @@
-import type { PageHit, Region } from './types'
+import type { DocumentPage, PageHit, Region } from './types'
 
 /**
  * Convert a Gemini box `[ymin, xmin, ymax, xmax]` on a 0-1000 scale into CSS
@@ -25,6 +25,69 @@ export function citedPage(pages: PageHit[], sourcePage: number): PageHit | null 
 /** The cited regions that fall on a given 1-based page - the ones to overlay on it. */
 export function regionsOnPage(regions: Region[], sourcePage: number): Region[] {
   return regions.filter((r) => r.source_page === sourcePage)
+}
+
+/**
+ * The cited regions that fall on a given page of a given document.
+ *
+ * Deliberately distinct from `regionsOnPage`, and the distinction is the whole point.
+ * `source_page` is a 1-based index into one answer's retrieved slate; `page_number` is the
+ * page inside the PDF. The document viewer walks pages 1..n and knows nothing about a
+ * slate, so it has to key on the latter - and on the document too, because two different
+ * PDFs routinely both have a page 3. Regions the backend could not attribute to a page
+ * (`pdf`/`page_number` null) belong to no page and are dropped.
+ */
+export function regionsOnDocumentPage(
+  regions: Region[],
+  pdf: string,
+  pageNumber: number,
+): Region[] {
+  return regions.filter((r) => r.pdf === pdf && r.page_number === pageNumber)
+}
+
+/**
+ * The index into `pages` showing `pageNumber`, or 0 (the first page) when it isn't there.
+ *
+ * Viewer navigation runs on indices, never on page-number arithmetic. `page_number ===
+ * index + 1` holds today, but `image: null` exists precisely because the index and the
+ * rendered images can diverge, so the returned list is the only authority on what "next"
+ * means - and clamping against `pages.length` makes a short list harmless instead of a
+ * crash.
+ */
+export function pageIndex(
+  pages: DocumentPage[],
+  pageNumber: number | null | undefined,
+): number {
+  if (pageNumber == null) return 0
+  const i = pages.findIndex((p) => p.page_number === pageNumber)
+  return i === -1 ? 0 : i
+}
+
+/**
+ * The inline style for the full-screen page frame, given the page image's natural size.
+ *
+ * The frame must never be laid out without a definite aspect ratio, and that is the whole
+ * point of this function rather than a nicety. `.doc-page img` is sized in percentages of
+ * this frame, and a frame whose own height is content-based is *indefinite* - so
+ * `max-height: 100%` on the image resolves to nothing, the image renders at its full
+ * natural height, and `overflow: hidden` crops the difference away in silence. Measured
+ * when this shipped broken: a 1650px page inside a 488px frame, 1085px gone.
+ *
+ * The cropping is the visible half. The dangerous half is that the citation overlay is
+ * positioned in percentages of this same frame, so a cropped frame draws the box against
+ * a different rectangle than the one the model measured - a confidently wrong visual
+ * citation, which is the one failure this product cannot have.
+ *
+ * So there are exactly two legal outcomes and no third: a definite ratio, or a frame that
+ * is not laid out at all. A degenerate size (the image has not decoded yet, so
+ * naturalWidth is 0) must take the second branch - `0 / 0` and `1275 / 0` are invalid
+ * `aspect-ratio` values that the browser drops, which is the original bug wearing a hat.
+ */
+export function pageFrameStyle(
+  natural: { w: number; h: number } | null | undefined,
+): { aspectRatio?: string; visibility?: 'hidden' } {
+  if (!natural || natural.w <= 0 || natural.h <= 0) return { visibility: 'hidden' }
+  return { aspectRatio: `${natural.w} / ${natural.h}` }
 }
 
 /**

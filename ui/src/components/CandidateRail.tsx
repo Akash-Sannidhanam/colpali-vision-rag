@@ -7,10 +7,12 @@ export function CandidateRail({
   pages,
   citedIndex,
   retrieveK,
+  onOpen,
 }: {
   pages: PageHit[]
   citedIndex: number
   retrieveK: number
+  onOpen: (page: PageHit) => void
 }) {
   const trimmed = Math.max(0, retrieveK - pages.length)
   return (
@@ -18,12 +20,20 @@ export function CandidateRail({
       <div className="section-label">reranked pages</div>
       <div className="candidates">
         {pages.map((p) => (
-          <div key={p.index} className={`thumb${p.index === citedIndex ? ' kept' : ''}`}>
-            {imageSrc(p.image) && <img src={imageSrc(p.image)} alt={`page ${p.page_number}`} />}
+          <button
+            key={p.index}
+            className={`thumb${p.index === citedIndex ? ' kept' : ''}`}
+            onClick={() => onOpen(p)}
+            aria-label={`Open page ${p.page_number} of ${p.pdf}`}
+            title={`${p.pdf} · p.${p.page_number}`}
+          >
+            {/* alt="" because the button's aria-label already names it - a described
+                image inside a labelled button is announced twice. */}
+            {imageSrc(p.image) && <img src={imageSrc(p.image)} alt="" />}
             <span className="thumb-label">
               p{p.page_number} · {p.score.toFixed(1)}
             </span>
-          </div>
+          </button>
         ))}
         {trimmed > 0 && (
           <div

@@ -96,6 +96,26 @@ def test_images_are_reachable_without_a_key(warm, keyed, monkeypatch, tmp_path):
     assert resp.status_code == 404          # StaticFiles' own 404, not the gate's 401
 
 
+def test_the_pdf_download_is_gated_like_every_other_endpoint(warm, keyed, monkeypatch,
+                                                             tmp_path):
+    """The one endpoint where copying the /images exemption is tempting, and wrong.
+
+    `<a href download>` cannot send X-API-Key either, so gating this forces the UI through
+    fetch -> blob -> object URL. That cost is deliberate: /images exposes derived page
+    rasters whose paths came back from an authenticated /query, while this hands over whole
+    source documents from a directory that also holds every upload written before its
+    ingest ran. Two holes, not three.
+    """
+    monkeypatch.setattr(server, "document_index",
+                        lambda: {"a.pdf": {"page_count": 1, "content_hash": "h",
+                                           "embed_version": "m"}})
+    monkeypatch.setattr(server, "PDFS_DIR", tmp_path)
+    (tmp_path / "a.pdf").write_bytes(b"%PDF-1.4")
+
+    assert warm.get("/corpus/a.pdf/file").status_code == 401
+    assert warm.get("/corpus/a.pdf/file", headers={"X-API-Key": KEY}).status_code == 200
+
+
 # --- The structural guard: gating is a property of the router, not of memory ---
 #
 # Stated as two halves, because the convention has two halves: routes hanging directly
@@ -138,9 +158,8 @@ def test_every_route_on_the_api_router_resolves_the_gate():
     assert ungated == []
     # Non-empty check: without it the assertion above passes vacuously if the router
     # is ever emptied or renamed out from under this test.
-    assert {"/query", "/heatmap", "/ingest", "/ingest/stream", "/corpus", "/corpus/{pdf}"} == {
-        r.path for r in routes
-    }
+    assert {"/query", "/heatmap", "/ingest", "/ingest/stream", "/corpus", "/corpus/{pdf}",
+            "/corpus/{pdf}/pages", "/corpus/{pdf}/file"} == {r.path for r in routes}
 
 
 def test_ingest_stacks_the_hourly_limit_on_top_of_the_per_minute_one():

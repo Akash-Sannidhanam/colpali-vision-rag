@@ -55,6 +55,15 @@ jobs:
       - run: npm ci --prefix ui
       - run: npm run typecheck --prefix ui
       - run: npm run test --prefix ui
-      # Last, because `tsc && vite build` is the slowest step and the two above localize
-      # a failure better: a type error reads as a type error, not as a build error.
+      # Before the browser step, because `tsc && vite build` is the slowest of the three
+      # above and they localize a failure better: a type error reads as a type error, not
+      # as a build error.
       - run: npm run build --prefix ui
+      # The geometry guard. It is the one check that needs a real layout engine - the page
+      # frame silently cropping its image (and misplacing the citation box drawn on it) is
+      # invisible to vitest in node, and to jsdom, which has no layout at all. Chromium
+      # only, and no backend: the API is stubbed at the network layer and the suite runs
+      # against the bundle `vite preview` serves. Costs ~40s, most of it the download.
+      - run: npx playwright install --with-deps chromium
+        working-directory: ui
+      - run: npm run test:e2e --prefix ui

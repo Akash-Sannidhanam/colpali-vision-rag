@@ -24,7 +24,7 @@ from fastapi import FastAPI
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
-from src import server
+from src import ratelimit, server
 
 
 def _canned_result(found: bool = True) -> dict:
@@ -78,6 +78,13 @@ def _canned_result(found: bool = True) -> dict:
 @pytest.fixture
 def warm(monkeypatch):
     """Stub every lifespan seam so startup runs nothing heavy; yield a live TestClient."""
+    # The limiter is a process-global sliding window keyed on client IP, and every test
+    # here is the same "testclient" address - so without this the *suite* is the client,
+    # and the 31st request in any 60s window 429s whichever test happens to make it.
+    # test_auth and test_ratelimit already reset in their fixtures; this file did not, and
+    # was sitting far enough under RATE_LIMIT_PER_MINUTE that it only surfaced when a batch
+    # of new tests was added.
+    ratelimit.reset()
     monkeypatch.setattr(server, "validate", lambda: None)
     monkeypatch.setattr(server, "load_model", lambda: None)
     monkeypatch.setattr(server, "get_graph", lambda: None)
@@ -244,6 +251,131 @@ def test_delete_survives_a_missing_file_on_disk(warm, corpus_files):
 
     assert resp.status_code == 200
     assert not any(p.exists() for p in corpus_files["doomed.pdf"])
+
+
+# --- GET /corpus/{pdf}/pages ---
+#
+# Shares the `corpus_files` fixture above: two indexed documents, two page images each,
+# plus their source PDFs. Note it patches PAGE_IMAGES_DIR in *both* modules - the handler
+# resolves page names through `pdf_render.page_image_path` and URLs through `server._to_url`,
+# and if those two disagree `_to_url`'s `relative_to` raises into a 500.
+
+def test_pages_lists_every_page_with_its_image_url(warm, corpus_files):
+    """The viewer's manifest: one entry per indexed page, each with its /images URL."""
+    resp = warm.get("/corpus/doomed.pdf/pages")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["pdf"] == "doomed.pdf"
+    assert body["page_count"] == 2
+    assert body["has_original"] is True
+    assert [p["page_number"] for p in body["pages"]] == [1, 2]
+    assert body["pages"][0]["image"]["url"].endswith("/images/doomed_page_1.png")
+    assert body["pages"][1]["image"]["url"].endswith("/images/doomed_page_2.png")
+    assert body["pages"][0]["image"]["data_uri"] is None        # no inline mode on this route
+
+
+def test_pages_reports_a_missing_page_image_as_null_rather_than_dropping_the_page(
+        warm, corpus_files):
+    """Two invariants in one, and the second is the dangerous one.
+
+    Filtering the page out would re-hide the vectors-without-page-images split that
+    `index_health` exists to report - and it would renumber the document, so `pages[n-1]`
+    would stop being page n and the viewer would draw page 2's citation box over page 1's
+    image. A silently wrong visual citation is the one failure this product cannot have.
+    """
+    (server.PAGE_IMAGES_DIR / "doomed_page_1.png").unlink()
+
+    body = warm.get("/corpus/doomed.pdf/pages").json()
+
+    assert body["page_count"] == 2                      # the indexed count, not the images
+    assert [p["page_number"] for p in body["pages"]] == [1, 2]
+    assert body["pages"][0]["image"] is None
+    assert body["pages"][1]["image"]["url"].endswith("/images/doomed_page_2.png")
+
+
+def test_pages_page_count_comes_from_the_index_not_from_the_directory(warm, corpus_files):
+    """A leftover PNG from a longer previous revision must not extend the document.
+
+    `ingest._sync` deletes a changed document's vectors but not its old page images, so a
+    5-page revision shortened to 2 leaves `_page_3..5.png` behind - the exact case
+    `pdf_render.missing_page_numbers` is written around. Deriving the page list from the
+    filesystem would show the viewer a third page that no vector backs.
+    """
+    (server.PAGE_IMAGES_DIR / "doomed_page_3.png").write_bytes(b"x")
+
+    body = warm.get("/corpus/doomed.pdf/pages").json()
+
+    assert body["page_count"] == 2
+    assert [p["page_number"] for p in body["pages"]] == [1, 2]
+
+
+def test_pages_reports_a_document_whose_original_pdf_is_gone(warm, corpus_files):
+    """Indexed-with-no-source is a real state, so the UI can disable the download instead
+    of offering a link that 404s - and the pages stay viewable regardless."""
+    (server.PDFS_DIR / "doomed.pdf").unlink()
+
+    body = warm.get("/corpus/doomed.pdf/pages").json()
+
+    assert body["has_original"] is False
+    assert body["pages"][0]["image"] is not None
+
+
+def test_pages_404s_for_an_unindexed_document(warm, corpus_files):
+    """Only a document the corpus owns is addressable."""
+    resp = warm.get("/corpus/ghost.pdf/pages")
+
+    assert resp.status_code == 404
+    assert "not indexed" in resp.json()["detail"]
+
+
+# --- GET /corpus/{pdf}/file ---
+
+def test_file_serves_the_original_pdf_as_a_download(warm, corpus_files):
+    """The download affordance: the stored bytes, typed and named for a save dialog."""
+    resp = warm.get("/corpus/doomed.pdf/file")
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/pdf"
+    assert 'filename="doomed.pdf"' in resp.headers["content-disposition"]
+    assert resp.content == b"x"                          # exactly what corpus_files wrote
+
+
+def test_file_never_serves_a_pdf_that_was_never_ingested(warm, corpus_files):
+    """The guard that keeps this from being a read primitive over PDFS_DIR.
+
+    `_save_upload` writes an upload there *before* its ingest runs, and the eval corpus is
+    fetched into it, so "a file is sitting in that directory" is not the same claim as "the
+    corpus owns it" - the same distinction DELETE /corpus/{pdf} makes about the same
+    directory, in the other direction.
+    """
+    stray = server.PDFS_DIR / "never_ingested.pdf"
+    stray.write_bytes(b"%PDF-1.4")
+
+    assert warm.get("/corpus/never_ingested.pdf/file").status_code == 404
+
+
+def test_file_404s_when_the_document_is_indexed_but_the_pdf_is_gone(warm, corpus_files):
+    """The half-corpus case, named - not an empty 200, and not a 500."""
+    (server.PDFS_DIR / "doomed.pdf").unlink()
+
+    resp = warm.get("/corpus/doomed.pdf/file")
+
+    assert resp.status_code == 404
+    assert "source PDF" in resp.json()["detail"]
+
+
+@pytest.mark.parametrize("route", ["/corpus/{name}/pages", "/corpus/{name}/file"])
+@pytest.mark.parametrize("target", ["..%2F..%2Fkeeper.pdf", "%2Fetc%2Fpasswd"])
+def test_document_read_path_traversal_never_reaches_the_handler(
+        warm, corpus_files, route, target):
+    """The same first line of defence the delete has, on the route shape it doesn't cover:
+    `{pdf}` does not match `/`, so a name carrying a separator 404s in the router."""
+    resp = warm.get(route.format(name=target))
+
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == "Not Found"          # the router's, not ours
+    assert all(p.exists() for p in corpus_files["keeper.pdf"])
 
 
 # --- /query ---

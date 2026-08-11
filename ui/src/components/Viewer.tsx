@@ -1,13 +1,21 @@
 import { useEffect, useRef, useState } from 'react'
 import { heatmap as fetchHeatmap, imageSrc } from '../api'
 import { boxToOverlay, citedPage, heatmapRGBA, regionsOnPage } from '../lib'
-import type { HeatmapResponse, QueryResponse } from '../types'
+import type { HeatmapResponse, QueryResponse, Region } from '../types'
 import { CandidateRail } from './CandidateRail'
 
 /** (3) The document viewer: the cited page with a CSS bounding-box overlay drawn from
  *  citation.box, the pulled-out crop, and the reranked-candidate rail. A "why this page?"
  *  toggle overlays the ColQwen2 MaxSim patch heatmap (fetched on demand from /heatmap). */
-export function Viewer({ res, loading }: { res: QueryResponse | null; loading: boolean }) {
+export function Viewer({
+  res,
+  loading,
+  onOpenPage,
+}: {
+  res: QueryResponse | null
+  loading: boolean
+  onOpenPage: (pdf: string, pageNumber: number, regions: Region[]) => void
+}) {
   // Hooks must run before the early returns below (rules of hooks).
   const [heatOn, setHeatOn] = useState(false)
   const [heat, setHeat] = useState<HeatmapResponse | null>(null)
@@ -119,7 +127,13 @@ export function Viewer({ res, loading }: { res: QueryResponse | null; loading: b
       <div className="viewer-head">
         {cited ? (
           <>
-            <span className="file">{cited.pdf}</span>
+            <button
+              className="file-btn"
+              onClick={() => onOpenPage(cited.pdf, cited.page_number, regions)}
+              title={`Open ${cited.pdf} at page ${cited.page_number}`}
+            >
+              {cited.pdf}
+            </button>
             <span>· p.{cited.page_number}</span>
           </>
         ) : (
@@ -164,6 +178,17 @@ export function Viewer({ res, loading }: { res: QueryResponse | null; loading: b
                 cited · {regions.length} region{regions.length === 1 ? '' : 's'}
               </span>
             )}
+            {/* Last child on purpose: .box-overlay and .heat-canvas are position:absolute
+                with z-index:auto, so paint order is DOM order and this lands above the
+                spotlight scrim. Both are pointer-events:none, so the click gets through. */}
+            <button
+              className="page-expand"
+              onClick={() => onOpenPage(cited.pdf, cited.page_number, regions)}
+              aria-label={`Open ${cited.pdf} at page ${cited.page_number}`}
+              title="Open full screen"
+            >
+              ⤢
+            </button>
           </div>
         ) : (
           <div className="empty">
@@ -197,10 +222,13 @@ export function Viewer({ res, loading }: { res: QueryResponse | null; loading: b
         </div>
       )}
 
+      {/* The whole region set goes through, not just the cited page's - the modal filters
+          per page anyway, so a candidate the citation happened to land on still shows it. */}
       <CandidateRail
         pages={res.pages}
         citedIndex={res.citation.source_page}
         retrieveK={res.meta.retrieve_k}
+        onOpen={(p) => onOpenPage(p.pdf, p.page_number, regions)}
       />
     </div>
   )
