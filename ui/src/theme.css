@@ -1198,7 +1198,7 @@ body {
   border-top: 1px solid var(--ln-2);
   background: var(--s-rail);
 }
-/* The page PNGs are full-resolution (~537 KB, 1241x1754) and a long document has 59 of
+/* The page PNGs are full-resolution (1241x1754, ~370 KB mean) and a long document has 59 of
    them, so the strip skips rendering work for thumbs that are scrolled out of view. The
    <img>s are loading="lazy" for the same reason - see DocumentModal. */
 .doc-strip .thumb {

@@ -142,7 +142,7 @@ export function DocumentModal({
     return () => document.removeEventListener('keydown', onKey)
   }, [count, onClose])
 
-  // Warm the neighbours so arrow-key browsing paints instantly. Pages are ~537 KB and
+  // Warm the neighbours so arrow-key browsing paints instantly. Pages are ~370 KB and
   // /images sets no Cache-Control, so even a revisit costs a conditional round-trip.
   // Only ±1: any more would compete with the page actually on screen.
   useEffect(() => {
@@ -301,7 +301,7 @@ export function DocumentModal({
                 aria-label={`Page ${p.page_number}${cited ? ' · cited' : ''}`}
                 aria-current={i === idx ? 'true' : undefined}
               >
-                {/* Full-resolution page PNGs stand in for thumbnails (~537 KB, 1241x1754)
+                {/* Full-resolution page PNGs stand in for thumbnails (1241x1754, ~370 KB mean)
                     and a long document has 59 of them, so lazy is what keeps opening one
                     from costing 21 MB and half a gigabyte of decoded bitmap. */}
                 {thumb ? (
