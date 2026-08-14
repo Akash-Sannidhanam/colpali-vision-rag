@@ -1,13 +1,18 @@
 import { describe, it, expect } from 'vitest'
 import {
+  MAX_ZOOM,
+  MIN_ZOOM,
   boxToOverlay,
   citedPage,
+  clampZoom,
   decisivenessVsUniform,
+  fitScale,
   heatmapRGBA,
   pageFrameStyle,
   pageIndex,
   regionsOnDocumentPage,
   regionsOnPage,
+  zoomStep,
 } from './lib'
 import type { DocumentPage, PageHit, Region } from './types'
 
@@ -214,5 +219,61 @@ describe('pageFrameStyle', () => {
       const hidden = style.visibility === 'hidden'
       expect(sized !== hidden).toBe(true) // exactly one, for every input
     }
+  })
+})
+
+describe('fitScale', () => {
+  it('fits a portrait page bound by the stage’s height', () => {
+    // 792pt tall into 720px of stage: height binds, and 612 * 0.909 = 556px wide fits.
+    expect(fitScale({ w: 612, h: 792 }, { w: 1000, h: 720 })).toBeCloseTo(720 / 792)
+  })
+
+  it('fits a panorama page bound by the stage’s width', () => {
+    // The branch a height-only fit would pass while still overflowing sideways.
+    expect(fitScale({ w: 3000, h: 500 }, { w: 1000, h: 720 })).toBeCloseTo(1000 / 3000)
+  })
+
+  it('takes the smaller of the two axes, never the larger', () => {
+    for (const page of [{ w: 612, h: 792 }, { w: 792, h: 612 }, { w: 3000, h: 500 }]) {
+      const s = fitScale(page, { w: 1000, h: 720 })!
+      expect(page.w * s).toBeLessThanOrEqual(1000 + 0.001)
+      expect(page.h * s).toBeLessThanOrEqual(720 + 0.001)
+    }
+  })
+
+  it('is null rather than 0 or Infinity when either box is degenerate', () => {
+    // A stage measured before layout, or a viewport that has not resolved. Both would
+    // otherwise produce a canvas of no size or of ruinous size.
+    expect(fitScale(null, { w: 1000, h: 720 })).toBeNull()
+    expect(fitScale({ w: 612, h: 792 }, null)).toBeNull()
+    expect(fitScale({ w: 0, h: 792 }, { w: 1000, h: 720 })).toBeNull()
+    expect(fitScale({ w: 612, h: 792 }, { w: 1000, h: 0 })).toBeNull()
+  })
+
+  it('stays inside the supported zoom range even for an enormous stage', () => {
+    expect(fitScale({ w: 10, h: 10 }, { w: 4000, h: 4000 })).toBe(MAX_ZOOM)
+  })
+})
+
+describe('clampZoom / zoomStep', () => {
+  it('holds the range at both ends', () => {
+    expect(clampZoom(0.01)).toBe(MIN_ZOOM)
+    expect(clampZoom(99)).toBe(MAX_ZOOM)
+    expect(clampZoom(1)).toBe(1)
+  })
+
+  it('steps multiplicatively, so the control feels the same at both ends', () => {
+    // A fixed +0.25 would be a 100% jump from 0.25 and a 4% nudge at 6.
+    expect(zoomStep(1, 1)).toBeCloseTo(1.25)
+    expect(zoomStep(4, 1) / 4).toBeCloseTo(zoomStep(1, 1) / 1)
+  })
+
+  it('round-trips in and back out', () => {
+    expect(zoomStep(zoomStep(2, 1), -1)).toBeCloseTo(2)
+  })
+
+  it('cannot step outside the range', () => {
+    expect(zoomStep(MAX_ZOOM, 1)).toBe(MAX_ZOOM)
+    expect(zoomStep(MIN_ZOOM, -1)).toBe(MIN_ZOOM)
   })
 })

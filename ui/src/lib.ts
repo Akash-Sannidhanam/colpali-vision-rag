@@ -90,6 +90,51 @@ export function pageFrameStyle(
   return { aspectRatio: `${natural.w} / ${natural.h}` }
 }
 
+// --- PDF zoom ---
+//
+// The scale a PDF page is rendered at, as a multiple of its own point size. These are
+// pure so they can be tested here; what they cannot check is that the rendered frame
+// really is the rectangle the citation overlay is drawn in - that is layout, and it lives
+// in e2e/document-viewer.spec.ts.
+
+/** Below this the text layer is unreadable; above it a page can exhaust canvas memory. */
+export const MIN_ZOOM = 0.25
+export const MAX_ZOOM = 6
+
+/** `z` brought inside the supported range. */
+export function clampZoom(z: number): number {
+  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z))
+}
+
+/**
+ * The scale at which a page of `page` points fits entirely inside `stage` pixels.
+ *
+ * Both axes, taking the smaller - a page must fit in the direction that binds, which for
+ * a wide landscape scan is the width and for an ordinary portrait page is the height.
+ * Returns null when either box is degenerate (a stage measured before layout, a page
+ * whose viewport has not resolved), because the alternative is a 0 or Infinity scale that
+ * renders a canvas of no size or of ruinous size. The caller shows nothing until there is
+ * a real number, the same contract `pageFrameStyle` has above.
+ */
+export function fitScale(
+  page: { w: number; h: number } | null | undefined,
+  stage: { w: number; h: number } | null | undefined,
+): number | null {
+  if (!page || !stage) return null
+  if (page.w <= 0 || page.h <= 0 || stage.w <= 0 || stage.h <= 0) return null
+  return clampZoom(Math.min(stage.w / page.w, stage.h / page.h))
+}
+
+/**
+ * One zoom step in `dir` from `z`.
+ *
+ * Multiplicative, not additive: a fixed +0.25 is a 100% jump from 0.25 and a 4% nudge at
+ * 6, so the control would feel broken at both ends of its own range.
+ */
+export function zoomStep(z: number, dir: 1 | -1): number {
+  return clampZoom(z * (dir === 1 ? 1.25 : 1 / 1.25))
+}
+
 /**
  * Retrieval decisiveness as a multiple of an evenly-spread slate, or null if N/A.
  *

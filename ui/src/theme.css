@@ -1109,14 +1109,54 @@ body {
   opacity: 0.45;
   cursor: not-allowed;
 }
+/* The stage is the positioning context and clips; `.doc-scroll` inside it is what actually
+   scrolls. They are two elements rather than one because the prev/next arrows are absolutely
+   positioned against the stage, and an absolutely positioned child of a scroll container
+   scrolls with its content - so a single element would send the page arrows sliding off
+   screen the moment anyone zoomed in. */
 .doc-stage {
   position: relative;
   min-height: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px 68px;
+  overflow: hidden;
   background: radial-gradient(circle at 50% 38%, #0d0f18, var(--s-deep));
+}
+/* `overflow: auto` because zoom is a re-render at a larger size, not a transform - so a
+   zoomed page really is a bigger box and panning it really is scrolling.
+
+   The page is centred by `margin: auto` on the child and by nothing on the container, and
+   that is a correctness fix rather than a preference. A flex item centred by the *container*
+   (`justify-content: center`, `align-items: center`) overflows symmetrically once it is
+   bigger than the container, and the half that lands before the start edge is unreachable -
+   `scrollLeft = 0` still shows the middle of the page and the left margin is simply gone.
+   Measured with justify-content still in place: a 320% page sat at offsetLeft -510.
+   An auto margin absorbs free space only while there is some, and resolves to zero once
+   there is not, which is exactly the behaviour that keeps every part of a zoomed page
+   reachable. The two must not be combined - with negative free space the autos collapse and
+   justify-content silently takes over again. */
+.doc-scroll {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  overflow: auto;
+  /* Reserve the scrollbar's space whether or not one is showing. Without it the client box
+     changes size the moment a page overflows, the ResizeObserver re-measures, "fit" is
+     recomputed against the narrower box, the page shrinks, the scrollbar goes away - and
+     the measurement that started it is back. A no-op on overlay-scrollbar platforms; on the
+     others it is what keeps the fit from chasing itself. */
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+  padding: 20px 68px;
+}
+.doc-scroll > * {
+  margin: auto;
+}
+/* Only while zoomed: at fit scale the page never overflows, so a grab cursor would be
+   promising a pan that does nothing. */
+.doc-scroll.zoomed .doc-page {
+  cursor: grab;
+}
+.doc-scroll.zoomed .doc-page:active {
+  cursor: grabbing;
 }
 /* Not .page-frame: that caps the image at 62vh for the narrow third column, and here the
    page gets the whole stage. .box-overlay drops in unchanged - it is percentage-based
@@ -1153,6 +1193,115 @@ body {
   display: block;
   width: 100%;
   height: 100%;
+}
+
+/* --- the real PDF ---
+   Same frame contract as the image one above, reached differently: `.doc-page.pdf` is
+   given an explicit pixel width and height by PdfPageView, computed as the page's own
+   point size times the current scale. So it is still exactly the rendered page rectangle,
+   which is still what makes .box-overlay's percentages mean anything. No aspect-ratio
+   here - a definite width AND height is strictly more definite than a ratio. */
+.doc-page.pdf {
+  flex: none; /* or the flex container would shrink a zoomed page back to fit */
+  background: #fff; /* the paper, visible for the moment before the canvas paints */
+  /* The `max-width/max-height: 100%` inherited from .doc-page has to go, and this is not
+     cosmetic. Those caps exist to fit an image of unknown size into the stage; here the
+     size is already computed to fit (or deliberately larger, because the reader zoomed).
+     Leaving them on clamps a zoomed page to the stage on whichever axis binds and *not*
+     the other, so the page is silently stretched - measured at 810x577 for a portrait page
+     that should have been 810x1049 - and the stage never overflows, so there is nothing to
+     pan. Both halves are invisible in a screenshot of a text page, which is why the e2e
+     zoom case asserts the aspect ratio and the overflow rather than just the width. */
+  max-width: none;
+  max-height: none;
+}
+.doc-page.pdf canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* The text layer, transplanted from pdfjs-dist/web/pdf_viewer.css rather than imported.
+   That file is 163 KB - four times this whole bundle - and styles the entire pdf.js viewer
+   application: toolbars, sidebars, annotation editors, none of which exist here. These are
+   the rules the TextLayer's own output depends on.
+
+   The spans are transparent and sit exactly over their glyphs on the canvas, which is what
+   makes selection, copy and the browser's find land on the right words. `--scale-factor`
+   is set inline per page (see PdfPageView) and every size below is derived from it: that
+   is the coupling that makes zoom a re-render rather than a CSS transform. */
+/* The stable wrapper. The `.textLayer` inside it is replaced on every render, because
+   TextLayer.cancel() empties whatever container it was handed - see PdfPageView. */
+.text-host {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+.textLayer {
+  position: absolute;
+  inset: 0;
+  overflow: clip;
+  z-index: 1;
+  line-height: 1;
+  text-align: initial;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  caret-color: CanvasText;
+  --min-font-size: 1;
+  --total-scale-factor: calc(var(--scale-factor) * 1);
+  --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+  --min-font-size-inv: calc(1 / var(--min-font-size));
+}
+.textLayer :is(span, br) {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+  user-select: text;
+}
+.textLayer > :not(.markedContent),
+.textLayer .markedContent span:not(.markedContent) {
+  z-index: 1;
+  --font-height: 0;
+  --scale-x: 1;
+  --rotate: 0deg;
+  font-size: calc(var(--text-scale-factor) * var(--font-height));
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+}
+.textLayer .markedContent {
+  display: contents;
+}
+.textLayer ::selection {
+  background: rgba(99, 102, 241, 0.4);
+}
+/* Above the text layer, so a citation box is never covered by a transparent glyph span,
+   and click-through so selecting the cited text still works. */
+.doc-page.pdf .box-overlay {
+  z-index: 2;
+  pointer-events: none;
+}
+
+.doc-zoom {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.doc-zoom .zoom-reset {
+  min-width: 52px;
+  justify-content: center;
+}
+/* The "page image" tag shown when the source PDF is unavailable and the stored raster is
+   standing in for it. A statement of what you are looking at, not a warning. */
+.doc-note {
+  padding: 2px 7px;
+  border: 1px solid var(--ln-2);
+  border-radius: 999px;
+  color: var(--t-3);
+  font: 500 10px var(--mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 .doc-page-skeleton {
   height: 100%;
