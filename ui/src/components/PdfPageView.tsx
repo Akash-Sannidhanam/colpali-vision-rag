@@ -52,6 +52,11 @@ export function PdfPageView({
   const textRef = useRef<HTMLDivElement>(null)
   const [painted, setPainted] = useState(false)
 
+  // Reset painted state when page changes (but not when only scale changes)
+  useEffect(() => {
+    setPainted(false)
+  }, [pageNumber])
+
   useEffect(() => {
     const canvas = canvasRef.current
     const textContainer = textRef.current

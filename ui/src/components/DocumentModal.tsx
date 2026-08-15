@@ -345,12 +345,21 @@ export function DocumentModal({
   // ⌘/Ctrl + wheel zooms, which is the gesture a trackpad pinch sends. preventDefault or
   // the browser zooms its own chrome instead. A plain wheel is left alone - that is how
   // you scroll a page that is bigger than the stage.
-  const onWheel = (e: React.WheelEvent) => {
-    if (!e.ctrlKey && !e.metaKey) return
-    e.preventDefault()
-    recordAnchor()
-    setZoom((z) => clampZoom((z ?? fit ?? 1) * (e.deltaY < 0 ? 1.1 : 1 / 1.1)))
-  }
+  //
+  // Native event listener with passive:false, because React's onWheel is passive by
+  // default and preventDefault on a passive listener is silently ignored.
+  useEffect(() => {
+    const el = stageRef.current
+    if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return
+      e.preventDefault()
+      recordAnchor()
+      setZoom((z) => clampZoom((z ?? fit ?? 1) * (e.deltaY < 0 ? 1.1 : 1 / 1.1)))
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [fit])
 
   // --- drag to pan ---
   //
@@ -432,7 +441,7 @@ export function DocumentModal({
               p.{page.page_number} / {doc?.page_count ?? count}
             </span>
           )}
-          {doc && !usePdf && !error && (
+          {doc && !error && (pdfFailed || (page && failedPages.has(page.page_number))) && (
             <span className="doc-note" title="The source PDF is unavailable, so this is the stored page image.">
               page image
             </span>
@@ -490,7 +499,6 @@ export function DocumentModal({
           <div
             className={`doc-scroll${zoom !== null ? ' zoomed' : ''}`}
             ref={stageRef}
-            onWheel={onWheel}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={endDrag}

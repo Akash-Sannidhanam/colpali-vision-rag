@@ -22,13 +22,19 @@ let modulePromise: Promise<PdfjsModule> | null = null
 
 function pdfjs(): Promise<PdfjsModule> {
   modulePromise ??= (async () => {
-    const mod = await import('pdfjs-dist')
-    // `?url` so Vite emits the worker as its own asset and hands back the hashed path.
-    // Inlining it as a blob would work too but doubles the parse cost on the main thread,
-    // which is the one thread this whole design is trying to keep free.
-    const workerUrl = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default
-    mod.GlobalWorkerOptions.workerSrc = workerUrl
-    return mod
+    try {
+      const mod = await import('pdfjs-dist')
+      // `?url` so Vite emits the worker as its own asset and hands back the hashed path.
+      // Inlining it as a blob would work too but doubles the parse cost on the main thread,
+      // which is the one thread this whole design is trying to keep free.
+      const workerUrl = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default
+      mod.GlobalWorkerOptions.workerSrc = workerUrl
+      return mod
+    } catch (e) {
+      // Clear the cached promise on failure so a future call can retry the import
+      modulePromise = null
+      throw e
+    }
   })()
   return modulePromise
 }

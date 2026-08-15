@@ -1267,6 +1267,7 @@ body {
   --font-height: 0;
   --scale-x: 1;
   --rotate: 0deg;
+
   font-size: calc(var(--text-scale-factor) * var(--font-height));
   transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
 }
