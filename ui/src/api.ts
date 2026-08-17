@@ -154,29 +154,43 @@ export async function getDocumentPages(pdf: string): Promise<DocumentPagesRespon
 }
 
 /**
- * Download a document's original PDF.
+ * A document's original PDF, as bytes.
  *
  * The endpoint is gated, and `<a href download>` cannot send X-API-Key any more than
  * `<img src>` can - the same limitation that keeps /images open. It is gated anyway
  * (/images exposes derived page rasters; this hands over whole source documents), so the
- * bytes come through fetch and are handed to the browser as a short-lived object URL.
+ * bytes come through fetch, and what the caller does with them is its business: the
+ * download button wraps them in an object URL, the viewer hands them to pdf.js.
+ *
+ * A Blob rather than an ArrayBuffer on purpose. `pdfjs.getDocument({data})` *detaches*
+ * the buffer it is given, so a viewer that also wants to offer a download must be able to
+ * produce the bytes twice - and `Blob.arrayBuffer()` returns a fresh copy every call.
  */
-export async function downloadDocument(pdf: string): Promise<void> {
+export async function getDocumentFile(pdf: string): Promise<Blob> {
   const res = await apiFetch(`/corpus/${encodeURIComponent(pdf)}/file`)
   // Route failures through asJson so a 401/429 raises the same typed error the JSON
   // endpoints do. asJson always throws for a non-2xx, so control never returns here.
   if (!res.ok) await asJson<never>(res)
+  return res.blob()
+}
 
-  const url = URL.createObjectURL(await res.blob())
+/** Hand a blob to the browser as a download, via a short-lived object URL. */
+export function saveBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = pdf
+  a.download = filename
   document.body.appendChild(a)
   a.click()
   a.remove()
   // Revoked on the next task rather than synchronously: Safari cancels a download whose
   // object URL is revoked in the same tick as the click.
   setTimeout(() => URL.revokeObjectURL(url), 0)
+}
+
+/** Fetch a document's original PDF and save it. The two above, for callers holding no bytes. */
+export async function downloadDocument(pdf: string): Promise<void> {
+  saveBlob(await getDocumentFile(pdf), pdf)
 }
 
 /** Remove a document from the corpus: vectors, page images, crops, and the stored PDF. */
