@@ -13,17 +13,26 @@ confusable distractor papers). Full harness and methodology in [Evaluation](#eva
 
 | metric | | metric | |
 |---|---|---|---|
-| recall@1 / @3 / @12 | 0.671 / 0.849 / **1.000** | citation accuracy | **0.959** |
-| rerank recall | **1.000** | substring accuracy | 0.958 |
-| LLM-judge accuracy | **0.945** (avg score 4.85/5) | abstention accuracy | 1.000 (10/10) |
-| gold-doc coverage | 0.825 *(ceiling: 0.850)* | avg latency | 19.0 s |
+| recall@1 / @3 / @12 | 0.671 / 0.863 / **1.000** | citation accuracy | **0.973** |
+| rerank recall | **1.000** | substring accuracy | 0.931 |
+| LLM-judge accuracy | **0.932** (avg score 4.79/5) | abstention accuracy | 1.000 (10/10) |
+| gold-doc coverage | 0.925 *(ceiling: 0.925)* | avg latency | 15.4 s |
 
 Read honestly: **`recall@12`, `rerank_recall` and `abstention_accuracy` are all at 1.0 with
 no observed headroom in the current baseline** — three of the ten CI gates are currently
 un-trippable while their configured gates remain active and can fail after regression, and
 re-de-saturating the eval is an open lead. The numbers that still have room are recall@1
-and gold-document coverage (`gold_coverage_avg`), and [every remaining miss for gold_coverage_avg
-is a cross-document question](docs/EXPERIMENTS.md#whats-still-open).
+and gold-document coverage (`gold_coverage_avg`), and [all three remaining coverage misses
+are retrieval-side](docs/EXPERIMENTS.md#whats-still-open) — rerank now loses nothing it was
+offered.
+
+And read the *jump* honestly too. Coverage moved 0.825 → 0.925 with **no change to `src/`**:
+an audit found that 6 of the 20 cross-document questions could be answered from a single
+page, so they were never measuring cross-document retrieval. They were rewritten. Over the
+14 rows the relabelling did not touch, the paired diff is *0 improved, 0 regressed*. That
+is a **corrected instrument, not a better pipeline** — and `substring_accuracy` and
+`judge_accuracy` both went *down* under the stricter labels. See the
+[label-audit pass](docs/ENGINEERING_LOG.md).
 
 **→ [Experiments](docs/EXPERIMENTS.md)** — every retrieval and ingest decision with its
 numbers, including the rejected arms: a 2× ingest speedup turned down for what it cost
@@ -212,14 +221,16 @@ PYTHONPATH=. uv run python eval/run_eval.py --judge
 PYTHONPATH=. uv run python eval/run_eval.py --judge \
   --gate recall@1:0.63 --gate recall@3:0.81 --gate recall@12:0.95 \
   --gate rerank_recall:0.95 --gate citation_accuracy:0.91 --gate substring_accuracy:0.91 \
-  --gate abstention_accuracy:0.90 --gate gold_coverage_avg:0.67 \
-  --gate candidate_coverage_avg:0.80 --gate judge_accuracy:0.90
+  --gate abstention_accuracy:0.90 --gate gold_coverage_avg:0.85 \
+  --gate candidate_coverage_avg:0.85 --gate judge_accuracy:0.90
 ```
 
-Those floors sit ~3 questions below the pinned baseline — except `candidate_coverage_avg` and
-`abstention_accuracy`, which both have approximately one-question slack (`abstention_accuracy`
-has a 0.90 floor over 10 unanswerable rows). `candidate_coverage_avg` is the tightest gate for
-the retrieval-only path and carries no LLM variance.
+Those floors sit ~3 questions below the pinned baseline — except `abstention_accuracy`, which has
+approximately one-question slack (a 0.90 floor over 10 unanswerable rows). The two coverage floors
+moved **up** at the label audit, from 0.67 and 0.80: they were set against an instrument in which
+6 of 20 cross-document questions were answerable from a single page, so the old floors were slack
+by roughly two questions. Both now sit ~1.5 rows under a measured 0.925, on a 20-row slice where
+one row is worth 0.05.
 
 **The gate names track `RETRIEVE_K`.** The harness derives `ks = {1, 3, RETRIEVE_K}`, so a report
 carries `recall@12` and no `recall@10` — an old `--gate recall@10:...` fails as a *missing metric*
@@ -256,23 +267,30 @@ it also reports per-question latency/token/cost for free.
 
 ### Baseline
 
-`eval/reports/baseline_decomposed.json` is committed as the thing to diff against — 83 questions
-over ~363 pages at the shipped defaults. `baseline_diverse.json` is the same 83 questions with
-query decomposition off, and is what the decomposition pass was measured against.
+`eval/reports/baseline_relabeled.json` is committed as the thing to diff against — 83 questions
+over ~363 pages at the shipped defaults. `baseline_decomposed.json` is the same config on the
+labels *before* the [label audit](docs/ENGINEERING_LOG.md), and `baseline_diverse.json` is those
+questions with query decomposition off, which is what the decomposition pass was measured against.
 
-| metric | `baseline_diverse` | **`baseline_decomposed`** (pinned) |
-| --- | --- | --- |
-| recall@1 | 0.7397 | 0.6712 |
-| recall@3 | 0.9041 | 0.8493 |
-| recall@12 | 0.9863 | **1.0000** |
-| rerank_recall | 0.9863 | **1.0000** |
-| citation_accuracy | 0.9315 | **0.9589** |
-| substring_accuracy | 0.9444 | **0.9583** |
-| judge_accuracy / score | 0.9178 / 4.78 | **0.9452 / 4.85** |
-| gold_coverage_avg | 0.8250 | 0.8250 |
-| candidate_coverage_avg | 0.8250 | **0.8500** |
-| abstention_accuracy | 1.0000 | 1.0000 (10/10) |
-| avg_latency_ms | 18049 | 18984 |
+| metric | `baseline_diverse` | `baseline_decomposed` | **`baseline_relabeled`** (pinned) |
+| --- | --- | --- | --- |
+| recall@1 | 0.7397 | 0.6712 | 0.6712 |
+| recall@3 | 0.9041 | 0.8493 | 0.8630 |
+| recall@12 | 0.9863 | **1.0000** | **1.0000** |
+| rerank_recall | 0.9863 | **1.0000** | **1.0000** |
+| citation_accuracy | 0.9315 | 0.9589 | **0.9726** |
+| substring_accuracy | 0.9444 | **0.9583** | 0.9306 |
+| judge_accuracy / score | 0.9178 / 4.78 | **0.9452 / 4.85** | 0.9315 / 4.79 |
+| gold_coverage_avg | 0.8250 | 0.8250 | **0.9250** |
+| candidate_coverage_avg | 0.8250 | 0.8500 | **0.9250** |
+| abstention_accuracy | 1.0000 | 1.0000 | 1.0000 (10/10) |
+| avg_latency_ms | 18049 | 18984 | 15428 |
+
+**The last column is not a better pipeline.** No `src/` change separates it from the middle one —
+6 of the 20 cross-document questions turned out to be answerable from a single page, so they were
+rewritten. Over the 14 rows the relabelling did not touch, the paired diff is *0 improved, 0
+regressed, 14 unchanged*; the 6 rewritten rows carry new ids and `diff_reports.py` excludes them
+from the arithmetic on both sides. Two metrics went **down** under the stricter replacement labels.
 
 **Why both recall floors went down.** Splitting a two-part question orders the top of the slate
 worse than the whole question did, so recall@1/@3 fall — and every answer-level metric rises anyway,
@@ -375,6 +393,9 @@ drawn over it, the cropped slice, and the reranked-candidate rail, plus a "how t
 per-stage trace. A **"why this page?"** toggle on the viewer overlays the MaxSim patch heatmap (via
 `POST /heatmap`), tinting the patches the query matched — the retrieval-side complement to the
 answer crop.
+
+![The three-column workspace: corpus rail, answer with its per-stage trace, and the cited page with
+the regions it was read from cropped out beneath it](docs/assets/ui.png)
 
 ```bash
 cd ui
@@ -560,6 +581,8 @@ scripts/
   fetch_eval_corpus.py   # downloads + sha256-verifies the distractor corpus into pdfs/
   find_in_pdfs.py        # labeling aid: which page states a fact (searches the text
                          #   layer the pipeline itself never reads)
+  audit_xdoc_labels.py   # labeling aid: cross-doc rows one page can answer by itself
+  sweep_confidence.py    # score confidence formulas offline against a stored report
   profile_ingest.py      # ingest profiler + the batching equivalence gate
 eval/
   dataset.jsonl        # labeled questions: gold {pdf, page} + expected substrings
@@ -567,6 +590,7 @@ eval/
   scoring.py           # pure scoring logic (recall@k, citation, abstention, coverage, calibration)
   run_eval.py          # eval CLI: retrieval-only / full / judge, JSON report + table
   diff_reports.py      # paired per-question diff between two reports
+  rescore.py           # recompute label-derived metrics offline, without a pipeline run
 docs/                 # EXPERIMENTS.md, ENGINEERING_LOG.md, assets/
 ui/                   # React + Vite UI: three-column workspace with visual citations
 pdfs/                 # source PDFs to index
