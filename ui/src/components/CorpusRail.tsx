@@ -20,6 +20,15 @@ export function CorpusRail({
 }) {
   const online = health?.qdrant === 'ok'
   const total = corpus?.total_pages ?? 0
+  // The half-persisted-corpus warning. The index and the page PNGs are one logical
+  // corpus and the split is otherwise silent - /corpus still lists every document while
+  // every query answers "not found" - so this is the only place a user learns about it.
+  // "unknown" is the server's own deliberate placeholder (a 503 body, or a failed check),
+  // not a problem to report.
+  const corpusWarning =
+    health?.corpus && health.corpus !== 'ok' && health.corpus !== 'unknown'
+      ? health.corpus
+      : null
   // The document awaiting confirmation, and the one currently being removed.
   const [confirming, setConfirming] = useState<string | null>(null)
   const [removing, setRemoving] = useState<string | null>(null)
@@ -97,6 +106,13 @@ export function CorpusRail({
           </div>
         )}
       </div>
+
+      {corpusWarning && (
+        <div className="rail-warn" role="status">
+          <span className="rail-warn-title">⚠ corpus incomplete</span>
+          <span className="rail-warn-body">{corpusWarning}</span>
+        </div>
+      )}
 
       <div className="rail-foot">
         <span className={`dot ${online ? 'online' : 'offline'}`} />

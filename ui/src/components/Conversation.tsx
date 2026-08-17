@@ -10,12 +10,14 @@ export function Conversation({
   onCite,
   asking,
   corpusEmpty,
+  focusSignal,
 }: {
   turns: Turn[]
   onAsk: (q: string) => void
   onCite: (res: QueryResponse) => void
   asking: boolean
   corpusEmpty: boolean
+  focusSignal: number
 }) {
   return (
     <div className="convo">
@@ -69,6 +71,7 @@ export function Conversation({
         onAsk={onAsk}
         disabled={asking || corpusEmpty}
         placeholder={corpusEmpty ? 'Ingest a document first…' : 'Ask about your documents…'}
+        focusSignal={focusSignal}
       />
     </div>
   )

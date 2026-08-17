@@ -4,7 +4,6 @@ import type {
   DocumentPagesResponse,
   HealthResponse,
   HeatmapResponse,
-  IngestResponse,
   ImageRef,
   QueryResponse,
 } from './types'
@@ -188,21 +187,10 @@ export function saveBlob(blob: Blob, filename: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 0)
 }
 
-/** Fetch a document's original PDF and save it. The two above, for callers holding no bytes. */
-export async function downloadDocument(pdf: string): Promise<void> {
-  saveBlob(await getDocumentFile(pdf), pdf)
-}
-
 /** Remove a document from the corpus: vectors, page images, crops, and the stored PDF. */
 export async function deleteDocument(pdf: string): Promise<DeleteResponse> {
   const res = await apiFetch(`/corpus/${encodeURIComponent(pdf)}`, { method: 'DELETE' })
   return asJson<DeleteResponse>(res)
-}
-
-export async function ingest(file: File): Promise<IngestResponse> {
-  const fd = new FormData()
-  fd.append('file', file)
-  return asJson<IngestResponse>(await apiFetch('/ingest', { method: 'POST', body: fd }))
 }
 
 // One progress event from POST /ingest/stream (mirrors src.ingest event dicts).

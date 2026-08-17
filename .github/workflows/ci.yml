@@ -67,3 +67,31 @@ jobs:
       - run: npx playwright install --with-deps chromium
         working-directory: ui
       - run: npm run test:e2e --prefix ui
+
+  # The image itself. The three jobs above all run against the source tree, so a
+  # Dockerfile or compose regression - the exact class the deployment pass fixed, and the
+  # one path the README's quickstart depends on - would otherwise ship ungated.
+  #
+  # Build only, no push and no run: the Linux image pulls the CUDA torch wheels and the
+  # container downloads ColQwen2 on first boot, neither of which belongs on a CI runner.
+  # `docker compose config` is the cheap half - it catches a malformed compose file, which
+  # is what the quickstart actually invokes.
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - run: docker compose config --quiet
+        env:
+          # Compose hard-fails on these by design (`${GEMINI_API_KEY:?...}`), so validating
+          # the file at all means supplying throwaway values. They are never used.
+          GEMINI_API_KEY: ci-validation-only
+          API_KEY: ci-validation-only
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          # Restores/saves the layer cache through the Actions cache, so a run that changes
+          # nothing under the dependency layers skips the multi-GB torch install.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

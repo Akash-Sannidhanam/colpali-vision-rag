@@ -118,14 +118,18 @@ export const PAGE_COUNT = 3
  *   'error'   - claimed present but 404s, the half-corpus state the API names explicitly
  * The last two must both land on the page image, which is why they are separate: one is a
  * decision made from the manifest and the other is a failed fetch.
+ *
+ * `corpus` is /health's integrity field, verbatim. It defaults to the whole-corpus value;
+ * pass the split-corpus string to exercise the rail's warning.
  */
 export async function mockBackend(
   page: Page,
   size: { w: number; h: number },
   source: 'ok' | 'missing' | 'error' = 'ok',
+  corpus = 'ok',
 ): Promise<void> {
   await page.route('**/health', (route) =>
-    route.fulfill({ json: { status: 'ok', model_loaded: true, qdrant: 'ok', corpus: 'ok' } }),
+    route.fulfill({ json: { status: 'ok', model_loaded: true, qdrant: 'ok', corpus } }),
   )
   await page.route('**/corpus', (route) =>
     route.fulfill({

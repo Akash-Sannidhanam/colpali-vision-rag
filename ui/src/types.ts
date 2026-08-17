@@ -83,6 +83,9 @@ export interface HealthResponse {
   status: string
   model_loaded: boolean
   qdrant: string
+  /** `"ok"`, `"unknown"`, or a description of the vectors-without-page-images split.
+   *  Optional so an older server (or a 503 body) doesn't fail the parse. */
+  corpus?: string
 }
 
 export interface IngestResponse {

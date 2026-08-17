@@ -32,11 +32,21 @@ export default function App() {
   // Monotonic nonce to force DocumentModal remount on every open action, including
   // reopening the same PDF at the same page.
   const [docNonce, setDocNonce] = useState(0)
+  // Monotonic nonce the ⌘K handler bumps to focus the ask box. A nonce rather than a
+  // ref so the shortcut works from anywhere without AskBox's DOM node escaping upward.
+  const [askFocus, setAskFocus] = useState(0)
 
   const refreshHealth = useCallback(() => {
     getHealth()
       .then(setHealth)
-      .catch(() => setHealth({ status: 'degraded', model_loaded: false, qdrant: 'unreachable' }))
+      .catch(() =>
+        setHealth({
+          status: 'degraded',
+          model_loaded: false,
+          qdrant: 'unreachable',
+          corpus: 'unknown',
+        }),
+      )
   }, [])
 
   const refreshCorpus = useCallback(() => {
@@ -85,6 +95,22 @@ export default function App() {
     const id = setTimeout(() => setToast(null), 3500)
     return () => clearTimeout(id)
   }, [toast])
+
+  // ⌘K / Ctrl-K focuses the ask box. The handler lives here rather than in AskBox
+  // because the guard needs the modal state, and all three modals are owned here:
+  // DocumentModal runs a Tab trap and ApiKeyModal is non-dismissible, so pulling focus
+  // out from under either one is worse than the shortcut not firing.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'k' && e.key !== 'K') return
+      if (!e.metaKey && !e.ctrlKey) return
+      if (ingestOpen || doc || needsKey) return
+      e.preventDefault()   // Chrome and Safari both bind this to the address bar
+      setAskFocus((n) => n + 1)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [ingestOpen, doc, needsKey])
 
   const ask = useCallback(async (question: string) => {
     setAsking(true)
@@ -148,6 +174,7 @@ export default function App() {
         onCite={setViewer}
         asking={asking}
         corpusEmpty={corpusEmpty}
+        focusSignal={askFocus}
       />
       <Viewer res={viewer} loading={asking} onOpenPage={openPage} />
 

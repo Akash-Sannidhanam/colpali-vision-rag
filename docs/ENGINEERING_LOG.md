@@ -287,11 +287,13 @@ green; `docker build .` succeeds and a container smoke test imports `src.server`
 
 ## Out of scope (natural follow-ons, not in this pass)
 
-Security / input validation (PDF size/page caps, Qdrant auth/TLS, query length
-limits) and scaling/perf (batch the embedder — it embeds one page at a time today —
-query-result cache). *(Packaging & CI graduated out of this list — see Phase 5 above.
-**Incremental content-hash ingest** graduated too — see the corpus-lifecycle pass
-below.)*
+Qdrant auth/TLS, query length limits, and a query-result cache. *(Packaging & CI
+graduated out of this list — see Phase 5 above. **Incremental content-hash ingest**
+graduated too — see the corpus-lifecycle pass below. **PDF size caps** and **rate
+limiting** graduated at the deployment-durability pass: `MAX_UPLOAD_MB` bounds an
+upload and `rate_limit_ingest` bounds its frequency. **Batching the embedder**
+graduated at the batch-embedder pass, and the answer was more interesting than the
+feature — see it and the ingest-throughput pass below.)*
 
 ---
 
