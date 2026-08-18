@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useId, useState } from 'react'
 import { UnauthorizedError, deleteDocument, getCorpus, getHealth, query } from './api'
 import { ApiKeyModal } from './components/ApiKeyModal'
+import { AppBar } from './components/AppBar'
+import type { Pane } from './components/AppBar'
 import { CorpusRail } from './components/CorpusRail'
 import { Conversation } from './components/Conversation'
 import { DocumentModal } from './components/DocumentModal'
@@ -35,6 +37,13 @@ export default function App() {
   // Monotonic nonce the ⌘K handler bumps to focus the ask box. A nonce rather than a
   // ref so the shortcut works from anywhere without AskBox's DOM node escaping upward.
   const [askFocus, setAskFocus] = useState(0)
+  // Narrow-screen shell state. Both are inert above their breakpoints - the drawer's
+  // transform and its scrim are both media-query'd, so a rail left open across a resize
+  // to a wide viewport simply becomes the static column again. That is deliberate: it is
+  // what lets the breakpoints be CSS-only, with no matchMedia listener to keep in sync.
+  const [railOpen, setRailOpen] = useState(false)
+  const [pane, setPane] = useState<Pane>('session')
+  const railId = useId()
 
   const refreshHealth = useCallback(() => {
     getHealth()
@@ -64,6 +73,7 @@ export default function App() {
   const openDoc = useCallback((pdf: string) => {
     setDoc({ pdf, page: 1, regions: [] })
     setDocNonce((n) => n + 1)
+    setRailOpen(false)   // the rail is the drawer this was clicked in
   }, [])
 
   /** Open it at one page, carrying the answer's cited regions so the box is still drawn. */
@@ -71,9 +81,24 @@ export default function App() {
     (pdf: string, page: number, regions: Region[]) => {
       setDoc({ pdf, page, regions })
       setDocNonce((n) => n + 1)
+      setRailOpen(false)
     },
     [],
   )
+
+  /**
+   * Show an answer's cited page in the viewer.
+   *
+   * Also selects the page pane, which only matters in the single-column layout: there the
+   * viewer is not on screen, so setting its contents without switching to it would look
+   * like the citation chip does nothing. Deliberately wired to the *chip* and not to a
+   * query completing - pulling the pane out from under someone still reading the answer
+   * is worse than one extra tap.
+   */
+  const showCited = useCallback((res: QueryResponse) => {
+    setViewer(res)
+    setPane('page')
+  }, [])
 
   /** A 401 raised inside the document viewer has to reach here, or the prompt never opens. */
   const onAuthError = useCallback(() => setNeedsKey(true), [])
@@ -160,8 +185,18 @@ export default function App() {
   const corpusEmpty = corpus !== null && corpus.total_pages === 0
 
   return (
-    <div className="app">
+    <div className={`app pane-${pane}`}>
+      <AppBar
+        railId={railId}
+        railOpen={railOpen}
+        onToggleRail={setRailOpen}
+        pane={pane}
+        onPane={setPane}
+      />
+      {railOpen && <div className="rail-scrim" onClick={() => setRailOpen(false)} />}
       <CorpusRail
+        id={railId}
+        open={railOpen}
         corpus={corpus}
         health={health}
         onIngest={() => setIngestOpen(true)}
@@ -171,7 +206,7 @@ export default function App() {
       <Conversation
         turns={turns}
         onAsk={ask}
-        onCite={setViewer}
+        onCite={showCited}
         asking={asking}
         corpusEmpty={corpusEmpty}
         focusSignal={askFocus}

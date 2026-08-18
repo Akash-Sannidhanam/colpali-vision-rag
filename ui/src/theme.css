@@ -1,6 +1,11 @@
 /* Vision RAG UI — design tokens + structure, ported from the "2a" Claude Design mockup
    (dark, ultra-blue three-column workspace). Tokens are CSS variables so a light theme
-   or a different accent is a one-block swap. */
+   or a different accent is a one-block swap.
+
+   The three columns are the wide layout, not the only one: the breakpoints live in one
+   block at the foot of this file rather than beside each component, because what changes
+   below 1100px is the *shell* — which panes exist and where — and reading that as one
+   piece is what keeps the two narrow layouts coherent. */
 
 :root {
   /* accent (ultra-blue) */
@@ -52,6 +57,11 @@
 
   --sans: 'Instrument Sans', system-ui, -apple-system, sans-serif;
   --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
+
+  /* The narrow-screen app bar's height. A token, not a magic number, because the drawer
+     and its scrim are both inset by exactly it so the hamburger stays clickable while the
+     drawer is open - that is what lets the drawer need no close button of its own. */
+  --appbar-h: 48px;
 }
 
 * {
@@ -130,13 +140,97 @@ body {
 /* ---- app shell: three columns ---- */
 .app {
   display: grid;
+  grid-template-areas: 'rail convo view';
   grid-template-columns: 220px 1fr 1.15fr;
   height: 100%;
   overflow: hidden;
 }
+/* Placed by name, not by source order: the narrow layouts move panes between cells, and
+   implicit placement would silently reflow the moment a child is added to .app. Each
+   pane's `grid-area` sits in its own rule below. */
+
+/* ---- app bar: the narrow-screen chrome ---- */
+/*
+ * Exists only below 1100px, and lives here rather than inside .convo-head for one
+ * reason: at the single-column breakpoint the pane switcher has to outlive the pane it
+ * hides. A control nested in the conversation would disappear with it and strand the
+ * reader on the viewer.
+ */
+.appbar {
+  grid-area: bar;
+  display: none;   /* the wide layout has no app bar at all */
+  align-items: center;
+  gap: 10px;
+  height: var(--appbar-h);
+  padding: 0 12px;
+  border-bottom: 1px solid var(--ln-2);
+  background: var(--s-head);
+}
+.appbar-brand {
+  font: 600 12px var(--sans);
+  color: var(--t-2);
+}
+.icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border: 1px solid var(--ln-3);
+  border-radius: 8px;
+  background: var(--s-btn);
+  color: var(--t-2);
+  font-size: 14px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.icon-btn:hover {
+  color: var(--acc-text);
+  border-color: var(--acc-bd);
+  background: var(--acc-bg);
+}
+/* The Session|Page switcher. Hidden until the single-column breakpoint: between 820 and
+   1100px both panes are on screen at once and switching would be a no-op with a control. */
+.switch {
+  display: none;
+  margin-left: auto;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--ln-3);
+  border-radius: 9px;
+  background: var(--s-panel2);
+}
+.switch button {
+  padding: 5px 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--t-4);
+  font: 500 11px var(--mono);
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+.switch button[aria-pressed='true'] {
+  background: var(--acc-bg);
+  color: var(--acc-text);
+}
+/* Dims the panes behind the open drawer. Rendered only while it is open, but kept
+   display:none by default so a drawer left open across a resize past 1100px cannot leave
+   a scrim over the wide layout - which is what lets the whole breakpoint be CSS-only,
+   with no JS media-query listener to keep in sync. */
+.rail-scrim {
+  display: none;
+  position: fixed;
+  inset: var(--appbar-h) 0 0 0;
+  background: var(--scrim);
+  z-index: 29;
+  animation: fade-in 0.2s ease;
+}
 
 /* ---- (1) corpus rail ---- */
 .rail {
+  grid-area: rail;
   display: flex;
   flex-direction: column;
   background: var(--s-rail);
@@ -359,6 +453,7 @@ body {
 
 /* ---- (2) conversation ---- */
 .convo {
+  grid-area: convo;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -587,6 +682,7 @@ body {
 
 /* ---- (3) document viewer ---- */
 .viewer {
+  grid-area: view;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -1073,8 +1169,9 @@ body {
   z-index: 40;
   animation: fade-in 0.2s ease;
 }
-/* Viewport-relative, not breakpointed: the app is a fixed desktop grid with no media
-   queries anywhere, and this respects that. */
+/* Viewport-relative rather than breakpointed - `min(1360px, 94vw)` already tracks the
+   viewport continuously, so the shell breakpoints at the foot of this file have nothing
+   to add here. Only .doc-head needs one, because a row of buttons cannot shrink. */
 .doc-shell {
   display: grid;
   grid-template-rows: auto 1fr auto;
@@ -1402,4 +1499,117 @@ body {
 }
 .toast.err {
   color: var(--red);
+}
+
+/* ============================================================================
+   Breakpoints
+   ============================================================================
+
+   Three layouts, and nothing is dropped at any of them - the corpus rail, the
+   conversation and the page viewer are all reachable at every width:
+
+     >= 1101px   rail | conversation | viewer, as designed. No app bar.
+     <= 1100px   the rail becomes an off-canvas drawer behind the app bar's hamburger;
+                 conversation and viewer keep two columns.
+     <=  820px   one column. A Session|Page switcher in the app bar chooses which pane
+                 is on screen, so the active one gets the full height - the alternative,
+                 stacking two internally-scrolling panes, gives each about half a
+                 viewport and makes both worse.
+
+   Both content panes stay MOUNTED at every width; only `display` changes. That is what
+   keeps the conversation's scroll position, the viewer's fetched heatmap and its sticky
+   `heatOn` choice alive across a switch. Unmounting the hidden pane would re-fetch the
+   heatmap on every toggle.
+
+   Chosen by content, not by device: 1100px is where the two content columns fall under
+   ~400px each, and 820px is where two of them stop fitting a readable page at all. */
+
+@media (max-width: 1100px) {
+  .app {
+    grid-template-areas:
+      'bar bar'
+      'convo view';
+    grid-template-columns: 1fr 1.15fr;
+    grid-template-rows: auto 1fr;
+  }
+  .appbar {
+    display: flex;
+  }
+  /* Out of flow entirely, so it needs no grid area here - a fixed-position grid item
+     does not participate in grid layout. Inset below the app bar rather than covering
+     it, which keeps the hamburger visible and its aria-expanded honest.
+     z-index 30 sits under the two overlays (40) on purpose: a document opened from the
+     drawer must stack above it, not behind. */
+  .rail {
+    position: fixed;
+    inset: var(--appbar-h) auto 0 0;
+    width: 268px;
+    z-index: 30;
+    border-right: 1px solid var(--ln-3);
+    transform: translateX(-100%);
+    /* `visibility`, not just the transform: a translated-away element is still in the
+       tab order and still in the accessibility tree, so without this a keyboard user
+       tabs from the hamburger straight into a drawer nobody can see. Transitioned so
+       the discrete flip to hidden waits for the slide out to finish. */
+    visibility: hidden;
+    transition: transform 0.22s ease, visibility 0.22s;
+  }
+  .rail.open {
+    transform: none;
+    visibility: visible;
+    box-shadow: 0 0 60px rgba(0, 0, 0, 0.55);
+  }
+  .rail-scrim {
+    display: block;
+  }
+}
+
+@media (max-width: 820px) {
+  .app {
+    grid-template-areas:
+      'bar'
+      'pane';
+    grid-template-columns: 1fr;
+  }
+  /* Both panes claim the same cell. They never collide, because the one that is not
+     selected is display:none and generates no box at all. */
+  .convo,
+  .viewer {
+    grid-area: pane;
+  }
+  .app.pane-session .viewer,
+  .app.pane-page .convo {
+    display: none;
+  }
+  .switch {
+    display: flex;
+  }
+  .convo-head,
+  .messages {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+  .stage {
+    padding: 14px;
+  }
+  /* The full-screen viewer's head is a row of buttons that cannot shrink; without this
+     the zoom group pushes the close button off the edge. */
+  .doc-head {
+    flex-wrap: wrap;
+  }
+}
+
+/* Motion is decoration here - every animation in this file is an entrance or a pulse,
+   and none of them carries information - so honouring the preference costs nothing.
+   Not `animation: none`: a zero duration still fires animationend, which keeps any
+   listener that waits for one working. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
