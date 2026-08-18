@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useId, useState } from 'react'
-import { UnauthorizedError, deleteDocument, getCorpus, getHealth, query } from './api'
+import { RateLimitedError, UnauthorizedError, deleteDocument, getCorpus, getHealth, query } from './api'
 import { ApiKeyModal } from './components/ApiKeyModal'
 import { AppBar } from './components/AppBar'
+import { ASK_INPUT_ID } from './components/AskBox'
 import type { Pane } from './components/AppBar'
 import { CorpusRail } from './components/CorpusRail'
 import { Conversation } from './components/Conversation'
@@ -20,6 +21,11 @@ import type {
 export default function App() {
   const [turns, setTurns] = useState<Turn[]>([])
   const [corpus, setCorpus] = useState<CorpusResponse | null>(null)
+  // Why this is not just `corpus === null`: null is also the loading state, and the two
+  // render differently. Before this existed, any non-401 failure - a 503 from an
+  // unreachable Qdrant, a 429 - left the rail permanently blank with no message and no
+  // way to retry, which reads as "your corpus is empty" rather than "the request failed".
+  const [corpusError, setCorpusError] = useState<string | null>(null)
   const [health, setHealth] = useState<HealthResponse | null>(null)
   const [viewer, setViewer] = useState<QueryResponse | null>(null)
   const [asking, setAsking] = useState(false)
@@ -59,13 +65,28 @@ export default function App() {
   }, [])
 
   const refreshCorpus = useCallback(() => {
+    setCorpusError(null)
     getCorpus()
-      .then(setCorpus)
+      .then((c) => {
+        setCorpus(c)
+        setCorpusError(null)
+      })
       .catch((e) => {
         // A gated server answers the very first /corpus with 401 — that is the cold-load
-        // path into the key prompt. Anything else: /health surfaces Qdrant connectivity,
-        // so leave corpus null.
-        if (e instanceof UnauthorizedError) setNeedsKey(true)
+        // path into the key prompt, and the modal is the message, so no error line too.
+        if (e instanceof UnauthorizedError) {
+          setNeedsKey(true)
+          return
+        }
+        // Everything else is shown in the rail with a retry. A rate limit is worth naming
+        // precisely, because the fix is waiting rather than retrying immediately.
+        setCorpusError(
+          e instanceof RateLimitedError
+            ? `Rate limited${e.retryAfterSeconds ? ` — retry in ${e.retryAfterSeconds}s` : ''}.`
+            : e instanceof Error
+              ? e.message
+              : 'Could not load the corpus.',
+        )
       })
   }, [])
 
@@ -186,6 +207,15 @@ export default function App() {
 
   return (
     <div className={`app pane-${pane}`}>
+      {/* First tab stop in the document, and hidden until it has focus.
+          Measured need rather than a checkbox: the rail lists one button per document
+          plus a remove button for each, so on the 19-document demo corpus a keyboard
+          user crossed 38 controls before reaching the question box - the one thing
+          almost every visitor came to use. Landmarks help a screen reader jump; they do
+          nothing for someone who is sighted and using only a keyboard. */}
+      <a className="skip-link" href={`#${ASK_INPUT_ID}`}>
+        Skip to the question box
+      </a>
       <AppBar
         railId={railId}
         railOpen={railOpen}
@@ -198,6 +228,8 @@ export default function App() {
         id={railId}
         open={railOpen}
         corpus={corpus}
+        corpusError={corpusError}
+        onRetry={refreshCorpus}
         health={health}
         onIngest={() => setIngestOpen(true)}
         onDelete={onDelete}
@@ -232,7 +264,14 @@ export default function App() {
       )}
       {/* Last, so it stacks above the ingest modal if a key expires mid-upload. */}
       {needsKey && <ApiKeyModal onSubmit={onKeyEntered} />}
-      {toast && <div className={`toast ${toast.kind}`}>{toast.msg}</div>}
+      {/* The region is mounted unconditionally and the toast goes inside it. An aria-live
+          region has to be in the DOM *before* its content changes for the change to be
+          announced - a container that appears already holding its message is, to most
+          screen readers, not a change at all. So this wrapper is load-bearing despite
+          looking like an idle div. */}
+      <div className="toast-region" role="status" aria-live="polite">
+        {toast && <div className={`toast ${toast.kind}`}>{toast.msg}</div>}
+      </div>
     </div>
   )
 }

@@ -100,28 +100,30 @@ export function Viewer({
 
   if (loading) {
     return (
-      <div className="viewer">
+      <section className="viewer" aria-label="Cited page">
         <div className="viewer-head">
           <span>reading the pages…</span>
         </div>
         <div className="stage">
           <div className="skeleton" style={{ width: 300, height: 400 }} />
         </div>
-      </div>
+      </section>
     )
   }
 
   if (!res) {
     return (
-      <div className="viewer">
+      <section className="viewer" aria-label="Cited page">
         <div className="viewer-head">
           <span>viewer</span>
         </div>
         <div className="empty">
-          <div className="glyph">▧</div>
+          <div className="glyph" aria-hidden="true">
+            ▧
+          </div>
           <div className="sub">The cited page appears here once you ask a question.</div>
         </div>
-      </div>
+      </section>
     )
   }
 
@@ -136,7 +138,7 @@ export function Viewer({
   const spotlight = overlays.length === 1 && !(heatOn && heat)
 
   return (
-    <div className="viewer">
+    <section className="viewer" aria-label="Cited page">
       <div className="viewer-head">
         {cited ? (
           <>
@@ -220,7 +222,9 @@ export function Viewer({
           </div>
         ) : (
           <div className="empty">
-            <div className="glyph">∅</div>
+            <div className="glyph" aria-hidden="true">
+              ∅
+            </div>
             <div className="sub">
               The answer wasn’t found on the indexed pages, so there’s no region to show.
             </div>
@@ -258,6 +262,6 @@ export function Viewer({
         retrieveK={res.meta.retrieve_k}
         onOpen={(p) => onOpenPage(p.pdf, p.page_number, regions)}
       />
-    </div>
+    </section>
   )
 }

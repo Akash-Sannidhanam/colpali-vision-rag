@@ -95,3 +95,77 @@ test.describe('the corpus-integrity warning', () => {
     await expect(page.locator('.rail-warn')).toHaveCount(0)
   })
 })
+
+test.describe('document structure', () => {
+  // Landmarks and a heading are what let a screen-reader user skip to a region instead of
+  // tabbing the whole shell. None of this existed outside DocumentModal, and none of it is
+  // visible in a screenshot, so a browser assertion is the only thing that can hold it.
+  test('has exactly one main and one h1, and a labelled corpus region', async ({ page }) => {
+    await mockBackend(page, SHAPE)
+    await page.goto('/')
+    await expect(page.getByTitle(`Open ${PDF}`)).toBeVisible()
+
+    // Exactly one of each: a second <main> or a second h1 is as unhelpful as none.
+    await expect(page.getByRole('main')).toHaveCount(1)
+    await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1)
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Vision RAG')
+    await expect(page.getByRole('complementary', { name: 'Corpus' })).toHaveCount(1)
+    await expect(page.getByRole('region', { name: 'Cited page' })).toHaveCount(1)
+  })
+
+  test('the live region exists before there is anything to announce', async ({ page }) => {
+    // The whole reason it is mounted unconditionally. A container that appears already
+    // holding its message is, to most screen readers, not a change to announce - so a
+    // toast rendered into a freshly-mounted region is silent.
+    await mockBackend(page, SHAPE)
+    await page.goto('/')
+    await expect(page.getByTitle(`Open ${PDF}`)).toBeVisible()
+
+    const region = page.locator('.toast-region')
+    await expect(region).toHaveAttribute('role', 'status')
+    await expect(region).toHaveAttribute('aria-live', 'polite')
+    await expect(region).toBeEmpty()
+  })
+
+  test('the first tab stop skips the rail and reaches the question box', async ({ page }) => {
+    // The rail carries two controls per document, so on a real corpus a keyboard user
+    // crossed dozens of buttons before the one thing they came for. Landmarks do not
+    // help here - they are a screen-reader affordance, and this is a sighted
+    // keyboard-only path.
+    await mockBackend(page, SHAPE)
+    await page.goto('/')
+    await expect(page.getByTitle(`Open ${PDF}`)).toBeVisible()
+
+    await page.keyboard.press('Tab')
+    const link = page.locator('.skip-link')
+    await expect(link).toBeFocused()
+    // Hidden until focused, but never display:none - an unfocusable skip link is no link.
+    expect(await link.evaluate((n: HTMLElement) => n.offsetLeft)).toBeGreaterThan(0)
+
+    await page.keyboard.press('Enter')
+    await expect(page.locator('.askbox input')).toBeFocused()
+  })
+
+  test('keyboard focus is always visible', async ({ page }) => {
+    // Several components define their own ring; this is the floor for the ones that do
+    // not, and the ingest button was one of them.
+    //
+    // Reached with Tab rather than .focus(), because `:focus-visible` is specifically
+    // about keyboard focus - Chromium does not match it for programmatic focus on a
+    // button, so a .focus() version of this test would fail against a correct rule.
+    await mockBackend(page, SHAPE)
+    await page.goto('/')
+    await expect(page.getByTitle(`Open ${PDF}`)).toBeVisible()
+
+    // Past the skip link (tab stop one), then the app bar is display:none above 1100px,
+    // so the rail's ingest button is the next thing the keyboard reaches.
+    await page.keyboard.press('Tab')
+    await page.keyboard.press('Tab')
+    const focused = await page.evaluate(() => {
+      const el = document.activeElement as HTMLElement | null
+      return { cls: el?.className ?? '', outline: el ? getComputedStyle(el).outlineWidth : '0px' }
+    })
+    expect(focused.cls).toContain('ingest-btn')
+    expect(parseFloat(focused.outline)).toBeGreaterThan(0)
+  })
+})
