@@ -284,6 +284,51 @@ chip — trace placement is what AUC 0.629 supports.
 `confidence_separation` is now `null` and will stay null until the eval has ≥5 wrong citations —
 honest, not fixed.
 
+### The label audit — a third of the cross-document slice was not cross-document
+
+The open lead was *"`gold_coverage_avg` (0.825) trails its ceiling `candidate_coverage_avg` (0.850)
+— rerank is losing a row it was offered."* It was **one row**, and the row was mislabelled:
+
+```
+$ uv run python scripts/find_in_pdfs.py "50K questions" --pdf donut
+donut.pdf  p.8  tion4 and consists of 50K questions defined on more than 12K documents [44].
+```
+
+`donut.pdf` p8 answers *both* halves of that question, so the reranker spending three slots on one
+document was correct, and the 0.5 was the label's fault. Auditing all 20 cross-document rows found
+**6 defective** in two classes: three where one page states both halves, three where a half is
+answerable from a document outside its gold.
+
+The class that matters is invisible from the metrics. `xdoc-colbert-vs-colpali-dim` was **scoring
+1.0** — a question one page can answer still scores perfectly whenever retrieval happens to reach
+both documents, so `gold_doc_coverage` structurally cannot surface it. Only reading the corpus can.
+
+**The obvious repair is backwards.** Adding the alternate source to a row's gold makes it a
+three-document question that now needs all three, because coverage divides by the number of distinct
+gold documents. Widening labels makes coverage *harder*. Both classes are the same defect — the
+question does not require two documents — and the only fix is at the question.
+
+All six were rewritten, each replacement fact verified single-document across all 19 PDFs. Result,
+with **no change to `src/`**:
+
+| | before | after |
+|---|---|---|
+| `gold_coverage_avg` | 0.825 | **0.925** |
+| `candidate_coverage_avg` | 0.850 | **0.925** |
+| rerank-side losses | 1 | **0** |
+| `substring_accuracy` | 0.958 | 0.931 |
+| `judge_accuracy` | 0.945 | 0.932 |
+
+The control is the paired diff: over the 14 cross-document rows the relabelling did not touch,
+`gold_doc_coverage` is 0.9286 → 0.9286, *0 improved, 0 regressed*. Two metrics went **down**,
+because the replacement labels are stricter than the bare numbers they replaced. This is a corrected
+instrument, not a better pipeline — and the lead it opened to chase was closed by disproving it.
+
+Two tools came out of it: **`eval/rescore.py`**, which recomputes every label-derived metric from a
+stored report so a relabelling costs no run at all (the docs had claimed this was possible since
+`candidate_pages` was added; nothing implemented it), and **`scripts/audit_xdoc_labels.py`**, which
+can decide 8 of the 20 rows automatically and is honest about the other 12 rather than guessing.
+
 ### The corpus is part of the instrument
 
 The eval was once **saturated end-to-end**: on a 43-page corpus, `RETRIEVE_K=10` returned 23% of the
@@ -377,22 +422,34 @@ disconnect test fails.
 
 ## What's still open
 
-- **`gold_coverage_avg` (0.825) trails its ceiling `candidate_coverage_avg` (0.850)** — rerank is
-  losing a row it was offered, for the first time since the slate pass closed that gap. The most
-  concrete open lead.
+- ~~**`gold_coverage_avg` trails its ceiling — rerank is losing a row it was offered.**~~
+  **Disproved.** It was one row, and that row was mislabelled: `donut.pdf` p8 states both halves of
+  the question, so the reranker was right to spend three slots on one document. Auditing all 20
+  cross-document rows found **6 defective**, one of which was scoring 1.0. See
+  [the label-audit pass](ENGINEERING_LOG.md). After the rewrite, `gold_coverage_avg ==
+  candidate_coverage_avg == 0.925` and rerank-side losses are **0**.
 - **Three metrics are back on the ceiling** (`recall@12`, `rerank_recall`, `abstention_accuracy`)
   with no observed headroom in the current baseline — while their configured gates remain active
   and can fail after regression, three of the ten gates are currently un-trippable. Re-de-saturating
   needs new *question types*, not a bigger corpus.
 - **One row needs a relevance-aware cap.** A rank-based cap spends `donut.pdf`'s quota on four
   non-gold pages. This is the honest failure mode of capping by rank.
+- **`scripts/audit_xdoc_labels.py` can only decide 8 of the 20 cross-document rows.** The other 12
+  carry reference labels too generic to locate a page — bare numbers (`"6"`, `"50"`) or words spread
+  across the corpus (`"English"` is in 11 of 19 PDFs). They were audited by hand once and are not
+  regression-guarded. Discriminating reference strings would turn the script into a real gate.
 - **The splitter reaches ~40% of natural phrasings.** "For both X and Y…", "Compare X with Y" and
   semicolon-joined questions are not split. Reach, not accuracy, is the reason to consider an LLM
   splitter.
 - **`_RRF_K = 60` is untuned** for slates this shallow — it is calibrated for TREC lists thousands
   deep, and flattens ranks 1–4 to within ~5% across a 12-page slate.
-- **Alternative confidence statistics are now free to test** (top1-vs-top2 margin, score entropy)
-  against the stored scores in `calib_baseline.json`, with no live arm required.
+- **The shipped confidence statistic is the weakest one that works — swap scoped, unspent.** Tested
+  offline against `calib_baseline.json` (73 rows, 24 negatives, label `gold_rank == 1`):
+  `zscore_top1` **AUC 0.8078**, `margin_mean` 0.7908, `margin_rel`/`ratio_top2` 0.7874, the shipped
+  `softmax_top1` **0.6293**, and score entropy **0.4949** — no signal at all. All p < 0.0001 except
+  the shipped formula. The harness reproduces the documented 0.629 to four decimals, which is what
+  validates it. Not adopted in the label-audit pass: it changes a user-facing number and the eval's
+  `top1_decisiveness`, so it wants its own arm with a live confirmation.
 - **A CUDA box would change three conclusions at once** — batching, the GIL contention, and the
   token-budget trade all measured against a saturated MPS device.
 - **`EMBED_VISUAL_TOKENS` has never been swept on a mostly-prose corpus**, which is the case where
@@ -408,5 +465,5 @@ disconnect test fails.
   kill switch is cheap at the same choke point.
 - **`GPU_WAIT_TIMEOUT_S = 60` is a judgement, not a derivation.** It wants to sit above one gated
   page batch and below a client's own timeout; neither bound was measured.
-- **CI never builds the Docker image**, so a Dockerfile or compose regression — the exact class of
-  defect the deployment pass fixed — ships without a gate.
+- ~~**CI never builds the Docker image.**~~ **Closed** — a `docker` job now validates
+  `docker-compose.yml` and builds the image on every PR.

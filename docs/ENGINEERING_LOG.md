@@ -1721,3 +1721,212 @@ QDRANT_URL= QDRANT_PATH=/tmp/ci_qdrant uv run pytest
   `scripts/bench_pipeline.py` run rather than reasoning about.
 - **CI still never builds the Docker image**, so a Dockerfile or compose regression — the
   exact class of defect this pass fixed — ships without a gate.
+
+---
+
+## Label-audit pass (follow-on) ✅ DONE
+
+Work on branch **`polish/ship-polish`**. Opened to close the single item this log listed
+as *"the most concrete open lead"* — `gold_coverage_avg` (0.825) trailing its ceiling
+`candidate_coverage_avg` (0.850), read as **rerank losing a row it was offered**. The
+lead turned out to be false, and chasing it found that a third of the cross-document
+slice was not measuring cross-document retrieval at all.
+
+### The lead was one row, and that row was mislabelled
+
+Exactly one row in `baseline_decomposed.json` has `gold_doc_coverage <
+candidate_doc_coverage`: `xdoc-donut-ocr-free-docvqa-questions`. Retrieval offered gold
+from both documents (donut p11 at rank 1, docvqa p3 at 6, docvqa p1 at 7); rerank
+returned three donut pages; coverage 0.5. Textbook "rerank dropped it".
+
+Except the answer is right, and the judge scored it 5/5:
+
+```
+$ uv run python scripts/find_in_pdfs.py "50K questions" --pdf donut
+donut.pdf  p.8  tion4 and consists of 50K questions defined on more than 12K documents [44].
+```
+
+**`donut.pdf` p8 answers both halves on its own** — it is Donut's related-work paragraph
+about DocVQA. The reranker was not dropping a document; it had found the single page that
+resolves the whole question, which is the behaviour you want. The 0.5 is an artifact of a
+question that violates the corpus's own cross-document design rule: *no single page may
+answer both halves*.
+
+Drop that row and the pair reads `gold == candidate == 0.8421`. **Rerank loses nothing.**
+
+### Auditing the rest: 6 of 20 cross-document rows were defective
+
+Two failure classes, and the second is the one that is invisible:
+
+- **A. One page states both halves.** The question cannot test cross-document retrieval
+  at all. Three rows: the donut/docvqa row above; `xdoc-colpali-base-model` (colpali p22:
+  *"PaliGemma is a 3B-parameter vision-language model"* — 63 pages in the corpus contain
+  both label strings); and `xdoc-colbert-vs-colpali-dim` (colpali p6: *"reduced dimension
+  D = 128 as used in the ColBERT paper"*).
+- **B. A half is answerable from a document that is not in its gold.** The question needs
+  two documents, but not the two labelled. Three rows: `xdoc-vit-huge-vs-paligemma-size`
+  (colpali p22 carries PaliGemma-3B), `xdoc-dpr-vs-colbert-dim` (colbertv2 p19 states
+  `d=128`), `xdoc-transformer-vs-bert-layers` (colbert p8 mentions 12-layer BERT). In all
+  three the page the answer actually came from was in the reranked set.
+
+`xdoc-colbert-vs-colpali-dim` is the one that matters most, because **it was scoring
+1.0**. A question one page can answer still scores perfectly whenever retrieval happens
+to reach both documents, so the metric cannot surface this class at all — it had to be
+audited against the corpus text. That is why the audit covered all 20 rows and not just
+the 7 imperfect ones.
+
+Of the 7 imperfect coverage rows, then: **5 were instrument defects and 2 were genuine
+misses** (`xdoc-siglip-loss-paligemma-resolution` and
+`xdoc-donut-encoder-layoutlm-embeddings`, both of which really did decline a half).
+
+### The fix that does not work
+
+The obvious repair — add the alternate source to the row's gold — is backwards.
+`gold_doc_coverage` divides by the number of **distinct gold documents**, so labelling
+colbertv2 as gold for the DPR/ColBERT row makes it a three-document question that now
+needs all three. Widening the labels makes coverage harder, not more accurate. Both
+classes are really the same defect (*the question does not require two documents*), and
+the only honest repair is at the question.
+
+### What was done
+
+All six rewritten, changing only the broken half, with each replacement fact verified
+**single-document across all 19 corpus PDFs** before use: `6 identical layers`
+(attention), `BooksCorpus` (bert), `ViDoRe` (colpali), `Stage1`/`Stage3` (paligemma),
+`pruning-friendly` (colbert), `dual-encoder` (dpr), `residual compression` (colbertv2),
+`632M` (vit), `SynthDoG` (donut), `Industry Documents Library` (docvqa). Row ids changed
+with the questions, so `diff_reports.py` correctly excludes them rather than comparing
+two different questions under one name.
+
+Four things the process caught that reasoning would not have:
+
+1. **`MS MARCO` is in 8 of the 19 PDFs.** A first draft rested ColBERT's half on it and
+   reacquired class B immediately. ColBERT(v1) turns out to have essentially one
+   single-document fact in this corpus (`pruning-friendly`), so the DPR row was re-paired
+   with ColBERTv2 instead.
+2. **PaliGemma numbers its stages from `Stage0`.** "First pre-training stage" got the
+   answer *"Stage0: Unimodal pretraining"* and "third" got *"Stage2"*. Both questions were
+   ambiguous, not the pipeline. Naming the stage by content (*"its multimodal pretraining
+   stage"*) fixed it.
+3. **A hand-picked gold set is a labelling bug waiting to happen.** `SynthDoG` gold was
+   set to the three pages found by a `head -4`-truncated search; the reranker immediately
+   cited a fourth. Gold is now every page whose text carries the discriminating phrase — a
+   mechanical rule, so it cannot be hand-tuned toward a nicer number.
+4. **`answer_contains` is banned on cross-document rows for a good reason.** A
+   `["Stage3", "third"]` any-of intended as *phrasing alternatives* tripped the
+   `tests/test_run_eval.py` guard. The usage was actually safe (paired with an all-of, half
+   an answer still fails), but the guard cannot tell that apart from "either half will do",
+   and it was written after a real bug. That row drops its substring labels and is scored
+   by the judge — the escape the guard itself names.
+
+The acceptance test was **well-posed question + correct labels**, explicitly *not* "the
+row now scores 1.0". Two of the rewritten rows still fail, and a row that legitimately
+fails is a working instrument.
+
+### `eval/rescore.py`
+
+The docs have claimed since `candidate_pages` was added that a gold-label change is
+re-scorable offline instead of costing a ~25-minute judged run. Nothing implemented it.
+It now exists: a stored report plus a dataset in, every label-derived metric recomputed
+through `eval/scoring.py`'s own functions, a report out.
+
+Two guards it needs. It **refuses a report with no `candidate_pages`** (pre-2024 reports
+would otherwise score as all zeros and read as a catastrophic regression), and it
+**cannot recompute a judge verdict** — the judge prompt embeds the gold labels — so every
+changed row carrying one is listed as `stale_judge_rows` rather than silently mixing two
+label sets.
+
+Round-tripping it on `calib_baseline.json` moves **0 rows and 0 summary metrics**, which
+is the guarantee the tool rests on. Round-tripping `baseline_decomposed.json` moves 0 rows
+but 14 calibration keys — not a rescore bug: that report predates the
+confidence-calibration pass, carries no `top1_decisiveness` or per-candidate `score`, and
+its stored summary was written by superseded calibration code. Worth knowing before
+diffing anything against it.
+
+### A free result the rescorer paid for: the confidence formula is the weak one
+
+`calib_baseline.json` stores per-candidate `score`, so any statistic over the slate's
+score distribution can be scored offline against the same label the shipped one is
+measured on (`gold_rank == 1`; 73 rows, 49 positive / 24 negative). No arm, no key, no GPU.
+
+| statistic | AUC | perm p |
+|---|---|---|
+| `zscore_top1` — top page in slate standard deviations | **0.8078** | <0.0001 |
+| `margin_mean` — (top1 − top2) / slate mean | 0.7908 | <0.0001 |
+| `margin_rel` / `ratio_top2` | 0.7874 | <0.0001 |
+| `softmax_top1` — **the shipped formula** | 0.6293 | 0.0757 |
+| `neg_entropy` | 0.4949 | 0.945 |
+
+The shipped formula reproduces its documented AUC of 0.629 to four decimals, which is the
+harness validating itself. It is also **the weakest statistic here that has any signal at
+all**, and a plain z-score of the top page against its slate is 0.18 AUC better on the
+same rows. Entropy has no signal whatsoever — worth recording so nobody spends an arm on it.
+
+Not adopted in this pass: it changes a user-facing number and the eval's
+`top1_decisiveness`, so it wants its own change with a live confirmation rather than
+riding along on a relabelling. The p-values are two-sided permutation tests on |AUC−0.5|
+over 20k shuffles, which is a different construction from the 0.016 this log reported
+earlier for the shipped formula; the AUCs are directly comparable, the p-values are not.
+
+### Result
+
+New pinned baseline `eval/reports/baseline_relabeled.json` — 83 questions, judged, **0
+degraded calls**. `baseline_decomposed.json` is kept: the write-ups above cite its numbers.
+
+| metric | before | after |
+|---|---|---|
+| `gold_coverage_avg` | 0.825 | **0.925** |
+| `candidate_coverage_avg` | 0.850 | **0.925** |
+| `citation_accuracy` | 0.9589 | 0.9726 |
+| `recall@3` | 0.8493 | 0.8630 |
+| `recall@1` | 0.6712 | 0.6712 |
+| `substring_accuracy` | 0.9583 | 0.9306 |
+| `judge_accuracy` | 0.9452 | 0.9315 |
+| `avg_latency_ms` | 18984 | 15428 |
+
+**The pipeline did not change.** Not one line of `src/` was touched in this pass, and
+`diff_reports.py` says so directly: over the **14 cross-document rows the relabelling did
+not touch**, `gold_doc_coverage` is 0.9286 → 0.9286, *0 improved, 0 regressed, 14
+unchanged*. The 6 rewritten rows are excluded from the paired arithmetic on both sides,
+because they are different questions and the tool refuses to pretend otherwise. So the
+coverage jump is not an improvement — it is **the same pipeline measured by an instrument
+that is no longer wrong about six of its twenty rows**.
+
+`gold_coverage_avg == candidate_coverage_avg` again, and `rerank-side losses: 0`. The
+lead this pass opened to chase is closed by disproving it.
+
+Two metrics went **down**, and both are honest:
+
+- `substring_accuracy` 0.958 → 0.931. The replacement labels are stricter
+  (`Industry Documents Library`, `residual compression`) than the numbers they replaced,
+  and one row dropped its labels entirely rather than weaken the cross-document guard.
+- `judge_accuracy` 0.945 → 0.932. Two of the three remaining coverage misses are the
+  genuine ones the audit identified, and they were already failing.
+
+The three remaining imperfect coverage rows are **all retrieval-side**, which is where the
+docs said the headroom was:
+`xdoc-siglip-loss-paligemma-resolution` and `xdoc-donut-encoder-layoutlm-embeddings` (both
+genuinely decline a half), and `xdoc-vit-huge-paligemma-transfer`, where `paligemma.pdf`
+p3/p5 are not in the 12-candidate slate at all — yet the answer is right, read off a
+non-gold page, and the judge passes it. That last one is the audit's own finding one level
+down: **document-granular coverage cannot see a fact that lives on more pages than the
+label names.** It is scored 0.5 and that is correct; the answer being right anyway is a
+separate fact the metric is not claiming to measure.
+
+### What is left
+
+- **The confidence swap is scoped and unspent.** `zscore_top1` on the evidence above.
+- **`_RRF_K = 60` is still untuned** for 12-deep slates.
+- **`scripts/audit_xdoc_labels.py` can only decide 8 of the 20 rows.** Twelve come back
+  INCONCLUSIVE because their reference labels are bare numbers (`"6"`, `"18"`, `"50"`) or
+  corpus-wide words (`"English"` is in 11 of the 19 PDFs), and a phrase that matches
+  everywhere makes the co-occurrence test vacuous rather than passing. Those twelve were
+  audited by hand this pass and are *not* regression-guarded. Giving them discriminating
+  reference strings is the cheap fix and would make the script a real gate.
+- **The audit is a script, not a test**, and cannot become one as-is: it needs the fetched
+  distractor corpus, which CI does not have. Gating it would mean either fetching ~320
+  pages in CI or committing a text-only fixture of the pages the labels cite.
+- Three rows are flagged REVIEW: a reference fact of theirs also appears in a second
+  document (`340M` in layoutlm as well as bert, `2-D` in vit as well as layoutlm,
+  `sharing`/`recurrence` across albert and transformer_xl). None is decidable by substring
+  match - whether that document *answers the half* is a judgement - so they are advisory.
