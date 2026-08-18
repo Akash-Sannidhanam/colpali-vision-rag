@@ -16,6 +16,10 @@
   --red: #ef4444;
   --red-bg: rgba(239, 68, 68, 0.14);
   --green: #6ee7b7;
+  /* Amber, not red: a half-persisted corpus degrades answers but the server is still
+     serving, and spending the error colour on it would flatten the difference. */
+  --amber: #fbbf24;
+  --amber-bg: rgba(251, 191, 36, 0.12);
 
   /* surfaces (darkest -> lightest) */
   --s-deep: #070811;
@@ -306,6 +310,29 @@ body {
   color: var(--t-5);
   margin-top: 2px;
 }
+/* The vectors-without-page-images warning, from /health's `corpus` field. Above the
+   foot rather than inside it: the Qdrant dot is steady-state status, this is an action
+   item ("re-run ingest") and has to be able to wrap onto several lines. */
+.rail-warn {
+  margin: 0 12px 10px;
+  padding: 9px 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  border: 1px solid var(--amber);
+  border-radius: 8px;
+  background: var(--amber-bg);
+}
+.rail-warn-title {
+  font: 600 11px var(--mono);
+  color: var(--amber);
+}
+.rail-warn-body {
+  font: 500 10px var(--mono);
+  line-height: 1.45;
+  color: var(--t-3);
+  overflow-wrap: anywhere;   /* filenames don't break at spaces */
+}
 .rail-foot {
   border-top: 1px solid var(--ln-2);
   padding: 12px 16px;
@@ -574,9 +601,6 @@ body {
   font: 500 12px var(--mono);
   color: var(--t-3);
 }
-.viewer-head .file {
-  color: var(--t-ink);
-}
 .stage {
   flex: 1;
   min-height: 0;
@@ -631,8 +655,9 @@ body {
   color: var(--acc-text);
   border-color: var(--acc-bd);
 }
-/* The viewer's filename opens the document at the cited page. Not `.file .file-btn`:
-   `.viewer-head .file` (0,2,0) would outrank .file-btn:hover's color on a tie. */
+/* The viewer's filename opens the document at the cited page. Kept as a single class
+   rather than nested under `.viewer-head`: a (0,2,0) descendant selector would outrank
+   .file-btn:hover's color on a tie, which is how the hover state gets silently lost. */
 .file-btn {
   padding: 0;
   border: 0;

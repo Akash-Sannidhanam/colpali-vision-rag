@@ -1,5 +1,9 @@
 # ColPali Vision RAG
 
+[![CI](https://github.com/Akash-Sannidhanam/colpali-vision-rag/actions/workflows/ci.yml/badge.svg)](https://github.com/Akash-Sannidhanam/colpali-vision-rag/actions/workflows/ci.yml)
+[![Python 3.13](https://img.shields.io/badge/python-3.13-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
 **Retrieval-augmented QA over PDFs that never reads text.** Every page is treated as an
 image — no OCR, no text layer — so charts, tables and scans work the same as prose. And
 every answer comes back with the exact slice of the page it was read from.
@@ -387,7 +391,9 @@ origin via CORS. A **production build defaults to same-origin relative URLs** in
 deployed shape is FastAPI serving the built bundle itself. `VITE_API_BASE` overrides either.
 
 `npm run typecheck` and `npm run test` cover the UI's pure logic (the `citation.box → overlay` math
-and 1-based page resolution); CI runs both plus the build on every PR.
+and 1-based page resolution), and `npm run test:e2e` drives the built bundle in Chromium for
+browser-only interactions and layout behavior. CI runs all three plus the build on every PR — see
+[Development](#development).
 
 ### Deployment (Docker)
 
@@ -520,8 +526,20 @@ the vector-store alias logic, the observability plumbing, and the FastAPI servin
 `TestClient` with the pipeline seam stubbed):
 
 ```bash
-uv run pytest                                  # backend (420 tests, ~6s)
+uv run pytest                                  # backend (479 tests, ~6s)
 cd ui && npm run typecheck && npm run test     # UI: types + pure-logic units
+```
+
+There is a **third layer**, and it exists because the other two are blind to layout. `ui/e2e/` is a
+Playwright suite over the *built* bundle with the API stubbed at the network layer — no FastAPI,
+Qdrant, model or key. It is not redundant with the unit tests: the whole suite was green while the
+document viewer silently cropped 1085 px off every page and drew citation boxes against a rectangle
+the model never measured. vitest runs in node, and jsdom has no layout engine, so every box there
+measures zero. Only a real browser computes this.
+
+```bash
+cd ui && npm run test:e2e                      # chromium, ~8s + a build
+npm run test:e2e -- --headed --debug           # watch it drive the viewer
 ```
 
 **Lint & types** are enforced by `ruff` and `mypy` (in the `lint` dependency group):
@@ -534,7 +552,9 @@ uv run mypy src eval              # type-check
 
 **CI** (`.github/workflows/ci.yml`) runs on every push to `main` and every PR: a fast `lint` job
 (ruff, no ML install), a `test` job that installs the full stack and runs `mypy` + the backend
-suite, and a `ui` job that typechecks, tests and builds the frontend.
+suite, a `ui` job that typechecks, unit-tests, builds and then runs the Playwright suite against
+the build, and a `docker` job that validates `docker-compose.yml` and builds the image — so a
+regression in the path the quickstart depends on fails the PR rather than the reader.
 
 ## Project layout
 
@@ -569,6 +589,8 @@ eval/
   diff_reports.py      # paired per-question diff between two reports
 docs/                 # EXPERIMENTS.md, ENGINEERING_LOG.md, assets/
 ui/                   # React + Vite UI: three-column workspace with visual citations
+  src/                #   components, api client, pure helpers (+ lib.test.ts)
+  e2e/                #   Playwright over the built bundle — the layout guard
 pdfs/                 # source PDFs to index
 page_images/          # rendered pages + crops/ (generated, gitignored)
 qdrant_data/          # embedded on-disk fallback store (generated, gitignored)

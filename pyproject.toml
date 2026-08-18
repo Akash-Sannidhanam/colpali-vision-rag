@@ -1,7 +1,7 @@
 [project]
 name = "colpali-vision-rag"
 version = "0.1.0"
-description = "Add your description here"
+description = "Vision-first RAG over PDFs: pages are retrieved as images (ColQwen2 + Qdrant), and every answer cites the region of the page it was read from."
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
