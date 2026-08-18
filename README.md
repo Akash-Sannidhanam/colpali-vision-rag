@@ -391,8 +391,8 @@ origin via CORS. A **production build defaults to same-origin relative URLs** in
 deployed shape is FastAPI serving the built bundle itself. `VITE_API_BASE` overrides either.
 
 `npm run typecheck` and `npm run test` cover the UI's pure logic (the `citation.box → overlay` math
-and 1-based page resolution), and `npm run test:e2e` drives the built bundle in Chromium for the
-things only a layout engine can answer. CI runs all three plus the build on every PR — see
+and 1-based page resolution), and `npm run test:e2e` drives the built bundle in Chromium for
+browser-only interactions and layout behavior. CI runs all three plus the build on every PR — see
 [Development](#development).
 
 ### Deployment (Docker)

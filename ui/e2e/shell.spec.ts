@@ -85,4 +85,13 @@ test.describe('the corpus-integrity warning', () => {
       await expect(page.locator('.rail-warn')).toHaveCount(0)
     }
   })
+
+  test('stays hidden when the corpus field is absent', async ({ page }) => {
+    // The field is optional (older servers, or a startup state before the library exists),
+    // and an absent field should not be treated as a problem to report.
+    await mockBackend(page, SHAPE, 'ok', null)
+    await page.goto('/')
+    await expect(page.getByTitle(`Open ${PDF}`)).toBeVisible()
+    await expect(page.locator('.rail-warn')).toHaveCount(0)
+  })
 })

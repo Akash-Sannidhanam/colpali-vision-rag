@@ -104,8 +104,8 @@ export default function App() {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'k' && e.key !== 'K') return
       if (!e.metaKey && !e.ctrlKey) return
-      if (ingestOpen || doc || needsKey) return
       e.preventDefault()   // Chrome and Safari both bind this to the address bar
+      if (ingestOpen || doc || needsKey) return
       setAskFocus((n) => n + 1)
     }
     window.addEventListener('keydown', onKey)
