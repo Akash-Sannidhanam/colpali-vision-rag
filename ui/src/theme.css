@@ -611,18 +611,39 @@ body {
   background: radial-gradient(circle at 50% 38%, #0d0f18, var(--s-deep));
   overflow: auto;
 }
+/* The frame is the rendered page, and that is a contract rather than a look:
+   `.box-overlay` is positioned in percentages of this box, so frame != page is a
+   confidently wrong visual citation.
+
+   `max-height: 100%` was here before and did the opposite of what it reads as. `.stage`
+   is `flex: 1` in a column that also holds the crop strip and the candidate rail, so the
+   more regions an answer found the less height the page got; and for a content-sized box
+   with `overflow: hidden`, a max-height does not resize anything - it clips. Measured on
+   the running app: a 412x533 page inside a 412x213 frame, 320px thrown away, with the
+   citation box drawn 23px tall where the model's own box was 16% of the page. Four
+   regions took it down to a ~20px band.
+
+   What makes the max constraints work now is the aspect-ratio Viewer sets inline from the
+   image's natural size (`lib.pageFrameStyle`, the same rule .doc-page follows). With a
+   definite ratio the frame *resizes* to fit both axes, and the image fills it at
+   100%/100% rather than being capped independently - the old `max-height: 62vh` on the
+   image was a second, unrelated cap that is exactly how the two disagreed.
+
+   No `aspect-ratio` in this rule on purpose: a static one here would be a portrait
+   assumption sitting in the declaration whose whole point is that pages are not all one
+   shape, and the inline value outranking it is what would make that a silent trap. */
 .page-frame {
   position: relative;
+  max-width: 100%;
+  max-height: 100%;
   border-radius: 8px;
   overflow: hidden;
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.55);
-  max-height: 100%;
 }
 .page-frame img {
   display: block;
-  max-height: 62vh;
-  max-width: 100%;
-  height: auto;
+  width: 100%;
+  height: 100%;
 }
 /* Opens the full-screen viewer at this page. Rendered as the LAST child of .page-frame so
    it paints above .box-overlay's 9999px spotlight scrim - both are position:absolute with
@@ -766,11 +787,17 @@ body {
   padding: 12px 16px 4px;
   border-top: 1px solid var(--ln-2);
 }
+/* One scrolling row, like `.candidates` right below it - deliberately not `wrap`.
+   Wrapping made the crop strip's height a function of how many regions the answer found,
+   and every one of those pixels comes out of `.stage`, which is the flex:1 element above.
+   Four regions wrapped to two 180px rows and left the cited page 73px tall: a complete
+   page, correctly proportioned, and far too small to read. The page is the point and the
+   crops are the supporting detail, so the detail is what scrolls. */
 .crops-strip {
   display: flex;
   gap: 10px;
-  flex-wrap: wrap;
   align-items: flex-start;
+  overflow-x: auto;
 }
 .crop-frame {
   position: relative;

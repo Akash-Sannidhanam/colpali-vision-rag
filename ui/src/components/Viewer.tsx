@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { heatmap as fetchHeatmap, imageSrc } from '../api'
-import { boxToOverlay, citedPage, heatmapRGBA, regionsOnPage } from '../lib'
+import { boxToOverlay, citedPage, heatmapRGBA, pageFrameStyle, regionsOnPage } from '../lib'
 import type { HeatmapResponse, QueryResponse, Region } from '../types'
 import { CandidateRail } from './CandidateRail'
 
@@ -23,6 +23,19 @@ export function Viewer({
   const [heatError, setHeatError] = useState(false)
   const cacheRef = useRef<Map<string, HeatmapResponse>>(new Map())
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  // The cited page's natural size, which becomes the frame's aspect ratio. Without a
+  // definite ratio the frame is content-sized, its `max-height: 100%` clips instead of
+  // resizing, and the page is cropped - see `pageFrameStyle` and the note on .page-frame
+  // in theme.css. Never reset between answers: page images share a size, so keeping the
+  // last ratio avoids a layout jump, and the load handlers correct it if one differs.
+  const [natural, setNatural] = useState<{ w: number; h: number } | null>(null)
+
+  // A ref callback as well as onLoad, because onLoad does not fire for an image that was
+  // already complete at mount - the common case here, since the same page is usually
+  // still in cache from the candidate rail.
+  const measure = useCallback((el: HTMLImageElement | null) => {
+    if (el?.complete && el.naturalWidth) setNatural({ w: el.naturalWidth, h: el.naturalHeight })
+  }, [])
 
   // The cited page (null for not-found / out-of-range) - also gates the heatmap toggle.
   const cited = res ? citedPage(res.pages, res.citation.source_page) : null
@@ -162,9 +175,24 @@ export function Viewer({
       </div>
 
       <div className="stage">
+        {/* The inline aspect ratio on .page-frame below is load-bearing, not decorative:
+            `.box-overlay` is positioned in percentages of that frame, so a frame that is
+            not the page draws the citation against a rectangle the model never measured.
+            `pageFrameStyle` owns the rule so it can be tested - see its docstring in
+            lib.ts, and e2e/viewer-page.spec.ts for the layout half of the claim. */}
         {cited && citedSrc ? (
-          <div className="page-frame">
-            <img src={citedSrc} alt={`${cited.pdf} page ${cited.page_number}`} />
+          <div className="page-frame" style={pageFrameStyle(natural)}>
+            <img
+              ref={measure}
+              src={citedSrc}
+              alt={`${cited.pdf} page ${cited.page_number}`}
+              onLoad={(e) =>
+                setNatural({
+                  w: e.currentTarget.naturalWidth,
+                  h: e.currentTarget.naturalHeight,
+                })
+              }
+            />
             {heatOn && heat && <canvas ref={canvasRef} className="heat-canvas" aria-hidden />}
             {overlays.map((overlay, i) => (
               <div

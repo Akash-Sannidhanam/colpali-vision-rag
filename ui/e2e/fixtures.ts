@@ -165,3 +165,76 @@ export async function mockBackend(
     route.fulfill({ contentType: 'image/png', body: png(size.w, size.h) }),
   )
 }
+
+// --- an answered query, for the tests that need the main viewer populated ---
+//
+// Kept separate from mockBackend rather than folded into it as a fifth positional
+// argument: only the specs about the viewer need /query stubbed, and mockBackend is
+// already at the parameter count where the call sites stop being readable.
+
+/** The citation box, [ymin, xmin, ymax, xmax] on Gemini's 0-1000 scale. Off-centre and
+ *  non-square on both axes, so a test that confuses width with height fails. */
+export const CITE_BOX = [300, 100, 460, 500]
+
+const img = (name: string) => ({ url: `/images/${name}`, data_uri: null })
+
+/**
+ * A QueryResponse in the shape src/server.py returns, cited on page 1.
+ *
+ * `regions` defaults to 2, and the count is a parameter because it is load-bearing for
+ * the page-frame geometry: every region adds a crop to the strip below the page, the
+ * strip is what squeezes `.stage`, and a squeezed stage is the condition the frame has to
+ * survive. A one-region fixture would leave the stage roomy and pass a broken frame.
+ */
+export function queryResponse(regions = 2) {
+  const region = (i: number) => ({
+    source_page: 1,
+    box: CITE_BOX,
+    pdf: PDF,
+    page_number: 1,
+    crop: img(`crop_${i}.png`),
+  })
+  return {
+    question: 'what does the fixture say?',
+    answer: 'The fixture says what the fixture was built to say.',
+    citation: {
+      found: true,
+      source_page: 1,
+      box: CITE_BOX,
+      pdf: PDF,
+      page_number: 1,
+      confidence: 'high',
+      regions: Array.from({ length: regions }, (_, i) => region(i)),
+    },
+    pages: Array.from({ length: PAGE_COUNT }, (_, i) => ({
+      index: i + 1,
+      pdf: PDF,
+      page_number: i + 1,
+      score: 13.7 - i,
+      image: img(`fixture_page_${i + 1}.png`),
+    })),
+    crop: img('crop_0.png'),
+    annotated: img('annotated.png'),
+    meta: {
+      request_id: 'fixture',
+      latency_ms: 18000,
+      prompt_tokens: 18000,
+      output_tokens: 300,
+      total_tokens: 18300,
+      est_cost_usd: 0.006,
+      gemini_calls: 2,
+      retrieve_k: 12,
+      retrieval_confidence: 0.125,
+      stages: [
+        { node: 'retrieve', latency_ms: 900, prompt_tokens: 0, output_tokens: 0, total_tokens: 0, est_cost_usd: 0, gemini_calls: 0 },
+        { node: 'rerank', latency_ms: 5000, prompt_tokens: 9000, output_tokens: 40, total_tokens: 9040, est_cost_usd: 0.002, gemini_calls: 1 },
+        { node: 'answer', latency_ms: 12000, prompt_tokens: 9000, output_tokens: 260, total_tokens: 9260, est_cost_usd: 0.004, gemini_calls: 1 },
+      ],
+    },
+  }
+}
+
+/** Stub POST /query. Call after mockBackend, which routes the images these refer to. */
+export async function mockQuery(page: Page, res: object = queryResponse()): Promise<void> {
+  await page.route('**/query*', (route) => route.fulfill({ json: res }))
+}
