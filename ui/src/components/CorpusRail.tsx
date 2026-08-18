@@ -4,14 +4,24 @@ import type { CorpusResponse, HealthResponse } from '../types'
 /** (1) The corpus rail: brand, ingest button, indexed-document list, Qdrant status.
  *
  *  Each document can be removed. The confirm is inline rather than a modal — deletion
- *  is a fast, local action, and a dialog would weigh more than the decision does. */
+ *  is a fast, local action, and a dialog would weigh more than the decision does.
+ *
+ *  Below 1100px this same element is an off-canvas drawer (see the breakpoints at the
+ *  foot of theme.css). The component does not know that: it takes an `open` flag and an
+ *  `id` for the hamburger's aria-controls, and CSS decides whether either means anything
+ *  at the current width. */
 export function CorpusRail({
+  id,
+  open,
   corpus,
   health,
   onIngest,
   onDelete,
   onOpen,
 }: {
+  id: string
+  /** Drawer state. Inert at widths where the rail is a static column. */
+  open: boolean
   corpus: CorpusResponse | null
   health: HealthResponse | null
   onIngest: () => void
@@ -44,7 +54,7 @@ export function CorpusRail({
   }
 
   return (
-    <div className="rail">
+    <div className={`rail${open ? ' open' : ''}`} id={id}>
       <div className="brand">
         <div className="brand-mark" />
         <div className="brand-name">Vision RAG</div>
