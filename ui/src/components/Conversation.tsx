@@ -20,7 +20,9 @@ export function Conversation({
   focusSignal: number
 }) {
   return (
-    <div className="convo">
+    /* <main> - exactly one per document. The conversation is the primary content: the
+       rail is a corpus index and the viewer is evidence for what is said here. */
+    <main className="convo">
       <div className="convo-head">
         <span className="convo-title">Session</span>
         <span className="convo-sub">no OCR · vision only</span>
@@ -29,7 +31,9 @@ export function Conversation({
       <div className="messages">
         {turns.length === 0 && (
           <div className="empty">
-            <div className="glyph">⌕</div>
+            <div className="glyph" aria-hidden="true">
+              ⌕
+            </div>
             <div className="sub">
               {corpusEmpty
                 ? 'Ingest a PDF to get started — the corpus is empty.'
@@ -73,6 +77,6 @@ export function Conversation({
         placeholder={corpusEmpty ? 'Ingest a document first…' : 'Ask about your documents…'}
         focusSignal={focusSignal}
       />
-    </div>
+    </main>
   )
 }

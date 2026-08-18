@@ -6,6 +6,9 @@ import { useEffect, useRef, useState } from 'react'
 const IS_MAC = typeof navigator !== 'undefined' && /Mac/i.test(navigator.userAgent)
 export const ASK_HINT = IS_MAC ? '⌘K' : 'Ctrl K'
 
+/** The skip link's target (App.tsx). Exported so the two cannot drift apart. */
+export const ASK_INPUT_ID = 'ask-input'
+
 /** The question input. Disabled while a query is in flight or the corpus is empty. */
 export function AskBox({
   onAsk,
@@ -41,6 +44,7 @@ export function AskBox({
     <div className="askbox">
       <div className="askbox-inner">
         <input
+          id={ASK_INPUT_ID}
           ref={ref}
           value={value}
           disabled={disabled}

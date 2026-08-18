@@ -252,6 +252,7 @@ body {
   flex: none;
 }
 .brand-name {
+  margin: 0;   /* it is an <h1>; the UA margin would push the mark off-centre */
   font-weight: 600;
   font-size: 14px;
   color: var(--t-strong);
@@ -289,6 +290,52 @@ body {
   min-height: 0;
   overflow-y: auto;
   padding: 2px 8px;
+}
+.doc-skeletons {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 9px 8px;
+}
+/* Sized like a .doc row rather than a generic bar, so the list does not jump when the
+   real rows replace them. */
+.doc-skeleton {
+  height: 34px;
+  border-radius: 8px;
+}
+/* A failed /corpus. Red rather than the amber .rail-warn uses: that one is a degraded
+   corpus still being served, this one is no corpus at all. */
+.rail-error {
+  margin: 4px 8px;
+  padding: 10px 11px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  border: 1px solid var(--red);
+  border-radius: 8px;
+  background: var(--red-bg);
+}
+.rail-error-body {
+  font: 500 10px var(--mono);
+  line-height: 1.45;
+  color: var(--t-2);
+  overflow-wrap: anywhere;
+}
+.rail-retry {
+  padding: 5px 10px;
+  border: 1px solid var(--ln-4);
+  border-radius: 7px;
+  background: var(--s-btn);
+  color: var(--t-2);
+  font: 500 10px var(--mono);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.rail-retry:hover {
+  color: var(--acc-text);
+  border-color: var(--acc-bd);
+  background: var(--acc-bg);
 }
 .doc {
   display: flex;
@@ -1507,6 +1554,12 @@ body {
 }
 
 /* toast */
+/* The always-mounted aria-live container (see App.tsx). `display: contents` so it adds a
+   node to the accessibility tree without adding a box to the layout - the toast inside
+   keeps positioning itself exactly as it did. */
+.toast-region {
+  display: contents;
+}
 .toast {
   position: fixed;
   bottom: 22px;
@@ -1624,6 +1677,42 @@ body {
   .doc-head {
     flex-wrap: wrap;
   }
+}
+
+/* Off-screen until focused, then pinned over the top-left corner. `position: fixed` so
+   it never takes a cell in .app's grid, and a real offset rather than display:none -
+   a hidden element cannot be focused, which would defeat the whole point. */
+.skip-link {
+  position: fixed;
+  top: 8px;
+  left: -9999px;
+  z-index: 60;   /* above the toast (50), which is the highest thing it could land under */
+  padding: 9px 14px;
+  border: 1px solid var(--acc-bd);
+  border-radius: 9px;
+  background: var(--s-modal);
+  color: var(--acc-text);
+  font: 500 12px var(--sans);
+  text-decoration: none;
+}
+.skip-link:focus {
+  left: 8px;
+}
+
+/* A visible focus ring everywhere the keyboard can land. Several components already
+   define their own (.doc-open, .doc-remove, .thumb, .file-btn, .page-expand) and still
+   win on specificity; this is the floor for everything that does not - the app bar's
+   controls, the modal buttons, the trace toggle, the ingest dropzone.
+
+   Scoped to interactive elements rather than `:focus-visible` bare, because a universal
+   rule would also outline .doc-shell, which is focused on open purely so the dialog is
+   announced and deliberately shows no ring (its frame is the cue). */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+[tabindex='0']:focus-visible {
+  outline: 2px solid var(--acc-bd);
+  outline-offset: 2px;
 }
 
 /* Motion is decoration here - every animation in this file is an entrance or a pulse,

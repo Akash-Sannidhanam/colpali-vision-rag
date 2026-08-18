@@ -236,7 +236,15 @@ export async function ingestStream(
       const frame = buffer.slice(0, sep)
       buffer = buffer.slice(sep + 2)
       const line = frame.split('\n').find((l) => l.startsWith('data:'))
-      if (line) onEvent(JSON.parse(line.slice(5).trim()) as IngestEvent)
+      if (!line) continue
+      const event = JSON.parse(line.slice(5).trim()) as IngestEvent
+      onEvent(event)
+      // The terminal error event is raised here, not left to the caller. The docstring
+      // above always claimed this, and only IngestModal throwing from inside its own
+      // onEvent made it look true - so a second caller that read the contract and
+      // trusted it would have swallowed every failed ingest silently. Raised *after*
+      // onEvent so a caller that wants to render the detail still sees it first.
+      if (event.phase === 'error') throw new Error(event.detail ?? 'Ingest failed.')
     }
   }
 }

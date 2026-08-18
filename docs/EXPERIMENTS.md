@@ -420,6 +420,75 @@ disconnect test fails.
 
 ---
 
+## The interface
+
+### The shell only worked on a wide desktop ✓ FIXED
+
+`grep -c "@media" ui/src/theme.css` was **0**, and `.app` was a hard
+`grid-template-columns: 220px 1fr 1.15fr`. Below ~1000px the two content columns fell under
+400px each; below ~800px the app was unusable. Three layouts now — 1100px moves the rail
+into a drawer, 820px collapses to one column with a `Session | Page` switcher so the active
+pane keeps the full height. Nothing is dropped at any width.
+
+The breakpoints are CSS-only: no `matchMedia` listener exists, because the drawer's transform
+and its scrim are both media-queried, so a drawer left open across a resize to a wide viewport
+simply becomes the static column again. One source of truth per breakpoint.
+
+Two decisions worth recording. The closed drawer needs `visibility: hidden` and not just
+`translateX(-100%)` — a translated-away element is still in the tab order, so the first Tab
+past the hamburger vanishes into a drawer nobody can see. And the drawer is a **disclosure,
+not a modal**: it gets `aria-expanded`, Esc and focus restore, but no `role="dialog"` and no
+Tab trap, because the element it controls is the *same* element that is a static landmark
+above 1100px, and a role conditional on viewport width would need exactly the JS media query
+the CSS-only design avoids. The missing trap is an accepted cost, not an oversight.
+
+### The cited page was cropped, and the citation box with it ✓ FIXED
+
+The defect the document-viewer guard was written for, alive in the component that guard did
+not cover. `.page-frame` carried `max-height: 100%`, which reads as "fit" and is not: for a
+content-sized box with `overflow: hidden` a max-height does not resize anything, it clips.
+Measured on the running app at 1280×860 with a real answer on screen:
+
+| | measured |
+|---|---|
+| `.stage` | 567 × 265 |
+| `.page-frame` | 412 × **213** |
+| its `<img>` | 412 × **533** — 320px thrown away |
+| `.box-overlay` | 23px tall, where the model's own box was 16% of 533 |
+
+The cropping is the visible half. The dangerous half is that the overlay is positioned in
+percentages of that same frame, so the citation was drawn against a rectangle the model never
+measured. The mechanism differs from the dialog's, which is why a wider version of the first
+guard would not have found it: `.stage` is `flex: 1` in a column that also holds the crop strip
+and the candidate rail, so **the more regions an answer found, the less height the page got**.
+Four regions took it to a ~20px band.
+
+Fixed with the pattern `.doc-page` already followed, reusing the same helper
+(`lib.pageFrameStyle`): an inline aspect ratio from the image's natural size, which makes the
+max constraints resize rather than clip. `.crops-strip` also stopped wrapping — with the
+clipping fixed but the wrap left in, four regions still left the page 73px tall, complete and
+unreadable.
+
+**This is the second time the page frame has been the bug, and the second time a green suite
+hid it.** Any change to page-frame geometry gets driven in a real browser before it is called
+done.
+
+### Accessibility stopped at the dialog ✓ FIXED
+
+`DocumentModal` was exemplary and everything else had nothing: no landmarks in any file, no
+`<h1>`, a toast with no live region, no focus ring on controls that had not defined their own,
+and a real keyboard bug — confirming a delete unmounted the focused `✕` and dropped focus to
+`<body>`, throwing the user to the top of the page mid-decision.
+
+The one item here that came from measurement rather than a checklist: tabbing the running app
+recorded **38 controls** between the first tab stop and the question box, because the rail
+renders two per document across the 19-document corpus. Landmarks do not help there — they are
+a screen-reader affordance and that is a sighted keyboard-only path — so there is a skip link.
+
+Also fixed: two states that rendered as *nothing*. `corpus === null` was indistinguishable from
+an empty corpus, and `refreshCorpus` handled only 401, so a 503 or a 429 left the rail blank
+forever with no message and no retry.
+
 ## What's still open
 
 - ~~**`gold_coverage_avg` trails its ceiling — rerank is losing a row it was offered.**~~

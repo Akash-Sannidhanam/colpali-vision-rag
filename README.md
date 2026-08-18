@@ -548,18 +548,28 @@ the vector-store alias logic, the observability plumbing, and the FastAPI servin
 
 ```bash
 uv run pytest                                  # backend (479 tests, ~6s)
-cd ui && npm run typecheck && npm run test     # UI: types + pure-logic units
+cd ui && npm run typecheck && npm run test     # UI: types + 53 pure-logic units
 ```
+
+The UI units cover the geometry helpers in `lib.ts` and the client in `api.ts` — the
+status-to-typed-error mapping every component's `catch` depends on, and the SSE frame parser fed a
+frame **split across chunk boundaries**, which is the one ingest case a browser cannot stage because
+a test does not control how a response is chunked.
 
 There is a **third layer**, and it exists because the other two are blind to layout. `ui/e2e/` is a
 Playwright suite over the *built* bundle with the API stubbed at the network layer — no FastAPI,
 Qdrant, model or key. It is not redundant with the unit tests: the whole suite was green while the
 document viewer silently cropped 1085 px off every page and drew citation boxes against a rectangle
 the model never measured. vitest runs in node, and jsdom has no layout engine, so every box there
-measures zero. Only a real browser computes this.
+measures zero. Only a real browser computes this. It has since caught the *same* defect a second
+time, in the main viewer's page frame, which the first guard did not cover.
+
+It is no longer only a geometry guard: it is also the only layer that reaches `App.tsx`'s state
+machine — the corpus rail's four states, the SSE ingest flow, the 401 → key-prompt path, and the
+document structure (landmarks, the live region, focus behaviour) that no screenshot shows.
 
 ```bash
-cd ui && npm run test:e2e                      # chromium, ~8s + a build
+cd ui && npm run test:e2e                      # 43 tests, chromium, ~12s + a build
 npm run test:e2e -- --headed --debug           # watch it drive the viewer
 ```
 

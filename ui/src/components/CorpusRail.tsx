@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { CorpusResponse, HealthResponse } from '../types'
 
 /** (1) The corpus rail: brand, ingest button, indexed-document list, Qdrant status.
@@ -14,6 +14,8 @@ export function CorpusRail({
   id,
   open,
   corpus,
+  corpusError,
+  onRetry,
   health,
   onIngest,
   onDelete,
@@ -23,6 +25,9 @@ export function CorpusRail({
   /** Drawer state. Inert at widths where the rail is a static column. */
   open: boolean
   corpus: CorpusResponse | null
+  /** A failed /corpus, already worded for a human. null while loading or loaded. */
+  corpusError: string | null
+  onRetry: () => void
   health: HealthResponse | null
   onIngest: () => void
   onDelete: (pdf: string) => Promise<void>
@@ -30,6 +35,9 @@ export function CorpusRail({
 }) {
   const online = health?.qdrant === 'ok'
   const total = corpus?.total_pages ?? 0
+  // "corpus · 0 pages" while the request is still in flight says the same wrong thing the
+  // blank list did, one line higher up - so the count waits for a real number too.
+  const countLabel = corpus ? `${total} pages` : corpusError ? 'unavailable' : '…'
   // The half-persisted-corpus warning. The index and the page PNGs are one logical
   // corpus and the split is otherwise silent - /corpus still lists every document while
   // every query answers "not found" - so this is the only place a user learns about it.
@@ -43,6 +51,24 @@ export function CorpusRail({
   const [confirming, setConfirming] = useState<string | null>(null)
   const [removing, setRemoving] = useState<string | null>(null)
 
+  // Where focus goes when the inline confirm opens and closes. Confirming replaces the
+  // focused ✕ with two new buttons, so without this focus falls to <body> and the next
+  // Tab restarts at the top of the page - the keyboard user is thrown out of the row they
+  // were acting on, mid-decision.
+  const yesRef = useRef<HTMLButtonElement>(null)
+  const removeRefs = useRef(new Map<string, HTMLButtonElement>())
+
+  useEffect(() => {
+    if (confirming) yesRef.current?.focus()
+  }, [confirming])
+
+  /** Dismiss the confirm and hand focus back to the ✕ that opened it. */
+  const cancel = (pdf: string) => {
+    setConfirming(null)
+    // After the re-render that brings the ✕ back, or there is nothing to focus yet.
+    requestAnimationFrame(() => removeRefs.current.get(pdf)?.focus())
+  }
+
   const remove = async (pdf: string) => {
     setConfirming(null)
     setRemoving(pdf)
@@ -54,21 +80,27 @@ export function CorpusRail({
   }
 
   return (
-    <div className={`rail${open ? ' open' : ''}`} id={id}>
+    /* A landmark, so screen-reader users can jump straight to the corpus instead of
+       tabbing the whole shell. Not <nav>: this is a list of documents to open and delete,
+       not site navigation. */
+    <aside className={`rail${open ? ' open' : ''}`} id={id} aria-label="Corpus">
       <div className="brand">
-        <div className="brand-mark" />
-        <div className="brand-name">Vision RAG</div>
+        <div className="brand-mark" aria-hidden="true" />
+        {/* The app's only h1. It lives here because this is where the product is named;
+            the rail being an off-canvas drawer at narrow widths does not change that -
+            heading order is a document property, not a layout one. */}
+        <h1 className="brand-name">Vision RAG</h1>
       </div>
 
       <button className="ingest-btn" onClick={onIngest}>
         ＋ ingest PDF
       </button>
 
-      <div className="section-label">corpus · {total} pages</div>
+      <div className="section-label">corpus · {countLabel}</div>
       <div className="doc-list">
         {corpus?.documents.map((d) => (
           <div className="doc" key={d.pdf}>
-            <div className="doc-status" />
+            <div className="doc-status" aria-hidden="true" />
             <div className="doc-main">
               {/* The row opens the document; the ✕ and the confirm are *siblings* of this
                   button, never children - nesting interactive content is invalid HTML and
@@ -87,12 +119,19 @@ export function CorpusRail({
                 )}
               </button>
               {confirming === d.pdf && (
-                <div className="doc-confirm">
+                /* Announced as a group so the prompt and its two answers are read
+                   together; not a dialog - it is three inline controls, and giving it a
+                   dialog role would promise a focus trap that is not here. */
+                <div className="doc-confirm" role="group" aria-label={`Remove ${d.pdf}?`}>
                   remove?
-                  <button className="doc-confirm-btn danger" onClick={() => remove(d.pdf)}>
+                  <button
+                    ref={yesRef}
+                    className="doc-confirm-btn danger"
+                    onClick={() => remove(d.pdf)}
+                  >
                     yes
                   </button>
-                  <button className="doc-confirm-btn" onClick={() => setConfirming(null)}>
+                  <button className="doc-confirm-btn" onClick={() => cancel(d.pdf)}>
                     no
                   </button>
                 </div>
@@ -100,6 +139,10 @@ export function CorpusRail({
             </div>
             {confirming !== d.pdf && removing !== d.pdf && (
               <button
+                ref={(el) => {
+                  if (el) removeRefs.current.set(d.pdf, el)
+                  else removeRefs.current.delete(d.pdf)
+                }}
                 className="doc-remove"
                 title={`Remove ${d.pdf}`}
                 aria-label={`Remove ${d.pdf}`}
@@ -110,11 +153,27 @@ export function CorpusRail({
             )}
           </div>
         ))}
-        {corpus && corpus.documents.length === 0 && (
+        {/* Four states, where there used to be two. `corpus === null` was rendering as
+            nothing at all, which is indistinguishable from an empty corpus - and an
+            outright failure rendered as nothing *forever*. */}
+        {corpusError ? (
+          <div className="rail-error" role="alert">
+            <span className="rail-error-body">{corpusError}</span>
+            <button className="rail-retry" onClick={onRetry}>
+              retry
+            </button>
+          </div>
+        ) : corpus === null ? (
+          <div className="doc-skeletons" aria-label="Loading the corpus" aria-busy="true">
+            {[0, 1, 2].map((i) => (
+              <div className="skeleton doc-skeleton" key={i} />
+            ))}
+          </div>
+        ) : corpus.documents.length === 0 ? (
           <div className="doc-sub" style={{ padding: 8 }}>
             No documents yet.
           </div>
-        )}
+        ) : null}
       </div>
 
       {corpusWarning && (
@@ -128,6 +187,6 @@ export function CorpusRail({
         <span className={`dot ${online ? 'online' : 'offline'}`} />
         Qdrant · {online ? 'online' : health?.qdrant ? 'offline' : '…'}
       </div>
-    </div>
+    </aside>
   )
 }
