@@ -1983,13 +1983,14 @@ is **invariant to any monotone renormalization** — so it scores the reduction 
 ramp cannot flatter it. The full `(query_tokens, n_x, n_y)` tensor is cached per item
 rather than a reduced grid, so all ten candidates were scored offline for free.
 
-### Nine candidates, and the shipped code beat all of them
+### Nine candidates, and the shipped code did not score highest
 
-`amax` over query tokens — the thing that looked broken — scored **0.6620**. Dropping the
-padding tokens: 0.6552. Subtracting the per-patch baseline (the one that looked calmest by
-eye): 0.5529. Per-patch z-scoring: **0.3746**, well below chance, an inversion. Decomposing
-the page's actual MaxSim score by which patch wins each query token — the most principled
-candidate, and the one that most deserved to win — 0.5222.
+`amax` over query tokens — the thing that looked broken — scored **0.6620**. Mean over content
+tokens scored higher at 0.6766, but was not adopted. Dropping the padding tokens: 0.6552.
+Subtracting the per-patch baseline (the one that looked calmest by eye): 0.5529. Per-patch
+z-scoring: **0.3746**, well below chance, an inversion. Decomposing the page's actual MaxSim
+score by which patch wins each query token — the most principled candidate, and the one that
+most deserved to win — 0.5222.
 
 **That is the result the eye got wrong**, and the reason the metric was worth building: the
 map that looked best was measurably the worst of the serious candidates.

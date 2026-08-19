@@ -311,6 +311,13 @@ def validate() -> None:
             f"CANDIDATE_FANOUT must be a finite number, got {CANDIDATE_FANOUT!r}. "
             "It is a multiplier on RETRIEVE_K (2.0 = fetch twice the slate size)."
         )
+    # Same for HEATMAP_SMOOTH_SIGMA: gaussian_filter() would fail on NaN/inf, taking
+    # out every /heatmap call. Zero is a valid value (disables smoothing).
+    if not math.isfinite(HEATMAP_SMOOTH_SIGMA):
+        raise RuntimeError(
+            f"HEATMAP_SMOOTH_SIGMA must be a finite number, got {HEATMAP_SMOOTH_SIGMA!r}. "
+            "It is the Gaussian blur sigma for the heatmap overlay; 0 disables smoothing."
+        )
     # `pdf_pages_7` is the shape vector_store gives a *physical* collection of the alias
     # `pdf_pages`, so an alias by that name would be swept as a stale version of another
     # alias mid-rebuild - silently deleting the arm you were measuring. Cheaper to refuse

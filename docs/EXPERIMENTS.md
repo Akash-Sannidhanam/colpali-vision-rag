@@ -158,12 +158,12 @@ Two forward passes per page are cached as the full `(query_tokens, n_x, n_y)` te
 reduced grid, so every candidate below was scored **offline for free** — the same trick
 `probe_k50_retrieval.json` plays for slate policy.
 
-**Result: the shipped reduction won, and every "improvement" lost.**
+**Result: the shipped reduction is not the best by raw AUC, but the better-scoring candidate was rejected.**
 
 | reduction | mean AUC | AUC excl. blank patches |
 |---|---|---|
-| **`amax` over query tokens (shipped)** | **0.6620** | **0.6669** |
 | mean over content tokens | 0.6766 | 0.6789 |
+| **`amax` over query tokens (shipped)** | **0.6620** | **0.6669** |
 | `amax` over content tokens only | 0.6552 | 0.6597 |
 | per-token z-score, then `amax` | 0.6115 | 0.6169 |
 | minus the per-patch baseline | 0.5529 | 0.5571 |
