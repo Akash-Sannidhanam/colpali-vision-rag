@@ -4,11 +4,17 @@ Exercises the pure tensor -> grid tail with a hand-built similarity map, so no m
 processor, colpali_engine, or PNG is touched (page_similarity's model calls are covered
 by the live E2E, not here). Locks the two things easy to get wrong: the x-major -> row-
 major(y) transpose, and the [0,1] normalization.
+
+Tests that assert exact cell values pass `sigma=0` to switch the Gaussian smoothing off.
+That is not a convenience: with the shipped sigma every cell borrows from its neighbours,
+so a test written against raw cells would be asserting the blur kernel rather than the
+transpose it means to pin. The smoothing has its own tests at the bottom.
 """
 
+import pytest
 import torch
 
-from src.heatmap import _grid_from_maps, _similarity_map
+from src.heatmap import _grid_from_maps, _similarity_map, _smooth
 
 
 def test_grid_shape_is_rows_y_cols_x():
@@ -25,7 +31,7 @@ def test_orientation_hot_patch_lands_at_grid_y_x():
     # one query token; hot at x=0, y=2 (i.e. sim[token][x=0][y=2])
     sim = torch.zeros(1, 3, 4)
     sim[0, 0, 2] = 5.0
-    grid, _, _ = _grid_from_maps(sim, (3, 4))
+    grid, _, _ = _grid_from_maps(sim, (3, 4), sigma=0)
     assert grid[2][0] == 1.0     # row-major [y][x]: the hot cell, normalized to the max
     assert grid[0][1] == 0.0     # a cold cell
 
@@ -45,7 +51,7 @@ def test_max_over_query_tokens_lights_both_patches():
     sim = torch.zeros(2, 2, 2)
     sim[0, 0, 0] = 10.0          # token 0 hottest at (x0, y0)
     sim[1, 1, 1] = 10.0          # token 1 hottest at (x1, y1)
-    grid, _, _ = _grid_from_maps(sim, (2, 2))
+    grid, _, _ = _grid_from_maps(sim, (2, 2), sigma=0)
     assert grid[0][0] == 1.0     # (y0, x0)
     assert grid[1][1] == 1.0     # (y1, x1)
     assert grid[0][1] == 0.0 and grid[1][0] == 0.0
@@ -90,3 +96,60 @@ def test_similarity_map_raises_on_patch_count_mismatch():
         assert "mismatch" in str(exc)
     else:
         raise AssertionError("expected a ValueError on patch-count mismatch")
+
+
+# --- smoothing -----------------------------------------------------------------------
+#
+# The blur is the one part of this module that changes the patch *ranking* rather than
+# just its display, which is why it was measurable at all (ROC AUC 0.662 -> 0.756 against
+# 44 text-layer answer regions). These lock its shape-preserving and edge behaviour; the
+# quality claim itself lives in docs/EXPERIMENTS.md, not in a unit test.
+
+
+def test_smoothing_is_off_at_sigma_zero():
+    """sigma=0 is the identity, so the raw grid stays reachable for comparison arms."""
+    grid = torch.tensor([[1.0, 0.0], [0.0, 5.0]])
+    assert torch.equal(_smooth(grid, 0), grid)
+
+
+def test_smoothing_preserves_shape_and_total_mass():
+    """A blur redistributes weight between patches; it must not create or destroy it."""
+    grid = torch.rand(7, 5)
+    out = _smooth(grid, 1.5)
+    assert out.shape == grid.shape
+    # replicate padding conserves mass only approximately at the edges, hence the loose
+    # tolerance - the point is that nothing is being scaled away wholesale.
+    assert out.sum() == pytest.approx(float(grid.sum()), rel=0.15)
+
+
+def test_smoothing_spreads_a_spike_to_its_neighbours():
+    """An isolated hot patch bleeds into its neighbourhood - the whole point."""
+    grid = torch.zeros(5, 5)
+    grid[2, 2] = 1.0
+    out = _smooth(grid, 1.0)
+    assert out[2, 2] < 1.0                       # the spike is flattened
+    assert out[2, 1] > 0 and out[1, 2] > 0       # and its neighbours pick it up
+    assert out[2, 2] == out.max()                # while it stays the maximum
+
+
+def test_smoothing_does_not_pull_an_edge_patch_toward_zero():
+    """Edge padding replicates, so a hot corner is not dimmed by implicit zeros outside.
+
+    With zero padding a corner patch loses three quarters of its neighbourhood to
+    nothing, which would make the map systematically cold at the margins - a bias no
+    amount of renormalization afterwards could undo.
+    """
+    corner = torch.zeros(5, 5)
+    corner[0, 0] = 1.0
+    middle = torch.zeros(5, 5)
+    middle[2, 2] = 1.0
+    assert _smooth(corner, 1.0)[0, 0] > _smooth(middle, 1.0)[2, 2]
+
+
+def test_grid_from_maps_smooths_by_default():
+    """The shipped path blurs: a lone spike no longer leaves its neighbours at zero."""
+    sim = torch.zeros(1, 5, 5)
+    sim[0, 2, 2] = 1.0
+    grid, _, _ = _grid_from_maps(sim, (5, 5))
+    assert grid[2][2] == 1.0                     # still the hottest cell
+    assert grid[2][1] > 0.0                      # but the neighbour is no longer cold

@@ -189,6 +189,14 @@ DECOMPOSE_ORIGINAL_WEIGHT = float(os.getenv("DECOMPOSE_ORIGINAL_WEIGHT", "0.0"))
 # candidates, then rescores them against the full-precision vectors on disk. Higher
 # recovers recall@1 that quantization costs, at a little more disk I/O per query.
 RESCORE_OVERSAMPLING = float(os.getenv("RESCORE_OVERSAMPLING", "2.0"))
+# Gaussian blur applied to the "why this page?" patch grid before it is normalized for
+# display (src/heatmap.py). Not cosmetic and not a guess: measured against 44 answer
+# regions located in the PDF text layer, smoothing lifts the grid's ROC AUC for the
+# answer region from 0.662 (unsmoothed) to 0.756, 36 of 44 items improving, sign-test
+# p = 1.3e-05, with a flat optimum over sigma 1.25-1.75. The gain is signal, not a
+# contiguity artifact of blurring - the same blur applied to a random map stays at
+# chance (0.477). See docs/EXPERIMENTS.md. 0 disables it and restores the raw grid.
+HEATMAP_SMOOTH_SIGMA = float(os.getenv("HEATMAP_SMOOTH_SIGMA", "1.5"))
 UPSERT_BATCH_SIZE = 8    # pages per Qdrant upsert flush; small enough that a batch's
                          # multivector payload (~1.4 MB/page) stays well under Qdrant's
                          # REST size limit, even on the default 32 MB server config
