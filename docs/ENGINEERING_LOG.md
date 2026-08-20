@@ -1930,3 +1930,129 @@ separate fact the metric is not claiming to measure.
   document (`340M` in layoutlm as well as bert, `2-D` in vit as well as layoutlm,
   `sharing`/`recurrence` across albert and transformer_xl). None is decidable by substring
   match - whether that document *answers the half* is a judgement - so they are advisory.
+
+
+## Heatmap-quality pass (follow-on) ✅ DONE
+
+Work on branch **`docs/heatmap-gif`**. Opened to close the last item of the portfolio
+finishing pass — a README GIF of the **"why this page?"** MaxSim overlay, the most
+technically distinctive thing in the UI and invisible to a reader. The asset was blocked
+within twenty minutes by the thing it was supposed to show.
+
+### The GIF could not ship, because the overlay looked broken
+
+Three questions, three page types, driven through the real pipeline (all three answered
+correctly and cited the right page — `28.4` / `$180,000` / `81.3`). The overlay did not
+localize on any of them, and on the chart page it was **anti-correlated with the ink**:
+`sales_report.pdf` p1's bars came back the coldest region on the page while the blank
+background was hot.
+
+Putting that on the README under a caption claiming it shows which patches the query
+matched would have been advertising the weakest thing in the repo, directly beneath the
+paragraph explaining MaxSim. So the track changed shape: measure it first.
+
+### Ruling things out, cheapest first
+
+**Not a transpose.** 24×31 for a portrait page, grid aspect 0.774 against the page's
+0.708 — `_similarity_map` puts the patches where they belong.
+
+**Not the query scaffolding, which is the diagnosis everything points at.** ColQwen2
+appends 10 `<|endoftext|>` expansion tokens to every query, and on the BLEU page they win
+**44.9%** of all patches — their *mean* similarity (0.16–0.19) is the highest of any token,
+the exact signature of "matches everything". Dropping them moves the mean AUC from 0.662
+to 0.655. The bias is per-**patch**, not per-token: some patches match every query token
+strongly, and no choice of tokens escapes them.
+
+### The instrument: answer regions from the text layer, for free
+
+The pipeline never reads a text layer — that is the premise — but *labeling* may, exactly
+as `scripts/find_in_pdfs.py` already does. `pdftohtml -xml` (poppler, already required by
+`pdf2image`) gives per-line boxes; the line stating a row's `answer_contains` string on its
+gold page is the region a "why this page?" map should be warm on. **44 regions over 19
+pages**, no API key, no judgement calls, and 122 rows correctly refused for a needle that
+is not on the page.
+
+One trap worth writing down: `pdftohtml` **extracts every embedded image as a side effect**,
+so the first labelling run silently spilled 593 PNGs and JPEGs into `pdfs/` beside the corpus
+it was reading. Pass `-i` to suppress them. Nothing was lost — the 16 pinned distractors still
+verify by sha256 against `eval/corpus_manifest.json` — but a `git clean` in a directory that is
+half-tracked and half-gitignored is a bad place to be careless.
+
+The score is ROC AUC over patches. Two properties earned it: it is threshold-free, and it
+is **invariant to any monotone renormalization** — so it scores the reduction and a colour
+ramp cannot flatter it. The full `(query_tokens, n_x, n_y)` tensor is cached per item
+rather than a reduced grid, so all ten candidates were scored offline for free.
+
+### Nine candidates, and the shipped code did not score highest
+
+`amax` over query tokens — the thing that looked broken — scored **0.6620**. Mean over content
+tokens scored higher at 0.6766, but was not adopted. Dropping the padding tokens: 0.6552.
+Subtracting the per-patch baseline (the one that looked calmest by eye): 0.5529. Per-patch
+z-scoring: **0.3746**, well below chance, an inversion. Decomposing the page's actual MaxSim
+score by which patch wins each query token — the most principled candidate, and the one that
+most deserved to win — 0.5222.
+
+**That is the result the eye got wrong**, and the reason the metric was worth building: the
+map that looked best was measurably the worst of the serious candidates.
+
+### The control that makes the number mean something
+
+A trivial ink-density map scores **0.764** — better than the heatmap — because answer
+regions are always inky and margins never are. Taken alone that reads as "the overlay is
+worse than a content detector". But `corr(map, ink) = 0.001`, and restricted to inky
+patches ink density collapses to 0.637 while the heatmap **holds at 0.667**. Among patches
+that carry content, the query similarity is the better predictor. The signal is real and
+query-specific; it is just weak.
+
+### What worked was denoising, and it is measurable precisely because it is not cosmetic
+
+A Gaussian blur over the ~24×31 grid changes the patch *ranking*, so unlike every display
+tweak the AUC can judge it: **0.6620 → 0.7559** at σ=1.5, 36 of 44 items improving,
+sign-test p = 1.3e-05, on a plateau over σ 1.25–1.75.
+
+Blurring spreads mass into contiguous regions and the labels *are* contiguous, so the gain
+could have been mechanical. The control: the identical blur applied to a **random** map
+stays at chance (0.477). It is signal.
+
+Shipped as `HEATMAP_SMOOTH_SIGMA` (default 1.5, `0` restores the raw grid), applied in
+`_grid_from_maps` before normalization. The documented numbers were then re-derived through
+`src.heatmap._smooth` itself rather than the sweep's copy of it — they agree to 7.5e-08,
+and the AUC reproduces 0.6620 → 0.7559 exactly.
+
+### Display normalization cannot help, and that is not an opinion
+
+Rank, rank+gamma and percentile clipping were rendered over the real page and rejected by
+eye. They *cannot* help: the noise is in the ranking, and a monotone transform cannot
+reorder it. Percentile clipping is actively worse — it promotes isolated margin spikes into
+solid red.
+
+### Then the GIF
+
+Captured against the real pipeline at `attention.pdf` p8 — the same page as `demo.gif` and
+the annotated/crop pair, so a reader meets a page they recognise. Playwright drives it
+rather than the claude-in-chrome extension, which returns screenshots at varying
+device-pixel scales within one session and pads mismatched frames with **white**; a fixed
+`newPage({viewport})` and a clip rect computed **once** make every frame identical in size
+by construction. 720×912, 9 frames, 800 KB.
+
+Two capture findings worth keeping: **dithering is what blows up a GIF of a smooth
+gradient** — Floyd-Steinberg at 64 colours came out 1354 KB against 800 KB undithered at
+128, because error-diffusion noise is uncorrelated between neighbouring pixels and LZW
+cannot pack it. And the crossfade frames are **synthesized** by alpha-blending the two real
+states; the UI's own 0.4 s `box-in` fade cannot be sampled honestly when each screenshot
+lands at 50–100 ms with jitter.
+
+### What is left
+
+- **AUC 0.756 is real, not strong.** The overlay still warms blank margins. The README
+  caption says "these patches ranked highest for your query", not "the answer is here" —
+  the crop is the claim about where the answer was read.
+- **The 44 labels are `answer_contains` lines, not evidence regions.** A question's evidence
+  is usually wider than the line stating its answer, so the absolute AUC is pessimistic. It
+  is the same label for every candidate, so the *comparison* is unaffected.
+- **The probe is scratchpad, not a script.** Nothing regression-guards the 0.756: it needs
+  the model, and CI has neither GPU nor checkpoint. Committing the cached tensors (44 ×
+  ~40 KB) would make it a real offline gate.
+- **Only two of the three demo documents can be labelled this way** — `sales_report.pdf` is
+  pixel-only by design, so the chart page that started this whole investigation is the one
+  page the instrument cannot score.

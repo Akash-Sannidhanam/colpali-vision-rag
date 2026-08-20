@@ -138,6 +138,84 @@ as a knob, not a default.
 
 ---
 
+## Interpretability
+
+### The heatmap overlay is real but weak — and nine of ten "fixes" made it worse ✓ ADOPTED (smoothing)
+
+**Question:** the viewer's **"why this page?"** toggle overlays ColQwen2's query→patch MaxSim
+grid. It looked like noise — on `sales_report.pdf` p1 the *bars* were the coldest region on the
+page and the blank background was hot. Was the overlay wrong, or is the signal just weak?
+
+**The instrument had to be built first, and it is free.** `answer_contains` from
+`eval/dataset.jsonl` locates the answer's own line on the gold page via `pdftohtml -xml` — the
+text layer the retriever deliberately never reads, exactly as `scripts/find_in_pdfs.py` already
+uses it for labeling. That gives **44 answer regions over 19 pages** with no API key and no
+judgement calls. The score is the patch grid's **ROC AUC for the answer region** (positive = a
+patch overlapping it). It is deliberately threshold-free and **invariant to any monotone
+renormalization**, so it measures the *reduction* and cannot be gamed by changing the colour ramp.
+
+Two forward passes per page are cached as the full `(query_tokens, n_x, n_y)` tensor rather than a
+reduced grid, so every candidate below was scored **offline for free** — the same trick
+`probe_k50_retrieval.json` plays for slate policy.
+
+**Result: the shipped reduction is not the best by raw AUC, but the better-scoring candidate was rejected.**
+
+| reduction | mean AUC | AUC excl. blank patches |
+|---|---|---|
+| mean over content tokens | 0.6766 | 0.6789 |
+| **`amax` over query tokens (shipped)** | **0.6620** | **0.6669** |
+| `amax` over content tokens only | 0.6552 | 0.6597 |
+| per-token z-score, then `amax` | 0.6115 | 0.6169 |
+| minus the per-patch baseline | 0.5529 | 0.5571 |
+| MaxSim decomposition (score of the tokens a patch wins) | 0.5222 | 0.5238 |
+| per-patch z-score | 0.3746 | 0.3770 |
+| *control:* ink density | 0.7642 | 0.6372 |
+
+**The obvious diagnosis was wrong.** ColQwen2 appends 10 `<|endoftext|>` expansion tokens to every
+query, and they win **44.9%** of all patches on the BLEU page — a textbook "the padding tokens are
+matching the background" story. Dropping them changes the map *almost not at all* (0.662 → 0.655),
+because the bias is per-**patch**, not per-token. Removing that baseline is worse still, and
+per-patch z-scoring is far **below chance** — it inverts the signal. The most principled candidate,
+decomposing the page's actual MaxSim score by which patch wins each query token, is barely above a
+coin flip.
+
+**The ink control is what makes the number interpretable.** A trivial "where is the ink" map scores
+0.764 — *better* than the heatmap — because answer regions are always inky and margins never are.
+But `corr(map, ink) = 0.001`: the heatmap is not an ink detector. Restrict to inky patches and ink
+density collapses to 0.637 while the heatmap holds **0.667**. Among the patches that carry content,
+the query similarity is the better predictor. The signal is genuine and query-specific.
+
+**What did work was denoising, and only because it is not a renormalization.** A Gaussian blur over
+the patch grid moves the patch *ranking*, so unlike a colour-ramp change the AUC can judge it:
+
+| σ | mean AUC | items improved | sign-test p | *blurred random map* |
+|---|---|---|---|---|
+| 0 (raw) | 0.6620 | — | — | 0.477 |
+| 1.0 | 0.7456 | 36/44 | 1.3e-05 | 0.469 |
+| 1.25 | 0.7526 | 36/44 | 1.3e-05 | 0.475 |
+| **1.5** | **0.7559** | **36/44** | **1.3e-05** | 0.477 |
+| 1.75 | 0.7552 | 34/44 | 1.9e-04 | 0.476 |
+| 2.0 | 0.7521 | 33/44 | 6.3e-04 | 0.473 |
+
+The last column is the confound control, and it is the reason to believe the rest: blurring spreads
+mass into contiguous regions, and the labels *are* contiguous, so the gain could have been
+mechanical. Applying the identical blur to a **random** map leaves it at chance (0.477). The
+optimum is a plateau over σ 1.25–1.75, not a knife edge. Adopted at `HEATMAP_SMOOTH_SIGMA=1.5`;
+`0` restores the raw grid.
+
+**What this does not fix.** AUC 0.756 is a real signal, not a strong one, and the overlay still
+warms blank margins. The visual improvement is large — coherent regions instead of speckle — but
+the honest reading of the feature is "these patches ranked highest for your query", not "the answer
+is here". That is why the README caption says so. The crop, not the heatmap, is the claim about
+where the answer was read.
+
+**Also ruled out, cheaply:** the grid is not transposed (24×31 for a portrait page, aspect 0.774
+against the page's 0.708), and **no display normalization helps** — rank, rank+gamma and percentile
+clipping were all rendered and rejected by eye. They cannot help by construction: the noise is in
+the ranking, and a monotone transform cannot reorder it. Percentile clipping actively makes it
+worse by promoting isolated margin spikes into solid red.
+
+
 ## Ingest
 
 ### Visual-token budget ✗ REJECTED
@@ -491,6 +569,14 @@ forever with no message and no retry.
 
 ## What's still open
 
+- **The "why this page?" overlay is a weak signal, honestly labelled.** ROC AUC 0.756 for the
+  answer region after smoothing (0.662 before), against 0.5 for chance. Nine alternative
+  reductions all scored worse. It still warms blank margins, and nothing measured so far fixes
+  that — the remaining ideas are a different granularity (the patch grid is only ~24×31) or a
+  different checkpoint, both of which are re-embeds rather than knobs.
+- **Nothing regression-guards that 0.756.** The probe needs the model, and CI has neither GPU nor
+  checkpoint. Committing the 44 cached similarity tensors (~40 KB each) would turn the sweep into
+  a real offline gate — the same move `probe_k50_retrieval.json` made for slate policy.
 - ~~**`gold_coverage_avg` trails its ceiling — rerank is losing a row it was offered.**~~
   **Disproved.** It was one row, and that row was mislabelled: `donut.pdf` p8 states both halves of
   the question, so the reranker was right to spend three slots on one document. Auditing all 20

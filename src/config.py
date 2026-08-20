@@ -189,6 +189,14 @@ DECOMPOSE_ORIGINAL_WEIGHT = float(os.getenv("DECOMPOSE_ORIGINAL_WEIGHT", "0.0"))
 # candidates, then rescores them against the full-precision vectors on disk. Higher
 # recovers recall@1 that quantization costs, at a little more disk I/O per query.
 RESCORE_OVERSAMPLING = float(os.getenv("RESCORE_OVERSAMPLING", "2.0"))
+# Gaussian blur applied to the "why this page?" patch grid before it is normalized for
+# display (src/heatmap.py). Not cosmetic and not a guess: measured against 44 answer
+# regions located in the PDF text layer, smoothing lifts the grid's ROC AUC for the
+# answer region from 0.662 (unsmoothed) to 0.756, 36 of 44 items improving, sign-test
+# p = 1.3e-05, with a flat optimum over sigma 1.25-1.75. The gain is signal, not a
+# contiguity artifact of blurring - the same blur applied to a random map stays at
+# chance (0.477). See docs/EXPERIMENTS.md. 0 disables it and restores the raw grid.
+HEATMAP_SMOOTH_SIGMA = float(os.getenv("HEATMAP_SMOOTH_SIGMA", "1.5"))
 UPSERT_BATCH_SIZE = 8    # pages per Qdrant upsert flush; small enough that a batch's
                          # multivector payload (~1.4 MB/page) stays well under Qdrant's
                          # REST size limit, even on the default 32 MB server config
@@ -302,6 +310,13 @@ def validate() -> None:
         raise RuntimeError(
             f"CANDIDATE_FANOUT must be a finite number, got {CANDIDATE_FANOUT!r}. "
             "It is a multiplier on RETRIEVE_K (2.0 = fetch twice the slate size)."
+        )
+    # Same for HEATMAP_SMOOTH_SIGMA: gaussian_filter() would fail on NaN/inf, taking
+    # out every /heatmap call. Zero is a valid value (disables smoothing).
+    if not math.isfinite(HEATMAP_SMOOTH_SIGMA):
+        raise RuntimeError(
+            f"HEATMAP_SMOOTH_SIGMA must be a finite number, got {HEATMAP_SMOOTH_SIGMA!r}. "
+            "It is the Gaussian blur sigma for the heatmap overlay; 0 disables smoothing."
         )
     # `pdf_pages_7` is the shape vector_store gives a *physical* collection of the alias
     # `pdf_pages`, so an alias by that name would be swept as a stale version of another

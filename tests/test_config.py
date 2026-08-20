@@ -17,6 +17,7 @@ def _ok(monkeypatch):
     monkeypatch.setattr(config, "CANDIDATE_FANOUT", 2.0)
     monkeypatch.setattr(config, "COLLECTION_NAME", "pdf_pages")
     monkeypatch.setattr(config, "EMBED_VISUAL_TOKENS", None)
+    monkeypatch.setattr(config, "HEATMAP_SMOOTH_SIGMA", 1.5)
 
 
 def test_validate_passes_on_a_sane_config(monkeypatch):
@@ -46,6 +47,28 @@ def test_validate_rejects_a_non_finite_fanout(monkeypatch, bad):
 
     with pytest.raises(RuntimeError, match="CANDIDATE_FANOUT"):
         config.validate()
+
+
+@pytest.mark.parametrize("bad", [math.inf, -math.inf, math.nan])
+def test_validate_rejects_a_non_finite_heatmap_sigma(monkeypatch, bad):
+    """float() parses "inf"/"nan" happily, and gaussian_filter() would fail on them.
+
+    Catching it at startup turns a per-/heatmap-call error deep inside scipy into
+    one clear message naming the knob.
+    """
+    _ok(monkeypatch)
+    monkeypatch.setattr(config, "HEATMAP_SMOOTH_SIGMA", bad)
+
+    with pytest.raises(RuntimeError, match="HEATMAP_SMOOTH_SIGMA"):
+        config.validate()
+
+
+def test_validate_allows_zero_heatmap_sigma(monkeypatch):
+    """Zero is valid - it disables smoothing and restores the raw grid."""
+    _ok(monkeypatch)
+    monkeypatch.setattr(config, "HEATMAP_SMOOTH_SIGMA", 0.0)
+
+    assert config.validate() is None
 
 
 @pytest.mark.parametrize("bad", ["", "pdf_pages_7", "arm_512"])

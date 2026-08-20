@@ -83,6 +83,17 @@ question ─▶ retrieve ─▶ rerank ─▶ answer ─▶ highlight ───�
    `MAX_PAGES_PER_DOC` (5) from any single PDF. That cap exists because MaxSim on a two-part
    question is dominated by whichever document matches more query tokens and will otherwise
    take *every* slot; the extra pool depth lets a capped-out slot be backfilled instead of lost.
+
+   ![The cited page, then the MaxSim patch heatmap fading in over it as the "why this page?"
+   toggle is pressed](docs/assets/heatmap.gif)
+
+   *The retrieval step, made visible.* The **"why this page?"** toggle recomputes ColQwen2's
+   query→patch similarities for the cited page and tints the patches the query matched most
+   strongly — the retrieval-side complement to the crop, which shows where the *answer* was read.
+   Read it as a ranking, not a probability: the grid is min/max normalized per page, so the hottest
+   patch is always red however weak the match. How much it is worth is
+   [measured](docs/EXPERIMENTS.md#the-heatmap-overlay-is-real-but-weak--and-nine-of-ten-fixes-made-it-worse--adopted-smoothing):
+   ROC AUC **0.756** for the answer region, against 0.5 for a coin flip.
 2. **Rerank** (`src/reranker.py`): candidates go to Gemini as **downscaled thumbnails** — cheap
    triage — which returns the `RERANK_K` (3) pages that actually help. If the call fails or
    returns junk it falls back to the top pages by MaxSim score.
@@ -396,7 +407,7 @@ viewer) that renders each answer with its **visual citation**: the cited page wi
 drawn over it, the cropped slice, and the reranked-candidate rail, plus a "how this was answered"
 per-stage trace. A **"why this page?"** toggle on the viewer overlays the MaxSim patch heatmap (via
 `POST /heatmap`), tinting the patches the query matched — the retrieval-side complement to the
-answer crop.
+answer crop, [shown above](#how-it-works).
 
 ![The three-column workspace: corpus rail, answer with its per-stage trace, and the cited page with
 the regions it was read from cropped out beneath it](docs/assets/ui.png)
@@ -506,6 +517,7 @@ Knobs live in `src/config.py`:
 | `RENDER_DPI` | `150` | page render resolution |
 | `RETRIEVE_K` | `12` | candidate pages pulled from Qdrant per query |
 | `RERANK_K` | `3` | pages kept after the Gemini rerank, then sent to the answer step |
+| `HEATMAP_SMOOTH_SIGMA` | `1.5` | Gaussian blur over the "why this page?" patch grid. Measured, not cosmetic: it lifts the map's ROC AUC for the answer region 0.662 → 0.756 ([why](docs/EXPERIMENTS.md#the-heatmap-overlay-is-real-but-weak--and-nine-of-ten-fixes-made-it-worse--adopted-smoothing)). `0` restores the raw grid |
 | `MAX_PAGES_PER_DOC` | `5` | most slots any one PDF may hold in the candidate slate; `0` disables the cap |
 | `CANDIDATE_FANOUT` | `2.0` | how much wider than `RETRIEVE_K` to fetch so capped-out slots are backfilled |
 | `EMBED_VISUAL_TOKENS` | _(unset)_ | per-page visual-token budget; unset means the checkpoint's own (768). Changing it re-embeds — see [experiments](docs/EXPERIMENTS.md#visual-token-budget--rejected) |
