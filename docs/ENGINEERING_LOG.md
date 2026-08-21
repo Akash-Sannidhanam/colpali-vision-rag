@@ -1983,14 +1983,27 @@ is **invariant to any monotone renormalization** — so it scores the reduction 
 ramp cannot flatter it. The full `(query_tokens, n_x, n_y)` tensor is cached per item
 rather than a reduced grid, so all ten candidates were scored offline for free.
 
-### Nine candidates, and the shipped code did not score highest
+### Nine candidates, eight of them worse — and the ninth is a coin flip
 
-`amax` over query tokens — the thing that looked broken — scored **0.6620**. Mean over content
-tokens scored higher at 0.6766, but was not adopted. Dropping the padding tokens: 0.6552.
-Subtracting the per-patch baseline (the one that looked calmest by eye): 0.5529. Per-patch
-z-scoring: **0.3746**, well below chance, an inversion. Decomposing the page's actual MaxSim
-score by which patch wins each query token — the most principled candidate, and the one that
-most deserved to win — 0.5222.
+`amax` over query tokens — the thing that looked broken — scored **0.6620**. Dropping the
+padding tokens: 0.6552. Subtracting the per-patch baseline (the one that looked calmest by
+eye): 0.5529. Per-patch z-scoring: **0.3746**, well below chance, an inversion. Decomposing
+the page's actual MaxSim score by which patch wins each query token — the most principled
+candidate, and the one that most deserved to win — 0.5222.
+
+**The ninth needs its own paragraph, because the first write-up of this pass got it wrong.**
+`mean` over content tokens scores **0.6766**, above the shipped 0.6620, and the section was
+originally titled "the shipped code beat all of them" — contradicted by the table directly
+beneath it. Caught in review. Re-tested properly, the lead does not hold up: it wins on 27 of
+44 items (sign-test p = 0.087, not significant), and after the smoothing adopted below — the
+configuration that actually ships — it **loses**, 0.7541 against 0.7559 on 25/44 (p = 0.226).
+So the shipped reduction stays, but on the strength of the smoothed comparison rather than the
+raw one, and `mean`-over-content is the first thing to re-test if this is ever revisited.
+
+A cheap lesson about the instrument, not the model: a ten-row table is small enough to feel
+readable at a glance and large enough to misread, and "won" was written from memory of the
+narrative rather than from the numbers. The sign test was in the harness the whole time and
+would have said 0.087 for free.
 
 **That is the result the eye got wrong**, and the reason the metric was worth building: the
 map that looked best was measurably the worst of the serious candidates.

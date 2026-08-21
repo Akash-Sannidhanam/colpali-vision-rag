@@ -158,7 +158,8 @@ Two forward passes per page are cached as the full `(query_tokens, n_x, n_y)` te
 reduced grid, so every candidate below was scored **offline for free** — the same trick
 `probe_k50_retrieval.json` plays for slate policy.
 
-**Result: the shipped reduction is not the best by raw AUC, but the better-scoring candidate was rejected.**
+**Result: eight of nine alternatives lost outright. The ninth beat the shipped reduction on raw
+AUC — by an amount that is not significant and does not survive the smoothing below.**
 
 | reduction | mean AUC | AUC excl. blank patches |
 |---|---|---|
@@ -170,6 +171,14 @@ reduced grid, so every candidate below was scored **offline for free** — the s
 | MaxSim decomposition (score of the tokens a patch wins) | 0.5222 | 0.5238 |
 | per-patch z-score | 0.3746 | 0.3770 |
 | *control:* ink density | 0.7642 | 0.6372 |
+
+**The one candidate that out-scored the shipped reduction did not earn the swap.** `mean` over
+content tokens leads on raw AUC, 0.6766 against 0.6620 — but it wins on only **27 of 44 items**
+(sign-test p = 0.087), and the comparison that matters is *after* smoothing, since smoothing is
+what ships: there the shipped `amax` leads **0.7559 to 0.7541**, on 25/44 (p = 0.226). The gap is
+noise that reverses sign under the change adopted below. Kept on that basis, not on seniority —
+`mean` over content tokens is the one alternative worth re-testing if the reduction is ever
+revisited.
 
 **The obvious diagnosis was wrong.** ColQwen2 appends 10 `<|endoftext|>` expansion tokens to every
 query, and they win **44.9%** of all patches on the BLEU page — a textbook "the padding tokens are

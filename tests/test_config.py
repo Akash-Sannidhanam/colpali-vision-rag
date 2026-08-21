@@ -51,10 +51,13 @@ def test_validate_rejects_a_non_finite_fanout(monkeypatch, bad):
 
 @pytest.mark.parametrize("bad", [math.inf, -math.inf, math.nan])
 def test_validate_rejects_a_non_finite_heatmap_sigma(monkeypatch, bad):
-    """float() parses "inf"/"nan" happily, and gaussian_filter() would fail on them.
+    """float() parses "inf"/"nan" happily, and heatmap._smooth does not survive them.
 
-    Catching it at startup turns a per-/heatmap-call error deep inside scipy into
-    one clear message naming the knob.
+    There is no scipy here - the blur is a hand-rolled separable conv in torch - and it
+    sizes its kernel with round(3 * sigma): NaN raises ValueError, +inf raises
+    OverflowError, both on every /heatmap call and neither naming the knob. NaN reaches
+    that line precisely because the `sigma <= 0` early-out compares False against NaN.
+    Catching it at startup turns it into one clear message instead.
     """
     _ok(monkeypatch)
     monkeypatch.setattr(config, "HEATMAP_SMOOTH_SIGMA", bad)

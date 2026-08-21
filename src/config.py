@@ -311,8 +311,11 @@ def validate() -> None:
             f"CANDIDATE_FANOUT must be a finite number, got {CANDIDATE_FANOUT!r}. "
             "It is a multiplier on RETRIEVE_K (2.0 = fetch twice the slate size)."
         )
-    # Same for HEATMAP_SMOOTH_SIGMA: gaussian_filter() would fail on NaN/inf, taking
-    # out every /heatmap call. Zero is a valid value (disables smoothing).
+    # Same for HEATMAP_SMOOTH_SIGMA: heatmap._smooth sizes its kernel with
+    # round(3 * sigma), which raises ValueError on NaN and OverflowError on +inf - on
+    # every /heatmap call, with a message that never names the knob. (-inf is caught by
+    # the `sigma <= 0` guard and harmlessly disables smoothing; NaN is not, because every
+    # comparison with NaN is False.) Zero is a valid value and disables smoothing.
     if not math.isfinite(HEATMAP_SMOOTH_SIGMA):
         raise RuntimeError(
             f"HEATMAP_SMOOTH_SIGMA must be a finite number, got {HEATMAP_SMOOTH_SIGMA!r}. "
