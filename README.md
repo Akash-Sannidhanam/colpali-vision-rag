@@ -248,7 +248,7 @@ rather than as a regression.
 
 | family | question it answers |
 | --- | --- |
-| **recall@k** | is the gold page in Qdrant's top-`RETRIEVE_K` pre-rerank candidates? |
+| **recall@k** | is the gold page in Qdrant's top-`k` pre-rerank candidates? |
 | **rerank recall** | did that gold page then survive the rerank step into the top-`RERANK_K` the answer step sees? |
 | **citation accuracy** | did the answer's `source_page` resolve to the gold page? |
 | **answer quality** | substring match, plus the optional LLM judge |
@@ -515,7 +515,7 @@ Knobs live in `src/config.py`:
 | `RERANK_K` | `3` | pages kept after the Gemini rerank, then sent to the answer step |
 | `HEATMAP_SMOOTH_SIGMA` | `1.5` | Gaussian blur over the "why this page?" patch grid. Measured, not cosmetic: it lifts the map's ROC AUC for the answer region 0.662 → 0.756 ([why](docs/EXPERIMENTS.md#the-heatmap-overlay-is-real-but-weak--and-nine-of-ten-fixes-made-it-worse--adopted-smoothing)). `0` restores the raw grid |
 | `MAX_PAGES_PER_DOC` | `5` | most slots any one PDF may hold in the candidate slate; `0` disables the cap |
-| `RESCORE_OVERSAMPLING` | `2.0` | how many times `RETRIEVE_K` the fast binary-quantized pass pulls before rescoring against full-precision vectors; higher recovers the recall@1 quantization costs, at more disk I/O |
+| `RESCORE_OVERSAMPLING` | `2.0` | multiplier Qdrant applies to the limit it is asked for, so the fast binary-quantized pass pulls that many extra candidates before rescoring them against full-precision vectors. That limit is the *fetch* size, already widened by `CANDIDATE_FANOUT` when the per-document cap is on — so at the defaults the pass sees 12 × 2.0 × 2.0 = 48. Higher recovers the recall quantization costs, at more disk I/O |
 | `RERANK_ADAPTIVE` | `false` | let rerank keep a *variable* 1..`RERANK_K` pages — only those it judged relevant — instead of always topping up to `RERANK_K`. Off until an eval diff proves it wins |
 | `CANDIDATE_FANOUT` | `2.0` | how much wider than `RETRIEVE_K` to fetch so capped-out slots are backfilled |
 | `EMBED_VISUAL_TOKENS` | _(unset)_ | per-page visual-token budget; unset means the checkpoint's own (768). Changing it re-embeds — see [experiments](docs/EXPERIMENTS.md#visual-token-budget--rejected) |
