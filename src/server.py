@@ -45,7 +45,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from src.answerer import Confidence
+from src.answerer import Confidence, cited_hit
 from src.auth import auth_enabled, require_api_key
 from src.config import (
     CORS_ALLOW_ORIGINS,
@@ -406,7 +406,7 @@ async def _build_query_response(request: Request, result: dict, inline: bool) ->
     citation = result.get("citation") or {}
     source_page = citation.get("source_page", 0)
     found = bool(citation.get("found"))
-    cited = retrieved[source_page - 1] if 1 <= source_page <= len(retrieved) else None
+    cited = cited_hit(retrieved, source_page)
     # Enforce not-found invariant: "low" confidence when not found, "medium" fallback when found.
     confidence: Confidence = "low" if not found else _coerce_confidence(citation.get("confidence"))
 
@@ -416,18 +416,18 @@ async def _build_query_response(request: Request, result: dict, inline: bool) ->
     region_crops = await asyncio.gather(*[
         _image_ref(request, r.get("crop_path"), inline) for r in cited_regions
     ])
-    regions_out = [
-        RegionOut(
-            source_page=r["source_page"],
-            box=r["box"],
-            pdf=retrieved[r["source_page"] - 1]["pdf"]
-            if 1 <= r["source_page"] <= len(retrieved) else None,
-            page_number=retrieved[r["source_page"] - 1]["page_number"]
-            if 1 <= r["source_page"] <= len(retrieved) else None,
-            crop=crop_ref,
+    regions_out = []
+    for r, crop_ref in zip(cited_regions, region_crops):
+        hit = cited_hit(retrieved, r["source_page"])
+        regions_out.append(
+            RegionOut(
+                source_page=r["source_page"],
+                box=r["box"],
+                pdf=hit["pdf"] if hit else None,
+                page_number=hit["page_number"] if hit else None,
+                crop=crop_ref,
+            )
         )
-        for r, crop_ref in zip(cited_regions, region_crops)
-    ]
 
     citation_out = CitationOut(
         found=found,

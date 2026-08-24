@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 
 from src import request_context
+from src.answerer import cited_hit
 from src.confidence import retrieval_confidence
 from src.config import validate
 from src.graph import get_graph
@@ -58,11 +59,11 @@ def run_query(question: str) -> dict:
     # the model's own self-report rides on citation.confidence.
     citation = result.get("citation") or {}
     retrieved = result.get("retrieved", [])
-    source_page = citation.get("source_page", 0)
-    # Only derive cited when the citation is marked as found and source_page is valid
+    # Only derive cited when the citation is marked as found; cited_hit does the
+    # 1-based bounds check.
     cited = (
-        retrieved[source_page - 1]
-        if citation.get("found") and 1 <= source_page <= len(retrieved)
+        cited_hit(retrieved, citation.get("source_page", 0))
+        if citation.get("found")
         else None
     )
 
@@ -94,9 +95,9 @@ def run(question: str) -> None:
     print("\n" + "=" * 60 + "\nSOURCE REGION\n" + "=" * 60)
     crop_path = result.get("crop_path")
     if crop_path:
-        citation = result["citation"]
-        hit = result["retrieved"][citation["source_page"] - 1]
-        print(f"From {hit['pdf']} - page {hit['page_number']}")
+        hit = cited_hit(result["retrieved"], result["citation"]["source_page"])
+        if hit:
+            print(f"From {hit['pdf']} - page {hit['page_number']}")
         print(f"crop:      {crop_path}")
         print(f"annotated: {result.get('annotated_path')}")
         print("=" * 60)

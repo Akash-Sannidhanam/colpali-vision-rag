@@ -1,13 +1,14 @@
 import type { DocumentPage, PageHit, Region } from './types'
 
+/** CSS percentages placing one citation box inside its page frame. */
+export type Overlay = { top: string; left: string; width: string; height: string }
+
 /**
  * Convert a Gemini box `[ymin, xmin, ymax, xmax]` on a 0-1000 scale into CSS
  * percentages for an absolutely-positioned overlay drawn over the page image.
  * Normalizes swapped min/max; returns null for a missing/malformed box.
  */
-export function boxToOverlay(
-  box: number[] | null | undefined,
-): { top: string; left: string; width: string; height: string } | null {
+export function boxToOverlay(box: number[] | null | undefined): Overlay | null {
   if (!box || box.length !== 4) return null
   const [ymin, xmin, ymax, xmax] = box
   const top = Math.min(ymin, ymax) / 10
@@ -43,6 +44,20 @@ export function regionsOnDocumentPage(
   pageNumber: number,
 ): Region[] {
   return regions.filter((r) => r.pdf === pdf && r.page_number === pageNumber)
+}
+
+/**
+ * The drawable overlays for a set of cited regions, in order, dropping any whose box
+ * was missing or malformed.
+ *
+ * The viewer and the full-screen modal both need exactly this, and both used to
+ * open-code it with the same `.filter((o): o is NonNullable<typeof o> => o !== null)`
+ * predicate. *Which* regions to pass stays the caller's job: `regionsOnPage` and
+ * `regionsOnDocumentPage` key on different things, and that distinction is the one
+ * documented above - collapsing it into here is how the two would get confused.
+ */
+export function overlaysFor(regions: Region[]): Overlay[] {
+  return regions.map((r) => boxToOverlay(r.box)).filter((o): o is Overlay => o !== null)
 }
 
 /**

@@ -2,9 +2,9 @@ import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import { UnauthorizedError, getDocumentFile, getDocumentPages, imageSrc, saveBlob } from '../api'
 import {
-  boxToOverlay,
   clampZoom,
   fitScale,
+  overlaysFor,
   pageFrameStyle,
   pageIndex,
   regionsOnDocumentPage,
@@ -12,6 +12,7 @@ import {
 } from '../lib'
 import { closePdf, loadPdf } from '../pdf'
 import type { DocumentPagesResponse, Region } from '../types'
+import { useNaturalSize } from '../useNaturalSize'
 import { PdfPageView } from './PdfPageView'
 
 // Everything Tab can land on inside the dialog; used only to wrap at the two edges.
@@ -60,12 +61,8 @@ export function DocumentModal({
   const [idx, setIdx] = useState(0)
   const [downloading, setDownloading] = useState(false)
   const [dlError, setDlError] = useState<string | null>(null)
-  // The page's natural size, which becomes the frame's aspect-ratio on the PNG path.
-  // Without a definite ratio the frame is content-sized, `max-height: 100%` on the image
-  // resolves to nothing, and the page renders at full height inside a clipped box -
-  // cropping most of it *and* misplacing the citation overlay, which is drawn in
-  // percentages of that box.
-  const [natural, setNatural] = useState<{ w: number; h: number } | null>(null)
+  // Gives .doc-page its aspect ratio on the PNG path; see the hook for why that matters.
+  const { natural, imgProps } = useNaturalSize()
 
   // --- the PDF ---
   // The Blob is held, not just the parsed document: `getDocument({data})` detaches the
@@ -401,20 +398,7 @@ export function DocumentModal({
     }
   }
 
-  // Deliberately never reset between pages: the pages of one PDF share a size, so keeping
-  // the last ratio avoids a layout jump on every turn, and onLoad corrects it if one
-  // differs. A ref callback as well as onLoad because onLoad does not fire for an image
-  // that was already complete at mount - which is the common case here, since the
-  // neighbours are preloaded.
-  const measure = useCallback((el: HTMLImageElement | null) => {
-    if (el?.complete && el.naturalWidth) setNatural({ w: el.naturalWidth, h: el.naturalHeight })
-  }, [])
-
-  const overlays = page
-    ? regionsOnDocumentPage(regions, pdf, page.page_number)
-        .map((r) => boxToOverlay(r.box))
-        .filter((o): o is NonNullable<typeof o> => o !== null)
-    : []
+  const overlays = page ? overlaysFor(regionsOnDocumentPage(regions, pdf, page.page_number)) : []
   // Same rule as the viewer: a single box gets the spotlight scrim, several can't compose it.
   const spotlight = overlays.length === 1
   const boxes = overlays.map((o, i) => (
@@ -533,17 +517,7 @@ export function DocumentModal({
                 {/* No key on the <img>: a stable element identity lets the browser hold the
                     previous page painted until the new one decodes, which is a smoother swap
                     than any skeleton — a skeleton would blank the frame on every turn. */}
-                <img
-                  ref={measure}
-                  src={src}
-                  alt={`${pdf} page ${page.page_number}`}
-                  onLoad={(e) =>
-                    setNatural({
-                      w: e.currentTarget.naturalWidth,
-                      h: e.currentTarget.naturalHeight,
-                    })
-                  }
-                />
+                <img {...imgProps} src={src} alt={`${pdf} page ${page.page_number}`} />
                 {boxes}
               </div>
             ) : (

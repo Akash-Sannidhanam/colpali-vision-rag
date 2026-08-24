@@ -22,21 +22,16 @@ confusable distractor papers). Full harness and methodology in [Evaluation](#eva
 | LLM-judge accuracy | **0.932** (avg score 4.79/5) | abstention accuracy | 1.000 (10/10) |
 | gold-doc coverage | 0.925 *(ceiling: 0.925)* | avg latency | 15.4 s |
 
-Read honestly: **`recall@12`, `rerank_recall` and `abstention_accuracy` are all at 1.0 with
-no observed headroom in the current baseline** — three of the ten CI gates are currently
-un-trippable while their configured gates remain active and can fail after regression, and
-re-de-saturating the eval is an open lead. The numbers that still have room are recall@1
-and gold-document coverage (`gold_coverage_avg`), and [all three remaining coverage misses
-are retrieval-side](docs/EXPERIMENTS.md#whats-still-open) — rerank now loses nothing it was
-offered.
+Read honestly: **`recall@12`, `rerank_recall` and `abstention_accuracy` all sit at 1.0 on
+this baseline**, so three of the ten CI gates cannot currently fail. They still guard against
+a future regression, but they are measuring nothing today, and re-de-saturating the eval is
+an open lead. The numbers that still have room are recall@1 and gold-document coverage
+(`gold_coverage_avg`), and [all three remaining coverage misses are
+retrieval-side](docs/EXPERIMENTS.md#whats-still-open) — rerank now loses nothing it was offered.
 
-And read the *jump* honestly too. Coverage moved 0.825 → 0.925 with **no change to `src/`**:
-an audit found that 6 of the 20 cross-document questions could be answered from a single
-page, so they were never measuring cross-document retrieval. They were rewritten. Over the
-14 rows the relabelling did not touch, the paired diff is *0 improved, 0 regressed*. That
-is a **corrected instrument, not a better pipeline** — and `substring_accuracy` and
-`judge_accuracy` both went *down* under the stricter labels. See the
-[label-audit pass](docs/ENGINEERING_LOG.md).
+And read the last *jump* in those numbers honestly too: coverage moved 0.825 → 0.925 with
+**no change to `src/` at all**. That was a corrected instrument, not a better pipeline — the
+full accounting is under [Baseline](#baseline).
 
 **→ [Experiments](docs/EXPERIMENTS.md)** — every retrieval and ingest decision with its
 numbers, including the rejected arms: a 2× ingest speedup turned down for what it cost
@@ -253,7 +248,8 @@ rather than as a regression.
 
 | family | question it answers |
 | --- | --- |
-| **recall@k** | is the gold page in Qdrant's top-`RETRIEVE_K` pre-rerank candidates? **Rerank retention** is measured separately by the reranking metrics (`rerank_recall` and the coverage family) which evaluate whether gold pages are kept through the rerank step into the top-`RERANK_K` results. |
+| **recall@k** | is the gold page in Qdrant's top-`RETRIEVE_K` pre-rerank candidates? |
+| **rerank recall** | did that gold page then survive the rerank step into the top-`RERANK_K` the answer step sees? |
 | **citation accuracy** | did the answer's `source_page` resolve to the gold page? |
 | **answer quality** | substring match, plus the optional LLM judge |
 | **abstention accuracy** | on the 10 questions the corpus *cannot* answer, did it decline instead of inventing one? Its complement is the hallucination rate. |
@@ -519,6 +515,8 @@ Knobs live in `src/config.py`:
 | `RERANK_K` | `3` | pages kept after the Gemini rerank, then sent to the answer step |
 | `HEATMAP_SMOOTH_SIGMA` | `1.5` | Gaussian blur over the "why this page?" patch grid. Measured, not cosmetic: it lifts the map's ROC AUC for the answer region 0.662 → 0.756 ([why](docs/EXPERIMENTS.md#the-heatmap-overlay-is-real-but-weak--and-nine-of-ten-fixes-made-it-worse--adopted-smoothing)). `0` restores the raw grid |
 | `MAX_PAGES_PER_DOC` | `5` | most slots any one PDF may hold in the candidate slate; `0` disables the cap |
+| `RESCORE_OVERSAMPLING` | `2.0` | how many times `RETRIEVE_K` the fast binary-quantized pass pulls before rescoring against full-precision vectors; higher recovers the recall@1 quantization costs, at more disk I/O |
+| `RERANK_ADAPTIVE` | `false` | let rerank keep a *variable* 1..`RERANK_K` pages — only those it judged relevant — instead of always topping up to `RERANK_K`. Off until an eval diff proves it wins |
 | `CANDIDATE_FANOUT` | `2.0` | how much wider than `RETRIEVE_K` to fetch so capped-out slots are backfilled |
 | `EMBED_VISUAL_TOKENS` | _(unset)_ | per-page visual-token budget; unset means the checkpoint's own (768). Changing it re-embeds — see [experiments](docs/EXPERIMENTS.md#visual-token-budget--rejected) |
 | `RERANK_THUMBNAIL_EDGE` | `768` | long-edge px for rerank thumbnails; set `None` to rerank on full-res pages |
@@ -559,8 +557,8 @@ the vector-store alias logic, the observability plumbing, and the FastAPI servin
 `TestClient` with the pipeline seam stubbed):
 
 ```bash
-uv run pytest                                  # backend (479 tests, ~6s)
-cd ui && npm run typecheck && npm run test     # UI: types + 53 pure-logic units
+uv run pytest                                  # backend (510 tests, ~7s)
+cd ui && npm run typecheck && npm run test     # UI: types + 56 pure-logic units
 ```
 
 The UI units cover the geometry helpers in `lib.ts` and the client in `api.ts` — the
@@ -581,7 +579,7 @@ machine — the corpus rail's four states, the SSE ingest flow, the 401 → key-
 document structure (landmarks, the live region, focus behaviour) that no screenshot shows.
 
 ```bash
-cd ui && npm run test:e2e                      # 43 tests, chromium, ~12s + a build
+cd ui && npm run test:e2e                      # 43 tests, chromium, ~15s (it builds first)
 npm run test:e2e -- --headed --debug           # watch it drive the viewer
 ```
 

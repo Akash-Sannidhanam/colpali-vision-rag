@@ -7,6 +7,7 @@ from langgraph.graph import END, START, StateGraph
 
 from src import request_context
 from src.answerer import answer as gemini_answer
+from src.answerer import cited_hit
 from src.highlight import annotate_page, crop_region
 from src.logging_setup import get_logger
 from src.reranker import rerank
@@ -73,9 +74,10 @@ def highlight_node(state: RAGState) -> dict:
     for region in regions:
         source_page = region.get("source_page", 0)
         box = region.get("box") or []
-        if not (1 <= source_page <= len(retrieved)) or len(box) != 4:
+        hit = cited_hit(retrieved, source_page)
+        if hit is None or len(box) != 4:
             continue
-        image_path = retrieved[source_page - 1]["image_path"]
+        image_path = hit["image_path"]
         crop_path = str(crop_region(image_path, box, index=len(cited_regions)))
         cited_regions.append({"source_page": source_page, "box": box, "crop_path": crop_path})
         boxes_by_page.setdefault(source_page, []).append(box)
