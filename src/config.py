@@ -185,9 +185,12 @@ MAX_SUBQUERIES = int(os.getenv("MAX_SUBQUERIES", "2"))
 # Kept as a knob rather than deleted because it is what makes the rejected equal-weight
 # design reproducible: DECOMPOSE_ORIGINAL_WEIGHT=1 restores it exactly.
 DECOMPOSE_ORIGINAL_WEIGHT = float(os.getenv("DECOMPOSE_ORIGINAL_WEIGHT", "0.0"))
-# Binary quantization is lossy; the fast quantized pass pulls RETRIEVE_K * this many
-# candidates, then rescores them against the full-precision vectors on disk. Higher
-# recovers recall@1 that quantization costs, at a little more disk I/O per query.
+# Binary quantization is lossy; this is the multiplier Qdrant applies to the limit it is
+# asked for, so the fast quantized pass pulls that many candidates and then rescores them
+# against the full-precision vectors on disk. Note *which* limit: `_fetch`'s fetch_k, which
+# CANDIDATE_FANOUT has already widened when MAX_PAGES_PER_DOC is on - so at the defaults the
+# pass sees 12 * 2.0 * 2.0 = 48, not 24. Higher recovers recall@1 that quantization costs,
+# at a little more disk I/O per query.
 RESCORE_OVERSAMPLING = float(os.getenv("RESCORE_OVERSAMPLING", "2.0"))
 # Gaussian blur applied to the "why this page?" patch grid before it is normalized for
 # display (src/heatmap.py). Not cosmetic and not a guess: measured against 44 answer

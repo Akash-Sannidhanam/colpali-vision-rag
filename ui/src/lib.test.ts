@@ -8,6 +8,7 @@ import {
   decisivenessVsUniform,
   fitScale,
   heatmapRGBA,
+  overlaysFor,
   pageFrameStyle,
   pageIndex,
   regionsOnDocumentPage,
@@ -148,6 +149,31 @@ describe('regionsOnDocumentPage', () => {
 
   it('drops regions the backend could not attribute to a page', () => {
     expect(regionsOnDocumentPage(regions, 'a.pdf', 7).every((r) => r.pdf !== null)).toBe(true)
+  })
+})
+
+describe('overlaysFor', () => {
+  const region = (box: number[] | null): Region =>
+    ({ source_page: 1, box, pdf: 'a.pdf', page_number: 7, crop: null }) as unknown as Region
+
+  it('converts every region to an overlay, in order', () => {
+    const out = overlaysFor([region([0, 0, 500, 250]), region([500, 250, 1000, 1000])])
+    expect(out).toEqual([
+      { top: '0%', left: '0%', width: '25%', height: '50%' },
+      { top: '50%', left: '25%', width: '75%', height: '50%' },
+    ])
+  })
+
+  it('drops regions whose box is missing or malformed, keeping the rest', () => {
+    // Both callers render this straight into the DOM, so a null must never reach them -
+    // that is the whole reason the filter exists rather than a bare map.
+    const out = overlaysFor([region([0, 0, 100, 100]), region(null), region([1, 2, 3])])
+    expect(out).toHaveLength(1)
+    expect(out[0]).toEqual({ top: '0%', left: '0%', width: '10%', height: '10%' })
+  })
+
+  it('is empty for no regions', () => {
+    expect(overlaysFor([])).toEqual([])
   })
 })
 

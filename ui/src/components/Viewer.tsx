@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { heatmap as fetchHeatmap, imageSrc } from '../api'
-import { boxToOverlay, citedPage, heatmapRGBA, pageFrameStyle, regionsOnPage } from '../lib'
+import { citedPage, heatmapRGBA, overlaysFor, pageFrameStyle, regionsOnPage } from '../lib'
 import type { HeatmapResponse, QueryResponse, Region } from '../types'
+import { useNaturalSize } from '../useNaturalSize'
 import { CandidateRail } from './CandidateRail'
 
 /** (3) The document viewer: the cited page with a CSS bounding-box overlay drawn from
@@ -23,19 +24,8 @@ export function Viewer({
   const [heatError, setHeatError] = useState(false)
   const cacheRef = useRef<Map<string, HeatmapResponse>>(new Map())
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
-  // The cited page's natural size, which becomes the frame's aspect ratio. Without a
-  // definite ratio the frame is content-sized, its `max-height: 100%` clips instead of
-  // resizing, and the page is cropped - see `pageFrameStyle` and the note on .page-frame
-  // in theme.css. Never reset between answers: page images share a size, so keeping the
-  // last ratio avoids a layout jump, and the load handlers correct it if one differs.
-  const [natural, setNatural] = useState<{ w: number; h: number } | null>(null)
-
-  // A ref callback as well as onLoad, because onLoad does not fire for an image that was
-  // already complete at mount - the common case here, since the same page is usually
-  // still in cache from the candidate rail.
-  const measure = useCallback((el: HTMLImageElement | null) => {
-    if (el?.complete && el.naturalWidth) setNatural({ w: el.naturalWidth, h: el.naturalHeight })
-  }, [])
+  // Gives .page-frame its aspect ratio; see the hook for why that is load-bearing.
+  const { natural, imgProps } = useNaturalSize()
 
   // The cited page (null for not-found / out-of-range) - also gates the heatmap toggle.
   const cited = res ? citedPage(res.pages, res.citation.source_page) : null
@@ -130,9 +120,7 @@ export function Viewer({
   const citedSrc = cited ? imageSrc(cited.image) : undefined
   const regions = res.citation.found ? res.citation.regions : []
   // Overlays for the regions that land on the page currently shown (the primary page).
-  const overlays = regionsOnPage(regions, res.citation.source_page)
-    .map((r) => boxToOverlay(r.box))
-    .filter((o): o is NonNullable<typeof o> => o !== null)
+  const overlays = overlaysFor(regionsOnPage(regions, res.citation.source_page))
   // A single box normally darkens the rest of the page with a spotlight scrim; that would
   // fight the heatmap, so with the heatmap on we keep just the outline+glow (the .multi look).
   const spotlight = overlays.length === 1 && !(heatOn && heat)
@@ -185,15 +173,9 @@ export function Viewer({
         {cited && citedSrc ? (
           <div className="page-frame" style={pageFrameStyle(natural)}>
             <img
-              ref={measure}
+              {...imgProps}
               src={citedSrc}
               alt={`${cited.pdf} page ${cited.page_number}`}
-              onLoad={(e) =>
-                setNatural({
-                  w: e.currentTarget.naturalWidth,
-                  h: e.currentTarget.naturalHeight,
-                })
-              }
             />
             {heatOn && heat && <canvas ref={canvasRef} className="heat-canvas" aria-hidden />}
             {overlays.map((overlay, i) => (

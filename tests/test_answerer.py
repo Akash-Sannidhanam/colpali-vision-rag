@@ -10,6 +10,8 @@ highlight_node wiring that a bad response used to crash.
 
 from types import SimpleNamespace
 
+import pytest
+
 from src import answerer
 
 
@@ -192,3 +194,29 @@ def test_answer_node_to_highlight_node_survives_bad_response(monkeypatch):
         "cited_regions": [],
         "annotated_paths": [],
     }
+
+
+# --- cited_hit: the one bounds check behind every source_page resolution ---
+
+_SLATE = [{"pdf": "a.pdf", "page_number": 7}, {"pdf": "b.pdf", "page_number": 2}]
+
+
+@pytest.mark.parametrize("source_page", [0, -1, 3, 99])
+def test_cited_hit_returns_none_outside_the_slate(source_page):
+    """Out of range is None, never an IndexError and never a wrap-around.
+
+    0 is the not-found sentinel `_with_primary` writes, and -1 is the one that used to
+    silently resolve to the *last* page rather than to nothing.
+    """
+    assert answerer.cited_hit(_SLATE, source_page) is None
+
+
+def test_cited_hit_resolves_1_based_pages():
+    """source_page is 1-based, so page 1 is index 0 and page n is the last entry."""
+    assert answerer.cited_hit(_SLATE, 1) is _SLATE[0]
+    assert answerer.cited_hit(_SLATE, len(_SLATE)) is _SLATE[-1]
+
+
+def test_cited_hit_on_an_empty_slate_is_none():
+    """A degraded rerank can leave nothing retrieved; every caller must survive it."""
+    assert answerer.cited_hit([], 1) is None

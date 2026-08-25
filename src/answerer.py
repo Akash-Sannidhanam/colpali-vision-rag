@@ -42,6 +42,24 @@ class Citation(BaseModel):
     confidence: Confidence = "medium"
 
 
+def cited_hit(retrieved: list[dict], source_page: int) -> dict | None:
+    """The retrieved page a 1-based `source_page` refers to, or None when out of range.
+
+    `source_page` indexes the *reranked slate* (`RAGState.retrieved`), not the PDF, so
+    resolving it is `retrieved[source_page - 1]` behind a bounds check - and the bounds
+    check is the point. It was open-coded at six sites across main/server/graph, one of
+    which (the CLI's own print path) had no check at all, while
+    `server._build_query_response` already carried a note about resolving this once so
+    nothing re-implements "the indexing that bit the CLI". One function, one guard.
+
+    The direct analogue of `citedPage` in ui/src/lib.ts, which the UI extracted for the
+    same reason.
+    """
+    if not 1 <= source_page <= len(retrieved):
+        return None
+    return retrieved[source_page - 1]
+
+
 _PROMPT = (
     """You are given one or more pages from a document as images, each labeled
     "PAGE <n>". Answer the question using only what is visible in these pages -
