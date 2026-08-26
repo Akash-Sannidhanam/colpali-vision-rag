@@ -87,7 +87,7 @@ question ─▶ retrieve ─▶ rerank ─▶ answer ─▶ highlight ───�
    strongly. It is the retrieval-side complement to the crop, which shows where the answer was
    read. It ranks rather than scores: the grid is min/max normalized per page, so the hottest
    patch is always red however weak the match. How much it is worth is
-   [measured](docs/EXPERIMENTS.md#the-heatmap-overlay-is-real-but-weak--and-nine-of-ten-fixes-made-it-worse--adopted-smoothing):
+   [measured](docs/EXPERIMENTS.md#the-heatmap-overlay-is-real-but-weak-and-nine-of-ten-fixes-made-it-worse--adopted-smoothing):
    ROC AUC 0.756 for the answer region, against 0.5 for a coin flip.
 2. **Rerank** (`src/reranker.py`): candidates go to Gemini as downscaled thumbnails (cheap
    triage), which returns the `RERANK_K` (3) pages that actually help. If the call fails or
@@ -318,7 +318,7 @@ to exist, and the pinned baseline has exactly one, so it was being reported to f
 single row, with earlier baselines showing the same quantity with the opposite sign. It is now
 `null` until the eval has ≥5, and the signal is measured instead against `gold_rank`, where the
 negative class is recall@1 misses (24 of them). See
-[confidence calibration](docs/EXPERIMENTS.md#confidence-calibration--the-pass-that-overturned-its-own-premise).
+[confidence calibration](docs/EXPERIMENTS.md#confidence-calibration-the-pass-that-overturned-its-own-premise).
 
 ## Serving (HTTP API + UI)
 
@@ -513,7 +513,7 @@ Knobs live in `src/config.py`:
 | `RENDER_DPI` | `150` | page render resolution |
 | `RETRIEVE_K` | `12` | candidate pages pulled from Qdrant per query |
 | `RERANK_K` | `3` | pages kept after the Gemini rerank, then sent to the answer step |
-| `HEATMAP_SMOOTH_SIGMA` | `1.5` | Gaussian blur over the "why this page?" patch grid. Measured, not cosmetic: it lifts the map's ROC AUC for the answer region 0.662 → 0.756 ([why](docs/EXPERIMENTS.md#the-heatmap-overlay-is-real-but-weak--and-nine-of-ten-fixes-made-it-worse--adopted-smoothing)). `0` restores the raw grid |
+| `HEATMAP_SMOOTH_SIGMA` | `1.5` | Gaussian blur over the "why this page?" patch grid. Measured, not cosmetic: it lifts the map's ROC AUC for the answer region 0.662 → 0.756 ([why](docs/EXPERIMENTS.md#the-heatmap-overlay-is-real-but-weak-and-nine-of-ten-fixes-made-it-worse--adopted-smoothing)). `0` restores the raw grid |
 | `MAX_PAGES_PER_DOC` | `5` | most slots any one PDF may hold in the candidate slate; `0` disables the cap |
 | `RESCORE_OVERSAMPLING` | `2.0` | multiplier Qdrant applies to the limit it is asked for, so the fast binary-quantized pass pulls that many extra candidates before rescoring them against full-precision vectors. That limit is the fetch size, already widened by `CANDIDATE_FANOUT` when the per-document cap is on, so at the defaults the pass sees 12 × 2.0 × 2.0 = 48. Higher recovers the recall quantization costs, at more disk I/O |
 | `RERANK_ADAPTIVE` | `false` | let rerank keep a variable 1..`RERANK_K` pages (only those it judged relevant) instead of always topping up to `RERANK_K`. Off until an eval diff proves it wins |
