@@ -3,9 +3,10 @@
 import subprocess
 import sys
 import time
+import uuid
 from pathlib import Path
 
-from src import request_context
+from src import request_context, tracing
 from src.answerer import cited_hit
 from src.confidence import retrieval_confidence
 from src.config import validate
@@ -24,7 +25,7 @@ def _open_file(path: str) -> None:
     except OSError:
         pass
 
-def run_query(question: str) -> dict:
+def run_query(question: str, *, source: str = "cli", trace_metadata: dict | None = None) -> dict:
     """Run one question through the graph and return the structured result dict.
 
     Pure: no printing, no file-opening, no client teardown - the reusable seam
@@ -35,8 +36,13 @@ def run_query(question: str) -> dict:
     `"query complete"` summary line, and folds a `meta` block - `request_id`, total
     `latency_ms`, aggregated token/cost totals, and the per-stage breakdown - into the
     returned dict, so any caller (HTTP response, eval report) gets the observability
-    surface without re-reading the torn-down request scope. The id is also passed to
-    LangGraph's invoke config so opt-in LangSmith traces are searchable by it.
+    surface without re-reading the torn-down request scope.
+
+    The id is also the LangSmith trace id when tracing is on: it goes into the invoke
+    config as `run_id`, so `meta.request_id`, the log lines and the trace all name the
+    same query, and `meta.trace_url` links to it. `source` ("cli" / "server" / "eval")
+    becomes a tag and `trace_metadata` (an eval row id, say) joins the config snapshot
+    in the run's metadata; neither touches the result.
     """
     scope = request_context.begin_request()
     request_id = request_context.current_request_id()
@@ -44,7 +50,16 @@ def run_query(question: str) -> dict:
     try:
         result = get_graph().invoke(
             {"question": question},
-            config={"run_name": "rag_query", "metadata": {"request_id": request_id}},
+            config={
+                "run_name": "rag_query",
+                "run_id": uuid.UUID(request_id),
+                "tags": [source],
+                "metadata": {
+                    "request_id": request_id,
+                    **tracing.run_metadata(),
+                    **(trace_metadata or {}),
+                },
+            },
         )
     finally:
         latency_ms = round((time.perf_counter() - start) * 1000, 1)
@@ -73,6 +88,7 @@ def run_query(question: str) -> dict:
         **usage,
         "retrieval_confidence": retrieval_confidence(result.get("candidates", []), cited),
         "stages": stages,
+        "trace_url": tracing.trace_url(request_id),
     }
     return result
 
@@ -84,6 +100,12 @@ def run(question: str) -> None:
         result = run_query(question)
     finally:
         close_client()
+        if tracing.enabled():
+            # Traces upload on a background thread; a one-shot CLI would exit before it
+            # drained and drop the trace its `trace:` line links to.
+            from langchain_core.tracers.langchain import wait_for_all_tracers
+
+            wait_for_all_tracers()
 
     print("\n" + "=" * 60 + "\nRETRIEVED PAGES\n" + "=" * 60)
     for hit in result["retrieved"]:
@@ -104,6 +126,9 @@ def run(question: str) -> None:
         _open_file(crop_path)
     else:
         print("No region located for this answer.\n" + "=" * 60)
+
+    if result["meta"].get("trace_url"):
+        print(f"trace:     {result['meta']['trace_url']}")
 
 
 if __name__ == "__main__":

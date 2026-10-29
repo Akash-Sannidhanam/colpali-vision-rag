@@ -170,7 +170,7 @@ def _stub_run_query(monkeypatch, *, found: bool, confidence: str = "high"):
     reranked = [{"pdf": "a.pdf", "page_number": 3, "image_path": "p3.png", "score": 0.9}]
     citation = {"answer": "180", "found": found, "confidence": confidence,
                 "source_page": 1 if found else 0, "box": []}
-    monkeypatch.setattr("src.main.run_query", lambda q: {
+    monkeypatch.setattr("src.main.run_query", lambda q, **_: {
         "answer": "180", "citation": citation, "retrieved": reranked, "candidates": reranked,
         "meta": {"latency_ms": 12.0, "retrieval_confidence": 0.81},
     })
@@ -223,7 +223,7 @@ _CROSS_ROW = {"id": "x1", "question": "q", "answer_contains": None,
 
 def _stub_cross_doc_run_query(monkeypatch, candidates, reranked):
     """Stub run_query with an explicit candidate/reranked split - the attribution input."""
-    monkeypatch.setattr("src.main.run_query", lambda q: {
+    monkeypatch.setattr("src.main.run_query", lambda q, **_: {
         "answer": "180", "retrieved": reranked, "candidates": candidates,
         "citation": {"answer": "180", "found": True, "confidence": "high",
                      "source_page": 1, "box": []},

@@ -157,6 +157,8 @@ class QueryMeta(BaseModel):
     # candidate MaxSim scores). None when nothing was cited. See src/confidence.py.
     retrieval_confidence: float | None = None
     stages: list[StageMeta] = []
+    # LangSmith link for this query's trace; None unless tracing is on. See src/tracing.py.
+    trace_url: str | None = None
 
 
 class QueryResponse(BaseModel):
@@ -664,7 +666,7 @@ async def query(req: QueryRequest, request: Request, inline: bool = Query(defaul
     `GPU_WAIT_TIMEOUT_S` - though a concurrent ingest yields between page batches, so the
     normal wait behind one is a page, not a document.
     """
-    result = await _gpu.run_exclusive(run_query, req.question)
+    result = await _gpu.run_exclusive(partial(run_query, source="server"), req.question)
     return await _build_query_response(request, result, inline)
 
 

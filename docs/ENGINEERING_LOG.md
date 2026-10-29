@@ -2069,3 +2069,61 @@ lands at 50–100 ms with jitter.
 - **Only two of the three demo documents can be labelled this way:** `sales_report.pdf` is
   pixel-only by design, so the chart page that started this whole investigation is the one
   page the instrument cannot score.
+
+## LangSmith tracing pass (follow-on) ✅ DONE
+
+Work on branch **`feat/langsmith-tracing`**. The Phase 2 pass had already made tracing
+opt-in: with `LANGSMITH_TRACING=true` and a key, LangGraph traced the four graph nodes,
+and `run_query` passed the `request_id` as metadata. That left each node a black box.
+`google-genai` is not a LangChain model, so nothing traced the two Gemini calls, and the
+candidate slate never appeared in a trace at all.
+
+### What a trace holds now
+
+- `rag_query` is the root run, and its id is the `request_id`. The id was already a
+  uuid4, so it goes into the invoke config as `run_id`, and the logs, `meta.request_id`
+  and the trace now share one id instead of being linked through metadata.
+- `retrieval` is a `retriever` run under the `retrieve` node. Its output uses LangSmith's
+  document shape (`attention.pdf p.8` plus score), and its metadata records the
+  decomposition split.
+- `gemini.rerank` and `gemini.answer` are `llm` runs under their nodes. Each records the
+  prompt, the parsed output, token usage under LangSmith's field names, `ls_provider` /
+  `ls_model_name` so LangSmith can price the call, and the retry `attempts`.
+- Every root run is tagged `cli`, `server` or `eval`, and it carries the same knobs an
+  eval report's config snapshot records (`retrieve_k`, `rerank_k`, `embed_version`, and
+  so on), so traces can be filtered by experiment arm. Eval runs also carry `eval_id`.
+- `/query` returns `meta.trace_url`, and the UI's "how this was answered" panel links to
+  it. The CLI prints the same link.
+
+### Decisions
+
+- **Page images never reach LangSmith.** `tracing.redact_contents` swaps each inline image
+  for a descriptor such as `<image/png 371KB>`. The `PAGE i (pdf p.N):` text label next to
+  it stays, so a trace still says which pages were sent. Uploading them would cost about
+  1-2 MB per query and send the document content off the box. Question and answer text
+  do appear in traces, which is the reason tracing stays opt-in.
+- **The Gemini run wraps the retry, not each attempt.** One logical call is one run, the
+  same shape as the existing `gemini call` log line.
+- **`src/tracing.py` is the only module that imports langsmith,** and it does not import
+  `google.genai` (parts are duck-typed). `src.retrieval` depends on it, and that module
+  must stay importable with no Gemini key for `--retrieval-only`.
+- **`trace_url` is best-effort.** It looks up the project URL once and caches it. A failed
+  lookup (a project that the first trace has not created yet, or a bad key) returns None
+  and is not retried for 60 s, so an unreachable LangSmith never adds a round-trip to
+  every query or fails one.
+- **Tests force tracing off** in `tests/conftest.py`, at import time, before
+  `src.config`'s `load_dotenv()`. A fixture would be too late: `load_dotenv` does not
+  override variables that are already set, and langsmith caches its env reads. Without
+  this, a developer `.env` with tracing on would upload a trace for every stubbed query.
+- `langsmith` is now a direct dependency. It had been installed transitively through
+  langgraph, but the code now imports it.
+
+**Files:** `src/tracing.py` *(new)*, `src/gemini_client.py`, `src/retrieval.py`,
+`src/main.py`, `src/server.py`, `eval/run_eval.py`, `tests/conftest.py` *(new)*,
+`tests/test_tracing.py` *(new)*, `ui/src/types.ts`, `ui/src/components/TraceDisclosure.tsx`,
+`ui/e2e/trace.spec.ts` *(new)*, `pyproject.toml`, `uv.lock`, `.env.example`, `README.md`.
+
+**Verify:** the tracing tests capture real `traceable` and LangGraph runs with a mocked
+LangSmith client, through the compiled graph, and assert the nesting, the root id ==
+`request_id`, and the redacted inputs. Live: set `LANGSMITH_TRACING=true` plus a key, run
+the CLI, and open the printed `trace:` link.

@@ -9,9 +9,11 @@ went on measuring the old path, so the first treatment arm silently reproduced i
 control. Anything that changes retrieval policy belongs here, where both callers see it.
 
 Kept free of langgraph and Gemini imports on purpose: `--retrieval-only` runs with no
-API key, and that stays true only if this module's dependencies stay narrow.
+API key, and that stays true only if this module's dependencies stay narrow. (`src.tracing`
+imports only langsmith and config, so the retriever run it adds does not widen them.)
 """
 
+from src import tracing
 from src.config import DECOMPOSE_ORIGINAL_WEIGHT, QUERY_DECOMPOSE
 from src.embedder import embed_query
 from src.logging_setup import get_logger
@@ -21,6 +23,8 @@ from src.vector_store import search_multi
 log = get_logger("retrieval")
 
 
+@tracing.traceable(run_type="retriever", name="retrieval",
+                   process_outputs=tracing.retriever_outputs)
 def retrieve(question: str) -> list[dict]:
     """Embed `question` visually and return the candidate pages, best first.
 
@@ -56,4 +60,7 @@ def retrieve(question: str) -> list[dict]:
         # looks like too - and "the splitter fired on the wrong question" is the failure
         # mode this rule-based splitter actually has. Opt in with LOG_LEVEL=DEBUG.
         log.debug("decomposed query parts", extra={"subqueries": queries})
+    # The trace gets the split itself, not just its shape: the trace already holds the
+    # question, and "the splitter fired on the wrong question" is what it is for.
+    tracing.annotate_current_run(subqueries=queries, subquery_count=len(queries))
     return search_multi([embed_query(q) for q in queries], weights=weights)

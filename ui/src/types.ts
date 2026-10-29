@@ -56,6 +56,8 @@ export interface QueryMeta {
   // 1/retrieve_k, not 0 - render via lib.decisivenessVsUniform, never as a raw percent.
   retrieval_confidence: number | null
   stages: StageMeta[]
+  // LangSmith link for this query's trace; null unless the server has tracing on.
+  trace_url: string | null
 }
 
 export interface QueryResponse {
