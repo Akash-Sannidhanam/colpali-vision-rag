@@ -382,7 +382,7 @@ def test_document_read_path_traversal_never_reaches_the_handler(
 
 def test_query_happy_path_shape(warm, monkeypatch):
     """The full /query contract: enriched citation, per-region crops, candidate pages, and meta."""
-    monkeypatch.setattr(server, "run_query", lambda q: _canned_result(found=True))
+    monkeypatch.setattr(server, "run_query", lambda q, **_: _canned_result(found=True))
     resp = warm.post("/query", json={"question": "what was the Q4 revenue?"})
     assert resp.status_code == 200
     body = resp.json()
@@ -414,11 +414,28 @@ def test_query_happy_path_shape(warm, monkeypatch):
     assert meta["retrieve_k"] == server.RETRIEVE_K
     assert meta["retrieval_confidence"] == 0.82                        # deterministic retrieval signal
     assert [s["node"] for s in meta["stages"]] == ["retrieve", "rerank", "answer", "highlight"]
+    assert meta["trace_url"] is None                                   # tracing off by default
+
+
+def test_query_passes_the_trace_url_through(warm, monkeypatch):
+    """A trace link from run_query reaches the response, and the server tags its runs."""
+    seen: dict = {}
+
+    def fake(q, **kw):
+        seen.update(kw)
+        result = _canned_result(found=True)
+        result["meta"]["trace_url"] = "https://smith.example/r/abc"
+        return result
+
+    monkeypatch.setattr(server, "run_query", fake)
+    body = warm.post("/query", json={"question": "what?"}).json()
+    assert body["meta"]["trace_url"] == "https://smith.example/r/abc"
+    assert seen["source"] == "server"
 
 
 def test_query_not_found_has_no_crop(warm, monkeypatch):
     """A not-found answer has no crop or regions but still surfaces the candidates."""
-    monkeypatch.setattr(server, "run_query", lambda q: _canned_result(found=False))
+    monkeypatch.setattr(server, "run_query", lambda q, **_: _canned_result(found=False))
     resp = warm.post("/query", json={"question": "unanswerable?"})
     assert resp.status_code == 200
     body = resp.json()
@@ -433,7 +450,7 @@ def test_query_not_found_has_no_crop(warm, monkeypatch):
 
 def test_query_inline_populates_data_uri(warm, monkeypatch):
     """?inline=true adds base64 data-URIs while keeping the static URLs."""
-    monkeypatch.setattr(server, "run_query", lambda q: _canned_result(found=True))
+    monkeypatch.setattr(server, "run_query", lambda q, **_: _canned_result(found=True))
 
     async def fake_encode(p):  # _encode_data_uri is async (off-loop file read)
         """Stand in for the async data-URI encoder without touching disk."""

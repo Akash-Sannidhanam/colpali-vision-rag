@@ -5,7 +5,9 @@ in one place:
   - a cached client (callers no longer build one per request),
   - a request timeout,
   - retry with exponential backoff on transient errors (429 / 5xx / network),
-  - token + estimated-cost logging per call.
+  - token + estimated-cost logging per call,
+  - a LangSmith `llm` run per call when tracing is on (`src.tracing`), with page
+    images replaced by size descriptors.
 
 `generate()` returns the raw SDK response, so callers keep using `.parsed` /
 `.text` (and their own graceful-fallback handling) exactly as before.
@@ -26,7 +28,7 @@ from tenacity import (
     wait_exponential,
 )
 
-from src import request_context
+from src import request_context, tracing
 from src.config import GEMINI_API_KEY, GEMINI_MAX_RETRIES, GEMINI_TIMEOUT_S
 from src.logging_setup import get_logger
 
@@ -107,8 +109,28 @@ def generate(*, model: str, contents: list, response_schema: Any, purpose: str) 
     """Structured-output generation with timeout + retry; logs token usage.
 
     Returns the SDK response object; callers read `.parsed` / `.text` as usual.
-    `purpose` (e.g. "rerank" / "answer") tags the usage log line.
+    `purpose` (e.g. "rerank" / "answer") tags the usage log line and names the
+    LangSmith run (`gemini.rerank` / `gemini.answer`).
     """
+    return _traced_generate(
+        model=model, contents=contents, response_schema=response_schema, purpose=purpose,
+        langsmith_extra={
+            "name": f"gemini.{purpose}",
+            # ls_provider + ls_model_name are what LangSmith prices a run by.
+            "metadata": {"ls_provider": "google", "ls_model_name": model},
+        },
+    )
+
+
+# Traced *outside* the tenacity retry, so one logical call is one run and a retried call
+# shows its attempt count in metadata - the same shape as the `gemini call` log line.
+@tracing.traceable(
+    run_type="llm",
+    process_inputs=tracing.redact_contents,
+    process_outputs=tracing.gemini_outputs,
+)
+def _traced_generate(*, model: str, contents: list, response_schema: Any, purpose: str) -> Any:
+    """The body of `generate`, wrapped in one LangSmith run when tracing is on."""
 
     @retry(
         reraise=True,
@@ -135,4 +157,5 @@ def generate(*, model: str, contents: list, response_schema: Any, purpose: str) 
     _log_usage(
         response, model=model, purpose=purpose, latency_ms=latency_ms, attempts=attempts
     )
+    tracing.annotate_current_run(attempts=attempts)
     return response

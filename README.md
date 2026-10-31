@@ -538,9 +538,17 @@ degrades gracefully and logs a `degraded` warning, so a silently-degraded query 
 The same per-query totals, plus a per-stage breakdown of time, tokens and cost, are returned in
 the `/query` response's `meta` field, which the UI's "how this was answered" trace renders.
 
-**LangSmith tracing (optional).** Off by default and needs no code change. Set both
-`LANGSMITH_TRACING=true` and `LANGSMITH_API_KEY` (optionally `LANGSMITH_PROJECT`) and LangGraph emits
-traces natively, tagged with the same `request_id` as the logs.
+**LangSmith tracing (optional).** Off by default. Set both `LANGSMITH_TRACING=true` and
+`LANGSMITH_API_KEY` (optionally `LANGSMITH_PROJECT`) and every query becomes one trace whose id is
+its `request_id`. The trace contains the four graph nodes, a retriever run listing the candidate
+pages with their scores, and one LLM run per Gemini call with its prompt, parsed output, token
+counts and cost. Root runs are tagged `cli`, `server` or `eval` and carry the retrieval knobs, so
+traces can be filtered by experiment arm. The UI's "how this was answered" panel and the CLI both
+link to the trace.
+
+Page images are never uploaded. Each one is replaced in the trace by a descriptor such as
+`<image/png 371KB>` next to its `PAGE 2 (attention.pdf p.8):` label. The question and answer text
+are uploaded, which is why tracing is opt-in.
 
 | Setting | Default | Notes |
 |---|---|---|
@@ -548,6 +556,7 @@ traces natively, tagged with the same `request_id` as the logs.
 | `LOG_JSON` | `false` | `true` emits one JSON object per line with `request_id` + `latency_ms` + token totals |
 | `LANGSMITH_TRACING` | _(unset)_ | set `true` (with a key) to turn on LangSmith tracing |
 | `LANGSMITH_API_KEY` | _(unset)_ | LangSmith API key; required for tracing |
+| `LANGSMITH_PROJECT` | `default` | LangSmith project traces are sent to |
 
 ## Development
 
@@ -557,7 +566,7 @@ the vector-store alias logic, the observability plumbing, and the FastAPI servin
 `TestClient` with the pipeline seam stubbed):
 
 ```bash
-uv run pytest                                  # backend (510 tests, ~7s)
+uv run pytest                                  # backend (523 tests, ~7s)
 cd ui && npm run typecheck && npm run test     # UI: types + 56 pure-logic units
 ```
 

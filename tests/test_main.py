@@ -8,6 +8,7 @@ total latency + aggregated tokens.
 """
 
 import logging
+import uuid
 
 from src import main, request_context
 
@@ -56,6 +57,11 @@ def test_run_query_binds_request_id_and_logs_totals(monkeypatch):
     assert seen["request_id"] != "-"
     assert seen["config"]["metadata"]["request_id"] == seen["request_id"]
     assert out["answer"] == "42"
+    # the request id is also the LangSmith trace id; the CLI is the default source
+    assert seen["config"]["run_id"] == uuid.UUID(seen["request_id"])
+    assert seen["config"]["tags"] == ["cli"]
+    # tracing is off in the suite, so there is no trace to link to
+    assert out["meta"]["trace_url"] is None
 
     # exactly one 'query complete' summary with total latency + summed tokens
     complete = [r for r in records if r.getMessage() == "query complete"]
@@ -67,3 +73,16 @@ def test_run_query_binds_request_id_and_logs_totals(monkeypatch):
 
     # scope is cleaned up after the call returns
     assert request_context.current_request_id() == "-"
+
+
+def test_run_query_threads_source_and_trace_metadata(monkeypatch):
+    """`source` becomes the trace tag and `trace_metadata` joins the config snapshot."""
+    seen: dict = {}
+    monkeypatch.setattr(main, "get_graph", lambda: _FakeGraph(seen))
+
+    main.run_query("q", source="eval", trace_metadata={"eval_id": "row-1"})
+
+    config = seen["config"]
+    assert config["tags"] == ["eval"]
+    assert config["metadata"]["eval_id"] == "row-1"
+    assert config["metadata"]["rerank_k"] == main.tracing.run_metadata()["rerank_k"]

@@ -225,6 +225,7 @@ export function queryResponse(regions = 2) {
       gemini_calls: 2,
       retrieve_k: 12,
       retrieval_confidence: 0.125,
+      trace_url: null as string | null,
       stages: [
         { node: 'retrieve', latency_ms: 900, prompt_tokens: 0, output_tokens: 0, total_tokens: 0, est_cost_usd: 0, gemini_calls: 0 },
         { node: 'rerank', latency_ms: 5000, prompt_tokens: 9000, output_tokens: 40, total_tokens: 9040, est_cost_usd: 0.002, gemini_calls: 1 },

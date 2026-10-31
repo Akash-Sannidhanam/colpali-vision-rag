@@ -215,7 +215,8 @@ def run_full(dataset: list[dict], use_judge: bool) -> list[dict]:
 
     rows = []
     for item in dataset:
-        result = run_query(item["question"])
+        result = run_query(item["question"], source="eval",
+                           trace_metadata={"eval_id": item["id"], "eval_tags": item["tags"]})
         reranked = result.get("retrieved", [])
         citation = result.get("citation")
         answer = result.get("answer", "")

@@ -6,7 +6,8 @@ const fmtTok = (t: number) => (t >= 1000 ? `${(t / 1000).toFixed(1)}k` : `${t}`)
 const fmtCost = (c: number) => `$${c.toFixed(3)}`
 
 /** The "how this was answered" disclosure: per-stage time / tokens / cost from
- *  meta.stages, plus retrieval decisiveness.
+ *  meta.stages, plus retrieval decisiveness and, when the server traces to LangSmith,
+ *  a link to the full trace (every Gemini call's prompt, output and tokens).
  *
  *  Decisiveness lives here rather than beside the answer because that is what its
  *  measured strength supports - it separates a right top page from a wrong one at
@@ -41,6 +42,11 @@ export function TraceDisclosure({ meta }: { meta: QueryMeta }) {
         >
           retrieval decisiveness <b>{decisiveness.toFixed(2)}×</b> uniform
         </div>
+      )}
+      {open && meta.trace_url && (
+        <a className="trace-link" href={meta.trace_url} target="_blank" rel="noopener noreferrer">
+          view trace in LangSmith ↗
+        </a>
       )}
     </div>
   )
